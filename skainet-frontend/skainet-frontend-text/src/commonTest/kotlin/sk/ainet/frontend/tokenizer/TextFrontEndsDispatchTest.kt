@@ -100,7 +100,7 @@ class TextFrontEndsDispatchTest {
     }
 
     @Test
-    fun `tokenizer_json BPE with array merges gives the same tokenizer as string merges (#1323)`() {
+    fun `tokenizer_json BPE with array merges gives the same tokenizer as string merges - issue 1323`() {
         val json = """
             {"version":"1.0","added_tokens":[{"id":2,"content":"<|end|>","special":true}],
              "model":{"type":"BPE","vocab":{"a":0,"b":1,"<|end|>":2,"ab":3},"merges":[["a","b"]]}}
@@ -113,7 +113,7 @@ class TextFrontEndsDispatchTest {
     }
 
     @Test
-    fun `non-special added tokens match atomically and count in vocabSize (#1324)`() {
+    fun `non-special added tokens match atomically and count in vocabSize - issue 1324`() {
         val json = """
             {"added_tokens":[{"id":5,"content":"[UNK]","special":true},{"id":6,"content":"   ","special":false,"normalized":true}],
              "model":{"type":"BPE","vocab":{"a":0,"b":1,"Ġ":2,"ab":3,"ĠĠ":4},"merges":["a b","Ġ Ġ"]}}
@@ -127,7 +127,7 @@ class TextFrontEndsDispatchTest {
     }
 
     @Test
-    fun `normalizer block is applied before pre-tokenization (#1325)`() {
+    fun `normalizer block is applied before pre-tokenization - issue 1325`() {
         val json = """
             {"normalizer":{"type":"Replace","pattern":{"String":"x"},"content":"a"},
              "model":{"type":"BPE","vocab":{"a":0,"b":1,"ab":2},"merges":["a b"]}}
@@ -157,7 +157,7 @@ class TextFrontEndsDispatchTest {
     }
 
     @Test
-    fun `metaspace BPE with byte fallback (#1326)`() {
+    fun `metaspace BPE with byte fallback - issue 1326`() {
         val json = """
             {"normalizer":{"type":"Sequence","normalizers":[{"type":"Prepend","prepend":"▁"},{"type":"Replace","pattern":{"String":" "},"content":"▁"}]},
              "pre_tokenizer":null,
