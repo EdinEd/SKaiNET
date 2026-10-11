@@ -1,0 +1,415 @@
+= SKEEP-006: Input front ends and model identity
+:description: SKaiNET proposal for one resolvable input front-end contract (tokenizers first, audio and image features next) keyed on a string-based model identity with an immutable family registry, so that every model type SKaiNET runs gets its preprocessing from the engine instead of re-deriving it downstream.
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (the first consumer, and the repository whose parallel tokenizer stack this proposal retires); SKaiNET-cartridge maintainers (the facade binds front ends to cartridge ports) +
+Created: 2026-10-11 +
+Tracking issue: _to be filed_ (prepared in a personal fork; implementation lanes: https://github.com/SKaiNET-developers/SKaiNET/issues/1321[#1321], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/471[SKaiNET-transformers #471], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/330[SKaiNET-transformers #330]) +
+Origin: tokenizer parity measurements against the Hugging Face `tokenizers` library (0.23.3) on two public ModernBERT/mmBERT checkpoints: the engine factory failed to load either file, the transformers legacy tokenizer loaded both and returned wrong ids for most inputs without an error.
+
+== Summary
+
+A checkpoint is weights, an identity, and the recipe that turns raw input into the tensors the
+weights expect — and, for text, back again. SKaiNET owns the weights and half of the identity;
+the recipe is re-derived in every downstream repository. This proposal makes the recipe a
+first-class, resolvable engine object:
+
+* `sk.ainet.frontend.FrontEnd<I, O>` is the root contract; `Tokenizer` is its first implementor.
+  Audio feature extraction and image preprocessing follow on the same contract in later lanes.
+* `sk.ainet.model.ModelIdentity` is a string-based identity (`format`, `architecture`, `family`,
+  `variant`) and `ModelFamilyRegistry` an immutable, composable registry of family descriptors.
+  Weight mapping and front-end resolution key on the same identity.
+* `sk.ainet.frontend.FrontEndResolver` is the single entry point a CLI, a runtime, a Java caller
+  and a cartridge facade use: identity → algorithmic base from the checkpoint's side files →
+  family decoration.
+
+New engine modules carry the contract (`skainet-frontend-core`), the text algorithms
+(`skainet-frontend-text`) and the identity (`skainet-model-identity`). `skainet-io-core` keeps
+its tokenizer package as deprecated aliases and a forwarding `TokenizerFactory` for one
+deprecation cycle. SKaiNET-transformers becomes a contributor of family descriptors (policy:
+special tokens, stop set, prompt renderer) and stops owning algorithms.
+
+== Motivation
+
+Text tokenization exists twice in the SKaiNET repositories and the two implementations
+disagree. The engine (`skainet-io-core`, package `sk.ainet.io.tokenizer`) carries the intended
+algorithms — byte-level BPE, SentencePiece, Tekken, a special-token splitter — behind a
+`TokenizerFactory` that dispatches on the tokenizer type. It has known defects filed as #1321:
+array-form merges are rejected, the `normalizer` block is ignored, non-special `added_tokens`
+are dropped, Metaspace BPE is routed to the byte-level implementation, and `TekkenTokenizer` is
+unreachable from the factory.
+
+SKaiNET-transformers (`llm-core`, package `sk.ainet.apps.llm.tokenizer`) carries a second
+`Tokenizer` interface with non-null bos/eos ids, a wrapper that forwards to the engine, and an
+older independent implementation (`GGUFTokenizer` with four strategy objects) that scrapes
+`tokenizer.json` with regular expressions and merges greedily by score. That older path is what
+the SafeTensors command-line tools, the Java facade, the IREE runtimes, the benchmarks and the
+browser build call, at sixteen non-test source files, and it is part of the published API dump.
+WordPiece exists only in the bert module; the engine throws for it.
+
+Measured on two public tokenizer files against the reference library:
+
+[cols="2,2,2",options="header"]
+|===
+| Entry point | ModernBERT file (as published) | mmBERT file (as published)
+
+| engine `TokenizerFactory.fromTokenizerJson` and the transformers wrapper
+| load fails (array-form merges)
+| load fails
+
+| transformers legacy `GGUFTokenizer.fromTokenizerJson`
+| loads, 2 of 5 texts correct, no error
+| loads, 0 of 5 correct, no error
+|===
+
+The problem is wider than text. Whisper in transformers expects a log-mel tensor and ships no
+code to compute one. Moonshine's audio front ends are learned DSL modules. The engine has three
+unconnected pipeline abstractions (`skainet-data-transform`, `skainet-data-source`,
+`skainet-pipeline`) and an unused media module; none is what a model loader asks for when it
+needs "the preprocessing this checkpoint expects". Model identity is split three ways in the
+engine (`ModelArchitecture` enum with a GGUF resolver, `ModelLoaderRegistry`, string switches in
+`TransformerNameMaps`) and a fourth way in transformers (`ModelFamily` enum). Adding a model type
+today means re-creating preprocessing and identity in two repositories.
+
+== Goals
+
+. One contract for all input modalities under one generic root, with typed, modality-specific
+  sub-interfaces callers actually hold (`Tokenizer` today; `AudioFrontEnd`, `ImageFrontEnd`
+  later).
+. One implementation of each algorithm, in the engine, golden-tested against the reference
+  library.
+. One resolver, data-driven from side files (`tokenizer.json`, GGUF `tokenizer.ggml.*`,
+  `tokenizer_config.json`, `tekken.json`, `vocab.txt`), decorated — never replaced — by family
+  policy.
+. Extensible identity without touching an enum: a string family and an immutable registry that
+  SKaiNET-transformers and third parties compose.
+. Every intermediate release shippable; every public symbol goes WARNING → ERROR → removed
+  across three consecutive minor releases.
+
+== Non-Goals
+
+* A Jinja chat-template engine. The template source and a `PromptRenderer` hook are provided;
+  rendering stays family code.
+* Batching strategies inside front ends; voice activity detection.
+* Integration with `skainet-data-source.DataPipeline` or `skainet-pipeline`.
+* Changing the cartridge C ABI.
+* Streaming front ends before their first implementor (the audio lane). The interfaces are
+  specified here and introduced with that lane.
+
+== Proposed Design
+
+=== Key decision: algorithm in the engine, policy in the families
+
+Three rules drive every choice:
+
+. *Typed, modality-specific contracts under one generic root.* `FrontEnd<I, O>` is the root;
+  `Tokenizer`, `AudioFrontEnd`, `ImageFrontEnd` are what callers hold. No `Any`-typed processor.
+. *Front ends are deterministic host-side math, not graph operations.* Tokenizers, log-mel and
+  letterbox are plain array kernels that give identical results on every target. Learned front
+  ends enter through an adapter.
+. *Resolution is data-driven from side files; families only decorate.* The checkpoint's own
+  files select the algorithm. A family descriptor adds policy — special tokens, stop set, prompt
+  renderer, placeholder expansion — never algorithm.
+
+=== The contract (`skainet-frontend-core`, package `sk.ainet.frontend`)
+
+[source,kotlin]
+----
+public interface FrontEnd<I, O> {
+    public val spec: FrontEndSpec          // static, serialisable description
+    public fun process(input: I): O
+}
+public interface InvertibleFrontEnd<I, O> : FrontEnd<I, O> { public fun invert(output: O): I }
+
+@Serializable public sealed class FrontEndSpec {        // Text | Audio | Image | Composite
+    public data class Text(val algorithm: String, val artifact: String) : FrontEndSpec()
+    …
+}
+----
+
+A front end is stateless and immutable. `ExecutionContext` is never a parameter of `process`;
+tensor-producing front ends take it at construction, so a resolved front end is a closed object a
+cartridge facade can hand around. `FrontEndSpec`, serialised, is sufficient to re-create the
+front end from the same side files; it is what a `frontend.json` sidecar carries and what tests
+assert against.
+
+The modality *contracts* live in `skainet-frontend-core` so that `FrontEndSet` and the resolver
+are typed; the *kernels* live in one module per modality. For text:
+
+[source,kotlin]
+----
+package sk.ainet.frontend.text
+
+public interface Vocabulary { val size: Int; fun tokenToId(piece: String): Int?; fun idToToken(id: Int): String? }
+
+public data class SpecialTokens(
+    val bos: Int?, val eos: Int?, val pad: Int?, val unk: Int?,
+    val addBos: Boolean, val addEos: Boolean, val extraStop: Set<Int> = emptySet(),
+) { val stopIds: Set<Int> get() = setOfNotNull(eos) + extraStop }
+
+public interface Tokenizer : InvertibleFrontEnd<String, IntArray> {
+    val vocabulary: Vocabulary
+    val specialTokens: SpecialTokens
+    fun encode(text: String, addSpecialTokens: Boolean = true): IntArray
+    fun decode(ids: IntArray, skipSpecialTokens: Boolean = true): String
+    fun decodeToken(id: Int): String                       // llama.cpp token_to_piece semantics
+    // source compatibility with sk.ainet.io.tokenizer.Tokenizer at 0.57
+    val vocabSize: Int get() = vocabulary.size
+    val bosTokenId: Int? get() = specialTokens.bos
+    val eosTokenId: Int? get() = specialTokens.eos
+}
+
+public class Encoding(ids, attentionMask, tokenTypeIds?, specialTokensMask, offsets?)
+public interface BatchTokenizer : Tokenizer { fun encodeWithMetadata(text, pair = null, truncation): Encoding; … }
+
+public class TextFrontEnd(val tokenizer: Tokenizer, val chatTemplateSource: String?, val promptRenderer: PromptRenderer?)
+    : FrontEnd<String, IntArray> by tokenizer
+public interface PromptRenderer                            // marker; transformers' ChatTemplate implements it
+----
+
+`bos` and `eos` stay nullable: the `-1` sentinel of the transformers interface is a defect
+source. `Vocabulary` is required on every tokenizer because stop-token resolution and chat
+templates need `tokenToId`. Attention masks and token type ids belong to
+`BatchTokenizer.encodeWithMetadata`, never to the base `Tokenizer`.
+
+Multimodal composition is specified in the same module — `InputSegment`, `MultimodalInput`,
+`ModelInputs`, `PlaceholderSpan`, `PlaceholderPolicy`, `CompositeFrontEnd` — so that a
+vision-language checkpoint resolves to one front end that records *where* image or audio
+embeddings are spliced into the token stream. The encoder, the projector and the splice itself
+are model code. Single-modality checkpoints never pay for the composite.
+
+=== Identity (`skainet-model-identity`, package `sk.ainet.model`)
+
+[source,kotlin]
+----
+public data class ModelIdentity(val format: ModelFormat, val architecture: String, val family: String, val variant: String? = null)
+
+public interface CheckpointView {                        // one implementation per format
+    val format: ModelFormat
+    val metadata: Map<String, Any?>                      // GGUF fields | flattened config.json | ONNX metadata_props
+    fun sideFile(name: String): ByteArray?               // tokenizer.json, tokenizer_config.json, tekken.json, vocab.txt, frontend.json
+    fun listSideFiles(): Set<String>
+}
+
+public interface ModelFamilyDescriptor {
+    val family: String
+    val architectures: Set<String>
+    fun nameMap(format: ModelFormat): NameMap?
+    fun frontEnds(view: CheckpointView, identity: ModelIdentity, base: FrontEndSet, ctx: ExecutionContext?): FrontEndSet = base
+}
+
+public class ModelFamilyRegistry private constructor(…) {   // immutable; composed with plus
+    fun identify(view: CheckpointView): ModelIdentity
+    fun descriptorFor(identity: ModelIdentity): ModelFamilyDescriptor?
+    operator fun plus(d: ModelFamilyDescriptor): ModelFamilyRegistry
+    companion object { val builtIn: ModelFamilyRegistry }
+}
+----
+
+Family identity is a `String`, not an enum. Registries are immutable values composed with
+`plus`; there is no global mutable `register()` and no `ServiceLoader`. `ModelFormat`, `NameMap`
+and `RoleTableNameMap` move here from `skainet-io-core`, which keeps deprecated aliases;
+`ModelFamilyDescriptor.nameMap(format)` replaces the string switch in
+`TransformerNameMaps.Gguf.forArchitecture`. `CheckpointView` implementations live with the
+format readers: `GgufCheckpointView` in `skainet-io-gguf`, `HfDirectoryCheckpointView` in
+`skainet-io-safetensors`, later `OnnxCheckpointView` and a cartridge view.
+
+=== Resolution (`skainet-frontend-core`)
+
+[source,kotlin]
+----
+public class FrontEndResolver(
+    private val providers: List<FrontEndProvider>,        // one per modality module, composed by the caller
+    private val registry: ModelFamilyRegistry = ModelFamilyRegistry.builtIn,
+    private val ctx: ExecutionContext? = null,            // required only by tensor-producing providers
+) {
+    fun resolve(view: CheckpointView): FrontEndSet
+    fun resolveText(view: CheckpointView): TextFrontEnd   // throws UnsupportedFrontEndException naming side files and families
+    fun describe(view: CheckpointView): List<FrontEndSpec>
+}
+----
+
+Resolution order is fixed: (1) identity from the registry; (2) algorithmic base from side files
+and metadata, through the modality providers; (3) the family descriptor decorates the base;
+(4) modalities with nothing found are `null` in the set, and `resolveX` throws naming
+`listSideFiles()` and the registry's families. A wrong heuristic in step (2) fails loudly, never
+degrades silently.
+
+Text dispatch table for step (2):
+
+[cols="3,2",options="header"]
+|===
+| Evidence | Implementation
+
+| GGUF `tokenizer.ggml.model` ∈ {gpt2, bpe}; `tokenizer.json` `model.type: BPE` with a ByteLevel pre-tokenizer (or none)
+| byte-level BPE (`QwenByteLevelBpeTokenizer`)
+
+| GGUF `llama`, `sentencepiece`, `gemma4`; `tokenizer.json` `model.type: Unigram`
+| SentencePiece + special-token splitter
+
+| `tokenizer.json` `model.type: BPE` with a Metaspace pre-tokenizer (`byte_fallback`)
+| Metaspace BPE with byte fallback (`MetaspaceBpeTokenizer`, new; #1326)
+
+| GGUF `bert`, `wordpiece`; `tokenizer.json` `model.type: WordPiece`; `vocab.txt`
+| `WordPieceTokenizer` (new; port of the bert module's tokenizer with a real JSON parse)
+
+| `tekken.json`
+| `TekkenTokenizer` (exists; becomes reachable)
+
+| `frontend.json` sidecar with a `Text` spec
+| explicit selection
+|===
+
+`tokenizer_config.json`, when present as a sibling, is consulted for `add_bos_token`,
+`add_eos_token`, bos/eos names and `chat_template`. The `normalizer` block of `tokenizer.json`
+(`Replace`, `Prepend`, `Sequence`, `NFC`) is applied; unknown normalizer types fail loudly. All
+`added_tokens` match atomically, special or not, and count towards `vocabSize`.
+
+The `skainet-io-core` `TokenizerFactory` stays as a real forwarding `object` for the
+deprecation cycle because the Java release test pins its `@JvmStatic` members. New entry points
+are explicit overloads; default parameters are never added to existing `@JvmStatic` methods.
+
+=== Module layout and target coverage
+
+[mermaid]
+----
+flowchart TB
+  LC[skainet-lang-core]
+  MI[skainet-model-identity<br/>ModelIdentity · CheckpointView · ModelFamilyDescriptor · ModelFamilyRegistry · ModelFormat · NameMap]
+  FC[skainet-frontend-core<br/>FrontEnd · FrontEndSpec · text contract · FrontEndResolver · FrontEndSet · multimodal composition]
+  FT[skainet-frontend-text<br/>byte-level BPE · Metaspace BPE · SentencePiece · WordPiece · Tekken · splitter · normalizer · TextFrontEnds provider]
+  IOC[skainet-io-core<br/>deprecated aliases sk.ainet.io.tokenizer.* and io.model.ModelFormat / io.weights.NameMap · forwarding TokenizerFactory]
+  IOG[skainet-io-gguf<br/>GgufCheckpointView]
+  IOS[skainet-io-safetensors<br/>HfDirectoryCheckpointView]
+  LC --> MI --> FC --> FT --> IOC
+  IOC --> IOG
+  IOC --> IOS
+----
+
+The three new modules use `skainet-io-core`'s full target set (jvm, android, iosArm64,
+iosSimulatorArm64, macosArm64, linuxX64, linuxArm64, androidNativeArm32, androidNativeArm64, js,
+wasmJs, wasmWasi) and binary-compatibility validation from the first release. `skainet-io-core`
+gains its first API baseline dump in the same release. Why separate modules and not io-core:
+io-core is "read model containers"; tokenization is already a misfit there, audio or image math
+would make it a grab bag, and a browser build can pull `skainet-frontend-text` without
+`skainet-io-safetensors`.
+
+=== SKaiNET-transformers after migration
+
+Families become `object : ModelFamilyDescriptor` (Llama, Qwen, Gemma, Apertus, BitNet, BERT,
+Voxtral, Whisper, Moonshine, …) and `TransformersFamilies.registry = ModelFamilyRegistry.builtIn
++ …`. Its `Tokenizer` interface extends the engine interface for two releases (narrowing bos/eos
+to `Int`), then becomes a type alias. Stop tokens collapse to
+`textFrontEnd.tokenizer.specialTokens.stopIds`. The legacy `GGUFTokenizer`, its strategies, the
+wrapper factory, the adapters and the bert tokenizer are deprecated WARNING → ERROR → removed
+across three minors; every call site migrates to `FrontEndResolver.resolveText(view)` in the
+first release. Legacy entry points are never silently forwarded to the engine: that would change
+token ids under consumers that changed no code.
+
+== Requirements
+
+=== Functional
+
+. `FrontEnd`, `InvertibleFrontEnd`, `FrontEndSpec`, `FrontEndSet`, `FrontEndResolver`,
+  `FrontEndProvider`, `UnsupportedFrontEndException` in `sk.ainet.frontend`; the text contract in
+  `sk.ainet.frontend.text`; multimodal composition types in `sk.ainet.frontend`.
+. `ModelIdentity`, `ModelFormat`, `CheckpointView`, `ModelFamilyDescriptor`,
+  `ModelFamilyRegistry`, `NameMap`, `RoleTableNameMap`, `TransformerNameMaps` in `sk.ainet.model`.
+. Text algorithms in `sk.ainet.frontend.tokenizer`: byte-level BPE, Metaspace BPE with byte
+  fallback, SentencePiece, WordPiece, Tekken, `SpecialTokenSplitter`, `Normalizer`; a
+  `TextFrontEnds` provider implementing the dispatch table above.
+. `GgufCheckpointView` (io-gguf) and `HfDirectoryCheckpointView` (io-safetensors).
+. `skainet-io-core`: deprecated aliases for every moved type; `TokenizerFactory.fromGguf` and
+  `fromTokenizerJson` keep their JVM signatures and forward to the resolver;
+  `UnsupportedTokenizerException` extends `UnsupportedFrontEndException`.
+. The defects of #1321 (#1323 array-form merges, #1324 added tokens and `vocabSize`, #1325
+  normalizer, #1326 Metaspace BPE) are fixed in the moved implementations.
+
+=== Non-Functional
+
+. Golden corpus recorded with the Hugging Face `tokenizers` library (0.23.3) for byte-level BPE,
+  Metaspace BPE, Unigram and WordPiece files, with special tokens, emoji, mixed scripts,
+  decomposed characters and leading or trailing whitespace; ids equal exactly, including
+  `vocabSize`.
+. `decode(encode(x)) == x` for non-special text on every algorithm.
+. `apiCheck` green for the new modules and `skainet-io-core`; the Java release test compiles
+  unchanged.
+. No reflection; `commonMain` only, with `expect`/`actual` for NFC where the platform offers it.
+
+== Compatibility and Migration
+
+Additive in the engine. Moved types keep `@Deprecated(WARNING)` aliases in their old packages
+for one release, then `ERROR`, then removal (engine 0.58 → 0.59 → 0.60). The engine `Tokenizer`
+gains members with defaults; external implementors compiled against 0.57 recompile without
+source changes, and the release notes call out that `skainet-io-core` has a binary baseline
+from 0.58 on. `ModelArchitecture.fromGguf`, `TransformerNameMaps.Gguf.forArchitecture` and
+`ModelLoaderRegistry` are deprecated in favour of `ModelFamilyRegistry`. SKaiNET-transformers
+deprecates its legacy tokenizer surface WARNING → ERROR → removed across three releases;
+goldens recorded against the legacy tokenizer are re-recorded from the reference library, not
+from the old Kotlin, before a call site migrates.
+
+== Rollout Plan
+
+. Engine 0.58: the three modules, moved algorithms with the #1321 fixes, WordPiece, Tekken
+  dispatch, `GgufCheckpointView`, `HfDirectoryCheckpointView`, io-core aliases and forwarding
+  factory, golden corpus, API dumps, docs page.
+. SKaiNET-transformers 0.58 (against engine 0.58): family descriptors and registry,
+  `Tokenizer` as sub-interface, every legacy call site on the resolver, legacy at WARNING, docs
+  rewritten, parity gate re-pointed at the resolver.
+. Engine 0.59: `skainet-frontend-audio` (log-mel, streaming), `skainet-frontend-image`
+  (letterbox, resize/crop/normalise), `OnnxCheckpointView`, old identity switches at WARNING,
+  io-core aliases at ERROR.
+. SKaiNET-transformers 0.59: Whisper and Moonshine on `AudioFrontEnd`, legacy at ERROR.
+. Engine 0.60 and SKaiNET-transformers 0.60: removals; cartridge spec proposal for a
+  `preprocessor` artifact role.
+
+== Acceptance Criteria
+
+* Golden tests: exact id equality with the reference library for every corpus file, through
+  both the GGUF and the `tokenizer.json` entry points where both exist.
+* `TokenizerFactoryDispatchTest` ported to `FrontEndResolver.describe()`; the Java release test
+  pins the forwarding factory and the new static entry points.
+* `apiCheck` green with dumps committed for `skainet-model-identity`, `skainet-frontend-core`,
+  `skainet-frontend-text` and `skainet-io-core`.
+* SKaiNET-transformers: `Gemma4TokenizerParityTest` green on the engine path; a descriptor
+  coverage test (architectures disjoint, every GGUF of the corpus identified); API dumps show
+  deprecations, not removals.
+* Antora builds with the new reference page linked from `nav.adoc`.
+
+== Risks
+
+* *Ids change on migration, correctly.* Downstream goldens recorded against the legacy tokenizer
+  fail; they are re-recorded from the reference library.
+* *Package move versus Java statics.* Aliases cover types but not `object` members for Java;
+  io-core keeps a real forwarding `TokenizerFactory`.
+* *Binary sensitivity of extending the engine `Tokenizer`.* Defaulted members are source
+  compatible; the baseline dump and release notes make the binary change explicit.
+* *Registry composition mistakes.* A host that forgets the transformers registry gets
+  engine-only identification and no chat template; `describe()` and the exception that names
+  the registry's families make it visible.
+* *Tekken constants.* Switching Voxtral from hard-coded ids to the file's values may change
+  behaviour; covered by its tests.
+
+== Open Questions
+
+* Whether `BatchTokenizer.encodeBatch` should return tensors (needs an `ExecutionContext`) or
+  padded arrays (this proposal: arrays; tensors are one call away in the consumer).
+* Whether the cartridge specification adopts a `preprocessor` artifact role in v0.5 or keeps
+  front-end configuration inside the family descriptor.
+* `ignore_merges` (Llama 3 files) in Metaspace and byte-level BPE: implemented when a corpus
+  file needs it.
+
+== References
+
+* https://github.com/SKaiNET-developers/SKaiNET/issues/1321[SKaiNET #1321] — tokenizer.json
+  parity for BPE encoders (lanes #1322–#1330)
+* https://github.com/SKaiNET-developers/SKaiNET/issues/912[SKaiNET #912] — Metaspace BPE decode
+* https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/471[SKaiNET-transformers #471]
+  — legacy tokenizer defects and parity gate
+* https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/330[SKaiNET-transformers #330]
+  — two GGUF tokenizer paths disagree
+* https://github.com/huggingface/tokenizers[Hugging Face `tokenizers`] — reference oracle (0.23.3);
+  https://huggingface.co/docs/tokenizers/api/added-tokens[added-token matching],
+  https://huggingface.co/docs/tokenizers/api/pre-tokenizers[pre-tokenizers]
+* xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003] — `NameMap` and the canonical tensor ids
+  this proposal keys on `ModelIdentity`
