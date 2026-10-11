@@ -111,6 +111,8 @@ val downloadTokenizerFixtures by tasks.registering {
             "bert-base-uncased-tokenizer_config.json" to "https://huggingface.co/google-bert/bert-base-uncased/resolve/main/tokenizer_config.json",
             "t5-small-tokenizer.json" to "https://huggingface.co/google-t5/t5-small/resolve/main/tokenizer.json",
             "t5-small-tokenizer_config.json" to "https://huggingface.co/google-t5/t5-small/resolve/main/tokenizer_config.json",
+            "gemma4-e2b-tokenizer.json" to "https://huggingface.co/google/gemma-4-E2B-it/resolve/main/tokenizer.json",
+            "gemma4-e2b-tokenizer_config.json" to "https://huggingface.co/google/gemma-4-E2B-it/resolve/main/tokenizer_config.json",
         )
         for ((name, url) in files) {
             val target = dir.resolve(name)

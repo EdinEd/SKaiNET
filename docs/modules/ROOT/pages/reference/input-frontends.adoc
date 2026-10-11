@@ -108,5 +108,5 @@ block is applied to every segment; unknown normalizer or pre-tokenizer types fai
 
 `skainet-frontend-text/src/jvmTest/resources/goldens/*.json` were recorded with the Hugging Face
 `tokenizers` library 0.23.3 over public tokenizer files (GPT-2, Qwen2.5, TinyLlama, T5-small,
-`bert-base-uncased`, the two Laya tokenizers). `./gradlew :skainet-frontend:skainet-frontend-text:downloadTokenizerFixtures`
+`bert-base-uncased`, Gemma 4 E2B, the two Laya tokenizers). `./gradlew :skainet-frontend:skainet-frontend-text:downloadTokenizerFixtures`
 fetches the files; the tests skip when a fixture is absent.

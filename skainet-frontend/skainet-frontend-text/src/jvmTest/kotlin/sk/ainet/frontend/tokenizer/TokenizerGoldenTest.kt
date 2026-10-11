@@ -69,6 +69,7 @@ class TokenizerGoldenTest {
     @Test fun `laya mmBERT Metaspace BPE with byte fallback matches the reference`() = check("laya-mmbert")
     @Test fun `tinyllama Metaspace BPE via normalizer matches the reference`() = check("tinyllama")
     @Test fun `t5-small Unigram matches the reference`() = check("t5-small")
+    @Test fun `gemma4 E2B Metaspace BPE with byte fallback matches the reference`() = check("gemma4-e2b")
     @Test fun `bert-base-uncased WordPiece matches the reference`() {
         check("bert-base-uncased")
         val tok = load("bert-base-uncased") as? sk.ainet.frontend.tokenizer.WordPieceTokenizer ?: return

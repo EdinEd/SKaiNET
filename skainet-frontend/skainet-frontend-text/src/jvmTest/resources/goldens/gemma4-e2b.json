@@ -1,0 +1,509 @@
+{
+ "fixture": "gemma4-e2b",
+ "tokenizer_json": "gemma4-e2b-tokenizer.json",
+ "tokenizer_config_json": "gemma4-e2b-tokenizer_config.json",
+ "reference": "tokenizers 0.23.3",
+ "vocab_size": 262144,
+ "vocab_size_base": 262144,
+ "cases": [
+  {
+   "text": "Hello world",
+   "ids": [
+    9259,
+    1902
+   ],
+   "ids_with_specials": [
+    9259,
+    1902
+   ],
+   "decode": "Hello world",
+   "decode_skip_special": "Hello world"
+  },
+  {
+   "text": "Bitte die doppelte Rechnung prüfen.",
+   "ids": [
+    175060,
+    1778,
+    81324,
+    54853,
+    210898,
+    201406,
+    236761
+   ],
+   "ids_with_specials": [
+    175060,
+    1778,
+    81324,
+    54853,
+    210898,
+    201406,
+    236761
+   ],
+   "decode": "Bitte die doppelte Rechnung prüfen.",
+   "decode_skip_special": "Bitte die doppelte Rechnung prüfen."
+  },
+  {
+   "text": "Which department handles this request?",
+   "ids": [
+    24249,
+    7920,
+    19171,
+    672,
+    2864,
+    236881
+   ],
+   "ids_with_specials": [
+    24249,
+    7920,
+    19171,
+    672,
+    2864,
+    236881
+   ],
+   "decode": "Which department handles this request?",
+   "decode_skip_special": "Which department handles this request?"
+  },
+  {
+   "text": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "ids": [
+    223305,
+    236764,
+    30668,
+    101566,
+    16207,
+    941,
+    171520,
+    1716,
+    1271,
+    120362,
+    33443,
+    96008,
+    163543,
+    240493,
+    242713,
+    242713,
+    545,
+    238288
+   ],
+   "ids_with_specials": [
+    223305,
+    236764,
+    30668,
+    101566,
+    16207,
+    941,
+    171520,
+    1716,
+    1271,
+    120362,
+    33443,
+    96008,
+    163543,
+    240493,
+    242713,
+    242713,
+    545,
+    238288
+   ],
+   "decode": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "decode_skip_special": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é"
+  },
+  {
+   "text": "false: No duplicate is mentioned",
+   "ids": [
+    4530,
+    236787,
+    2301,
+    36929,
+    563,
+    6950
+   ],
+   "ids_with_specials": [
+    4530,
+    236787,
+    2301,
+    36929,
+    563,
+    6950
+   ],
+   "decode": "false: No duplicate is mentioned",
+   "decode_skip_special": "false: No duplicate is mentioned"
+  },
+  {
+   "text": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "ids": [
+    139,
+    26016,
+    9952,
+    532,
+    236743,
+    236770,
+    236778,
+    236800,
+    236812,
+    236810,
+    4945,
+    236764,
+    181018,
+    236772,
+    774,
+    4171,
+    1537,
+    236789,
+    236745
+   ],
+   "ids_with_specials": [
+    139,
+    26016,
+    9952,
+    532,
+    236743,
+    236770,
+    236778,
+    236800,
+    236812,
+    236810,
+    4945,
+    236764,
+    181018,
+    236772,
+    774,
+    4171,
+    1537,
+    236789,
+    236745
+   ],
+   "decode": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "decode_skip_special": "   leading spaces and 12345 numbers, hyphen-ated words don't"
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    136697,
+    9952,
+    139
+   ],
+   "ids_with_specials": [
+    136697,
+    9952,
+    139
+   ],
+   "decode": "trailing spaces   ",
+   "decode_skip_special": "trailing spaces   "
+  },
+  {
+   "text": "tabs\tand\nnewlines\r\nmixed",
+   "ids": [
+    39218,
+    255968,
+    624,
+    107,
+    208697,
+    251,
+    107,
+    63258
+   ],
+   "ids_with_specials": [
+    39218,
+    255968,
+    624,
+    107,
+    208697,
+    251,
+    107,
+    63258
+   ],
+   "decode": "tabs\tand\nnewlines\r\nmixed",
+   "decode_skip_special": "tabs\tand\nnewlines\r\nmixed"
+  },
+  {
+   "text": "日本語のテキスト and 中文 mixed with English",
+   "ids": [
+    94951,
+    236945,
+    95830,
+    532,
+    17346,
+    237364,
+    9726,
+    607,
+    5422
+   ],
+   "ids_with_specials": [
+    94951,
+    236945,
+    95830,
+    532,
+    17346,
+    237364,
+    9726,
+    607,
+    5422
+   ],
+   "decode": "日本語のテキスト and 中文 mixed with English",
+   "decode_skip_special": "日本語のテキスト and 中文 mixed with English"
+  },
+  {
+   "text": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "ids": [
+    236777,
+    236789,
+    236757,
+    2889,
+    692,
+    236789,
+    859,
+    236789,
+    560,
+    3028,
+    625,
+    236764,
+    5889,
+    236789,
+    236745,
+    625,
+    236881,
+    236743,
+    236800,
+    236761,
+    236770,
+    236812,
+    236770,
+    236810,
+    236819,
+    236743,
+    236770,
+    236764,
+    236771,
+    236771,
+    236771,
+    236764,
+    236771,
+    236771,
+    236771
+   ],
+   "ids_with_specials": [
+    236777,
+    236789,
+    236757,
+    2889,
+    692,
+    236789,
+    859,
+    236789,
+    560,
+    3028,
+    625,
+    236764,
+    5889,
+    236789,
+    236745,
+    625,
+    236881,
+    236743,
+    236800,
+    236761,
+    236770,
+    236812,
+    236770,
+    236810,
+    236819,
+    236743,
+    236770,
+    236764,
+    236771,
+    236771,
+    236771,
+    236764,
+    236771,
+    236771,
+    236771
+   ],
+   "decode": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "decode_skip_special": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000"
+  },
+  {
+   "text": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "ids": [
+    239122,
+    238255,
+    238194,
+    23840,
+    237001,
+    236959,
+    114881,
+    2192,
+    11361,
+    236770,
+    236771,
+    236771,
+    6903,
+    236810,
+    79524,
+    236800,
+    236771,
+    236771,
+    17761,
+    236778,
+    236771,
+    236778,
+    236825,
+    47041
+   ],
+   "ids_with_specials": [
+    239122,
+    238255,
+    238194,
+    23840,
+    237001,
+    236959,
+    114881,
+    2192,
+    11361,
+    236770,
+    236771,
+    236771,
+    6903,
+    236810,
+    79524,
+    236800,
+    236771,
+    236771,
+    17761,
+    236778,
+    236771,
+    236778,
+    236825,
+    47041
+   ],
+   "decode": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "decode_skip_special": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½"
+  },
+  {
+   "text": "",
+   "ids": [],
+   "ids_with_specials": [],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [
+    236743
+   ],
+   "ids_with_specials": [
+    236743
+   ],
+   "decode": " ",
+   "decode_skip_special": " "
+  },
+  {
+   "text": "a",
+   "ids": [
+    236746
+   ],
+   "ids_with_specials": [
+    236746
+   ],
+   "decode": "a",
+   "decode_skip_special": "a"
+  },
+  {
+   "text": "<bos><|turn>user\nSay hello in one short sentence.<turn|>\n<|turn>model\n",
+   "ids": [
+    2,
+    105,
+    2364,
+    107,
+    37889,
+    29104,
+    528,
+    886,
+    2822,
+    13315,
+    236761,
+    106,
+    107,
+    105,
+    4368,
+    107
+   ],
+   "ids_with_specials": [
+    2,
+    105,
+    2364,
+    107,
+    37889,
+    29104,
+    528,
+    886,
+    2822,
+    13315,
+    236761,
+    106,
+    107,
+    105,
+    4368,
+    107
+   ],
+   "decode": "<bos><|turn>user\nSay hello in one short sentence.<turn|>\n<|turn>model\n",
+   "decode_skip_special": "user\nSay hello in one short sentence.\nmodel\n"
+  },
+  {
+   "text": "Hi",
+   "ids": [
+    10979
+   ],
+   "ids_with_specials": [
+    10979
+   ],
+   "decode": "Hi",
+   "decode_skip_special": "Hi"
+  },
+  {
+   "text": "<start_of_image>",
+   "ids": [
+    236820,
+    3041,
+    236779,
+    1340,
+    236779,
+    3304,
+    236813
+   ],
+   "ids_with_specials": [
+    236820,
+    3041,
+    236779,
+    1340,
+    236779,
+    3304,
+    236813
+   ],
+   "decode": "<start_of_image>",
+   "decode_skip_special": "<start_of_image>"
+  },
+  {
+   "text": "<|tool_call>call:f{}<tool_call|>",
+   "ids": [
+    48,
+    6639,
+    236787,
+    236760,
+    16454,
+    49
+   ],
+   "ids_with_specials": [
+    48,
+    6639,
+    236787,
+    236760,
+    16454,
+    49
+   ],
+   "decode": "<|tool_call>call:f{}<tool_call|>",
+   "decode_skip_special": "call:f{}"
+  }
+ ],
+ "pair": null
+}
