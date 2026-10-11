@@ -4,7 +4,7 @@
 Status: Draft +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (the first consumer, and the repository whose parallel tokenizer stack this proposal retires); SKaiNET-cartridge maintainers (the facade binds front ends to cartridge ports) +
 Created: 2026-10-11 +
-Tracking issue: _to be filed_ (prepared in a personal fork; implementation lanes: https://github.com/SKaiNET-developers/SKaiNET/issues/1321[#1321], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/471[SKaiNET-transformers #471], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/330[SKaiNET-transformers #330]) +
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1331[#1331] (implementation lanes: https://github.com/SKaiNET-developers/SKaiNET/issues/1321[#1321], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/471[SKaiNET-transformers #471], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/330[SKaiNET-transformers #330]) +
 Origin: tokenizer parity measurements against the Hugging Face `tokenizers` library (0.23.3) on two public ModernBERT/mmBERT checkpoints: the engine factory failed to load either file, the transformers legacy tokenizer loaded both and returned wrong ids for most inputs without an error.
 
 == Summary
