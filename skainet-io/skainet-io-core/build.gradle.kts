@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.kotlinSerialization)
 
     alias(libs.plugins.vanniktech.mavenPublish)
+    alias(libs.plugins.binary.compatibility.validator)
     id("sk.ainet.dokka")
 }
 
@@ -83,6 +84,12 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 implementation(project(":skainet-lang:skainet-lang-core"))
+                // SKEEP-006: identity and text front ends moved out of io-core; `api` so the
+                // deprecated aliases in sk.ainet.io.tokenizer / io.model / io.weights resolve
+                // for consumers compiled against io-core alone.
+                api(project(":skainet-models:skainet-model-identity"))
+                api(project(":skainet-frontend:skainet-frontend-core"))
+                api(project(":skainet-frontend:skainet-frontend-text"))
                 implementation(libs.kotlinx.io.core)
                 implementation(libs.kotlinx.coroutines)
 

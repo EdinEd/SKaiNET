@@ -1,4 +1,9 @@
+@file:Suppress("DEPRECATION")
+
 package sk.ainet.io.tokenizer
+
+import sk.ainet.frontend.tokenizer.UnigramTokenizer
+import sk.ainet.frontend.tokenizer.WordPieceTokenizer
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -62,9 +67,16 @@ class TokenizerFactoryDispatchTest {
     }
 
     @Test
-    fun `gguf bert still throws UnsupportedTokenizerException`() {
+    fun `gguf bert dispatches to WordPiece`() {
+        val tok = TokenizerFactory.fromGguf(mapOf("tokenizer.ggml.model" to "bert", "tokenizer.ggml.tokens" to listOf("[UNK]", "[CLS]", "[SEP]", "hi")))
+        assertTrue(tok is WordPieceTokenizer)
+        assertEquals(listOf(3), tok.encode("Hi").toList())
+    }
+
+    @Test
+    fun `gguf unknown model still throws UnsupportedTokenizerException`() {
         assertFailsWith<UnsupportedTokenizerException> {
-            TokenizerFactory.fromGguf(mapOf("tokenizer.ggml.model" to "bert"))
+            TokenizerFactory.fromGguf(mapOf("tokenizer.ggml.model" to "t5"))
         }
     }
 
@@ -128,7 +140,7 @@ class TokenizerFactoryDispatchTest {
     }
 
     @Test
-    fun `tokenizer_json Unigram dispatches to SentencePiece`() {
+    fun `tokenizer_json Unigram dispatches to the Unigram lattice`() {
         val json = """
             {
               "model": {
@@ -139,14 +151,19 @@ class TokenizerFactoryDispatchTest {
             }
         """.trimIndent()
         val tok = TokenizerFactory.fromTokenizerJson(json)
-        assertTrue(tok is SentencePieceTokenizer)
+        assertTrue(tok is UnigramTokenizer, "Unigram files use the reference lattice since SKEEP-006; got ${tok::class.simpleName}")
     }
 
     @Test
-    fun `tokenizer_json WordPiece still throws`() {
-        val json = """{"model":{"type":"WordPiece","vocab":{}}}"""
+    fun `tokenizer_json WordPiece dispatches to WordPiece`() {
+        val json = """{"model":{"type":"WordPiece","unk_token":"[UNK]","vocab":{"[UNK]":0,"hi":1}}}"""
+        assertTrue(TokenizerFactory.fromTokenizerJson(json) is WordPieceTokenizer)
+    }
+
+    @Test
+    fun `tokenizer_json unknown model type still throws UnsupportedTokenizerException`() {
         assertFailsWith<UnsupportedTokenizerException> {
-            TokenizerFactory.fromTokenizerJson(json)
+            TokenizerFactory.fromTokenizerJson("""{"model":{"type":"Nonsense","vocab":{}}}""")
         }
     }
 

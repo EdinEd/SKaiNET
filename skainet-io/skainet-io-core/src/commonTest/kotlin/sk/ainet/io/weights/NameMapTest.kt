@@ -1,5 +1,9 @@
 package sk.ainet.io.weights
 
+import sk.ainet.model.NameMap
+import sk.ainet.model.RoleTableNameMap
+import sk.ainet.model.TransformerNameMaps
+
 import sk.ainet.lang.tensor.TensorId
 import kotlin.test.Test
 import kotlin.test.assertEquals

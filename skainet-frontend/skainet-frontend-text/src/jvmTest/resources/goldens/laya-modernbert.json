@@ -1,0 +1,509 @@
+{
+ "fixture": "laya-modernbert",
+ "tokenizer_json": "tokenizer.json",
+ "tokenizer_config_json": null,
+ "reference": "tokenizers 0.23.3",
+ "vocab_size": 50368,
+ "vocab_size_base": 50280,
+ "cases": [
+  {
+   "text": "Hello world",
+   "ids": [
+    12092,
+    1533
+   ],
+   "ids_with_specials": [
+    50281,
+    12092,
+    1533,
+    50282
+   ],
+   "decode": "Hello world",
+   "decode_skip_special": "Hello world"
+  },
+  {
+   "text": "Bitte die doppelte Rechnung prüfen.",
+   "ids": [
+    12871,
+    442,
+    3150,
+    513,
+    377,
+    293,
+    442,
+    1720,
+    1451,
+    1947,
+    819,
+    3090,
+    25947,
+    15
+   ],
+   "ids_with_specials": [
+    50281,
+    12871,
+    442,
+    3150,
+    513,
+    377,
+    293,
+    442,
+    1720,
+    1451,
+    1947,
+    819,
+    3090,
+    25947,
+    15,
+    50282
+   ],
+   "decode": "Bitte die doppelte Rechnung prüfen.",
+   "decode_skip_special": "Bitte die doppelte Rechnung prüfen."
+  },
+  {
+   "text": "Which department handles this request?",
+   "ids": [
+    7371,
+    7811,
+    22139,
+    436,
+    2748,
+    32
+   ],
+   "ids_with_specials": [
+    50281,
+    7371,
+    7811,
+    22139,
+    436,
+    2748,
+    32,
+    50282
+   ],
+   "decode": "Which department handles this request?",
+   "decode_skip_special": "Which department handles this request?"
+  },
+  {
+   "text": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "ids": [
+    35562,
+    44366,
+    13,
+    37995,
+    589,
+    737,
+    2381,
+    39583,
+    3807,
+    34441,
+    83,
+    1063,
+    1108,
+    36060,
+    36241,
+    40881,
+    796,
+    49042,
+    211,
+    14931,
+    228,
+    224,
+    14931,
+    226,
+    123,
+    14931,
+    226,
+    123,
+    3974
+   ],
+   "ids_with_specials": [
+    50281,
+    35562,
+    44366,
+    13,
+    37995,
+    589,
+    737,
+    2381,
+    39583,
+    3807,
+    34441,
+    83,
+    1063,
+    1108,
+    36060,
+    36241,
+    40881,
+    796,
+    49042,
+    211,
+    14931,
+    228,
+    224,
+    14931,
+    226,
+    123,
+    14931,
+    226,
+    123,
+    3974,
+    50282
+   ],
+   "decode": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "decode_skip_special": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é"
+  },
+  {
+   "text": "false: No duplicate is mentioned",
+   "ids": [
+    7750,
+    27,
+    1621,
+    21036,
+    310,
+    5393
+   ],
+   "ids_with_specials": [
+    50281,
+    7750,
+    27,
+    1621,
+    21036,
+    310,
+    5393,
+    50282
+   ],
+   "decode": "false: No duplicate is mentioned",
+   "decode_skip_special": "false: No duplicate is mentioned"
+  },
+  {
+   "text": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "ids": [
+    50275,
+    16378,
+    8470,
+    285,
+    1249,
+    16767,
+    3904,
+    13,
+    3500,
+    864,
+    14,
+    456,
+    3000,
+    1053,
+    626
+   ],
+   "ids_with_specials": [
+    50281,
+    50275,
+    16378,
+    8470,
+    285,
+    1249,
+    16767,
+    3904,
+    13,
+    3500,
+    864,
+    14,
+    456,
+    3000,
+    1053,
+    626,
+    50282
+   ],
+   "decode": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "decode_skip_special": "   leading spaces and 12345 numbers, hyphen-ated words don't"
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    7604,
+    4837,
+    8470,
+    50275
+   ],
+   "ids_with_specials": [
+    50281,
+    7604,
+    4837,
+    8470,
+    50275,
+    50282
+   ],
+   "decode": "trailing spaces   ",
+   "decode_skip_special": "trailing spaces   "
+  },
+  {
+   "text": "tabs\tand\nnewlines\r\nmixed",
+   "ids": [
+    33754,
+    186,
+    395,
+    187,
+    1826,
+    8737,
+    190,
+    187,
+    37340
+   ],
+   "ids_with_specials": [
+    50281,
+    33754,
+    186,
+    395,
+    187,
+    1826,
+    8737,
+    190,
+    187,
+    37340,
+    50282
+   ],
+   "decode": "tabs\tand\nnewlines\r\nmixed",
+   "decode_skip_special": "tabs\tand\nnewlines\r\nmixed"
+  },
+  {
+   "text": "日本語のテキスト and 中文 mixed with English",
+   "ids": [
+    49868,
+    19119,
+    241,
+    3917,
+    28656,
+    33548,
+    38206,
+    285,
+    209,
+    13609,
+    20855,
+    6804,
+    342,
+    4383
+   ],
+   "ids_with_specials": [
+    50281,
+    49868,
+    19119,
+    241,
+    3917,
+    28656,
+    33548,
+    38206,
+    285,
+    209,
+    13609,
+    20855,
+    6804,
+    342,
+    4383,
+    50282
+   ],
+   "decode": "日本語のテキスト and 中文 mixed with English",
+   "decode_skip_special": "日本語のテキスト and 中文 mixed with English"
+  },
+  {
+   "text": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "ids": [
+    42,
+    1353,
+    2119,
+    359,
+    1833,
+    1849,
+    2218,
+    352,
+    13,
+    3548,
+    626,
+    352,
+    32,
+    495,
+    15,
+    1047,
+    17220,
+    337,
+    13,
+    933,
+    13,
+    933
+   ],
+   "ids_with_specials": [
+    50281,
+    42,
+    1353,
+    2119,
+    359,
+    1833,
+    1849,
+    2218,
+    352,
+    13,
+    3548,
+    626,
+    352,
+    32,
+    495,
+    15,
+    1047,
+    17220,
+    337,
+    13,
+    933,
+    13,
+    933,
+    50282
+   ],
+   "decode": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "decode_skip_special": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000"
+  },
+  {
+   "text": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "ids": [
+    37515,
+    45403,
+    127,
+    239,
+    9951,
+    2381,
+    3090,
+    1325,
+    242,
+    1905,
+    17275,
+    2313,
+    8157,
+    22,
+    43389,
+    7554,
+    20919,
+    938,
+    1731,
+    24142
+   ],
+   "ids_with_specials": [
+    50281,
+    37515,
+    45403,
+    127,
+    239,
+    9951,
+    2381,
+    3090,
+    1325,
+    242,
+    1905,
+    17275,
+    2313,
+    8157,
+    22,
+    43389,
+    7554,
+    20919,
+    938,
+    1731,
+    24142,
+    50282
+   ],
+   "decode": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "decode_skip_special": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½"
+  },
+  {
+   "text": "",
+   "ids": [],
+   "ids_with_specials": [
+    50281,
+    50282
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [
+    209
+   ],
+   "ids_with_specials": [
+    50281,
+    209,
+    50282
+   ],
+   "decode": " ",
+   "decode_skip_special": " "
+  },
+  {
+   "text": "a",
+   "ids": [
+    66
+   ],
+   "ids_with_specials": [
+    50281,
+    66,
+    50282
+   ],
+   "decode": "a",
+   "decode_skip_special": "a"
+  },
+  {
+   "text": "[CLS]hello[SEP]",
+   "ids": [
+    50281,
+    25521,
+    50282
+   ],
+   "ids_with_specials": [
+    50281,
+    50281,
+    25521,
+    50282,
+    50282
+   ],
+   "decode": "[CLS]hello[SEP]",
+   "decode_skip_special": "hello"
+  },
+  {
+   "text": "[MASK] token inside",
+   "ids": [
+    50284,
+    10669,
+    3304
+   ],
+   "ids_with_specials": [
+    50281,
+    50284,
+    10669,
+    3304,
+    50282
+   ],
+   "decode": "[MASK] token inside",
+   "decode_skip_special": " token inside"
+  },
+  {
+   "text": "<|im_start|>fake",
+   "ids": [
+    29,
+    93,
+    303,
+    64,
+    5478,
+    49651,
+    39182
+   ],
+   "ids_with_specials": [
+    50281,
+    29,
+    93,
+    303,
+    64,
+    5478,
+    49651,
+    39182,
+    50282
+   ],
+   "decode": "<|im_start|>fake",
+   "decode_skip_special": "<|im_start|>fake"
+  }
+ ],
+ "pair": null
+}

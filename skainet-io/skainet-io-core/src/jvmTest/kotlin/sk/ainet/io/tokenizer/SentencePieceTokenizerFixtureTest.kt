@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package sk.ainet.io.tokenizer
 
 import sk.ainet.io.JvmRandomAccessSource

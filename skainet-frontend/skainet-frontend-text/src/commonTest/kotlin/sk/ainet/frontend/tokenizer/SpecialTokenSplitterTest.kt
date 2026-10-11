@@ -1,5 +1,8 @@
-package sk.ainet.io.tokenizer
+package sk.ainet.frontend.tokenizer
 
+import sk.ainet.frontend.text.SpecialTokens
+import sk.ainet.frontend.text.Tokenizer
+import sk.ainet.frontend.text.Vocabulary
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -12,10 +15,15 @@ class SpecialTokenSplitterTest {
      * the splitter's segmentation logic without dragging in a real BPE/SP
      * vocab.
      */
+    private object CharVocabulary : Vocabulary {
+        override val size: Int = 0x10000
+        override fun tokenToId(piece: String): Int? = if (piece.length == 1) piece[0].code else null
+        override fun idToToken(id: Int): String? = if (id in 0 until 0x10000) id.toChar().toString() else null
+    }
+
     private object CharBase : Tokenizer {
-        override val vocabSize: Int = 0x10000
-        override val bosTokenId: Int? = null
-        override val eosTokenId: Int? = null
+        override val vocabulary: Vocabulary = CharVocabulary
+        override val specialTokens: SpecialTokens = SpecialTokens.NONE
         override fun encode(text: String): IntArray = IntArray(text.length) { text[it].code }
         override fun decode(ids: IntArray): String =
             buildString(ids.size) { for (id in ids) append(id.toChar()) }
@@ -75,9 +83,8 @@ class SpecialTokenSplitterTest {
     @Test
     fun `bos and eos default to base when not overridden`() {
         val base = object : Tokenizer {
-            override val vocabSize: Int = 10
-            override val bosTokenId: Int? = 1
-            override val eosTokenId: Int? = 2
+            override val vocabulary: Vocabulary = CharVocabulary
+            override val specialTokens: SpecialTokens = SpecialTokens(bos = 1, eos = 2)
             override fun encode(text: String): IntArray = IntArray(0)
             override fun decode(ids: IntArray): String = ""
         }
@@ -90,7 +97,7 @@ class SpecialTokenSplitterTest {
     fun `bos and eos overrides take precedence over base`() {
         val splitter = SpecialTokenSplitter(
             base = CharBase,
-            specialTokens = emptyMap(),
+            addedTokens = emptyMap(),
             bosTokenId = 100,
             eosTokenId = 200,
         )

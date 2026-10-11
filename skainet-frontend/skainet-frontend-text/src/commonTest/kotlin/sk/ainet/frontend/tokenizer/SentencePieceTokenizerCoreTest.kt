@@ -1,4 +1,4 @@
-package sk.ainet.io.tokenizer
+package sk.ainet.frontend.tokenizer
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -145,11 +145,11 @@ class SentencePieceTokenizerCoreTest {
     }
 
     @Test
-    fun `decode with stripLeadingSpace=false keeps the leading space`() {
+    fun `decodeRaw with stripLeadingSpace=false keeps the leading space`() {
         val tok = buildToyTokenizer()
         val ids = tok.encode("Hello")
         assertEquals("Hello", tok.decode(ids)) // default strips
-        assertEquals(" Hello", tok.decode(ids, stripLeadingSpace = false))
+        assertEquals(" Hello", tok.decodeRaw(ids, stripLeadingSpace = false))
     }
 
     @Test

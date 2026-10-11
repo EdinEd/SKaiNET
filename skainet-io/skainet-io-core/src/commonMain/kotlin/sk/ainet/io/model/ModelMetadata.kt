@@ -1,5 +1,7 @@
 package sk.ainet.io.model
 
+import sk.ainet.model.ModelFormat
+
 /**
  * Result of parsing model metadata.
  *

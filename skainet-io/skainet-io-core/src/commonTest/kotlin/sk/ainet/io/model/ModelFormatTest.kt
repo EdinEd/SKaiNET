@@ -1,5 +1,6 @@
 package sk.ainet.io.model
 
+import sk.ainet.model.ModelFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

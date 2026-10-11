@@ -1,0 +1,502 @@
+{
+ "fixture": "bert-base-uncased",
+ "tokenizer_json": "bert-base-uncased-tokenizer.json",
+ "tokenizer_config_json": "bert-base-uncased-tokenizer_config.json",
+ "reference": "tokenizers 0.23.3",
+ "vocab_size": 30522,
+ "vocab_size_base": 30522,
+ "cases": [
+  {
+   "text": "Hello world",
+   "ids": [
+    7592,
+    2088
+   ],
+   "ids_with_specials": [
+    101,
+    7592,
+    2088,
+    102
+   ],
+   "decode": "hello world",
+   "decode_skip_special": "hello world"
+  },
+  {
+   "text": "Bitte die doppelte Rechnung prüfen.",
+   "ids": [
+    2978,
+    2618,
+    3280,
+    2079,
+    27877,
+    2618,
+    28667,
+    7295,
+    5575,
+    10975,
+    16093,
+    2368,
+    1012
+   ],
+   "ids_with_specials": [
+    101,
+    2978,
+    2618,
+    3280,
+    2079,
+    27877,
+    2618,
+    28667,
+    7295,
+    5575,
+    10975,
+    16093,
+    2368,
+    1012,
+    102
+   ],
+   "decode": "bitte die doppelte rechnung prufen.",
+   "decode_skip_special": "bitte die doppelte rechnung prufen."
+  },
+  {
+   "text": "Which department handles this request?",
+   "ids": [
+    2029,
+    2533,
+    16024,
+    2023,
+    5227,
+    1029
+   ],
+   "ids_with_specials": [
+    101,
+    2029,
+    2533,
+    16024,
+    2023,
+    5227,
+    1029,
+    102
+   ],
+   "decode": "which department handles this request?",
+   "decode_skip_special": "which department handles this request?"
+  },
+  {
+   "text": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "ids": [
+    2358,
+    27807,
+    1010,
+    19169,
+    16523,
+    2080,
+    17499,
+    2078,
+    6151,
+    12098,
+    4590,
+    1516,
+    15743,
+    7668,
+    8508,
+    100,
+    1041
+   ],
+   "ids_with_specials": [
+    101,
+    2358,
+    27807,
+    1010,
+    19169,
+    16523,
+    2080,
+    17499,
+    2078,
+    6151,
+    12098,
+    4590,
+    1516,
+    15743,
+    7668,
+    8508,
+    100,
+    1041,
+    102
+   ],
+   "decode": "straße, ubergroßen und arger – naive cafe facade [UNK] e",
+   "decode_skip_special": "straße, ubergroßen und arger – naive cafe facade e"
+  },
+  {
+   "text": "false: No duplicate is mentioned",
+   "ids": [
+    6270,
+    1024,
+    2053,
+    24473,
+    2003,
+    3855
+   ],
+   "ids_with_specials": [
+    101,
+    6270,
+    1024,
+    2053,
+    24473,
+    2003,
+    3855,
+    102
+   ],
+   "decode": "false : no duplicate is mentioned",
+   "decode_skip_special": "false : no duplicate is mentioned"
+  },
+  {
+   "text": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "ids": [
+    2877,
+    7258,
+    1998,
+    13138,
+    19961,
+    3616,
+    1010,
+    1044,
+    22571,
+    10222,
+    1011,
+    8823,
+    2094,
+    2616,
+    2123,
+    1005,
+    1056
+   ],
+   "ids_with_specials": [
+    101,
+    2877,
+    7258,
+    1998,
+    13138,
+    19961,
+    3616,
+    1010,
+    1044,
+    22571,
+    10222,
+    1011,
+    8823,
+    2094,
+    2616,
+    2123,
+    1005,
+    1056,
+    102
+   ],
+   "decode": "leading spaces and 12345 numbers, hyphen - ated words don ' t",
+   "decode_skip_special": "leading spaces and 12345 numbers, hyphen - ated words don ' t"
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    12542,
+    7258
+   ],
+   "ids_with_specials": [
+    101,
+    12542,
+    7258,
+    102
+   ],
+   "decode": "trailing spaces",
+   "decode_skip_special": "trailing spaces"
+  },
+  {
+   "text": "tabs\tand\nnewlines\r\nmixed",
+   "ids": [
+    21628,
+    2015,
+    1998,
+    2047,
+    12735,
+    3816
+   ],
+   "ids_with_specials": [
+    101,
+    21628,
+    2015,
+    1998,
+    2047,
+    12735,
+    3816,
+    102
+   ],
+   "decode": "tabs and newlines mixed",
+   "decode_skip_special": "tabs and newlines mixed"
+  },
+  {
+   "text": "日本語のテキスト and 中文 mixed with English",
+   "ids": [
+    1864,
+    1876,
+    1950,
+    1671,
+    30239,
+    30227,
+    30233,
+    30240,
+    1998,
+    1746,
+    1861,
+    3816,
+    2007,
+    2394
+   ],
+   "ids_with_specials": [
+    101,
+    1864,
+    1876,
+    1950,
+    1671,
+    30239,
+    30227,
+    30233,
+    30240,
+    1998,
+    1746,
+    1861,
+    3816,
+    2007,
+    2394,
+    102
+   ],
+   "decode": "日 本 語 のテキスト and 中 文 mixed with english",
+   "decode_skip_special": "日 本 語 のテキスト and 中 文 mixed with english"
+  },
+  {
+   "text": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "ids": [
+    1045,
+    1005,
+    1049,
+    2469,
+    2057,
+    1005,
+    2222,
+    1005,
+    2310,
+    2589,
+    2009,
+    1010,
+    3475,
+    1005,
+    1056,
+    2009,
+    1029,
+    1017,
+    1012,
+    15471,
+    28154,
+    1015,
+    1010,
+    2199,
+    1010,
+    2199
+   ],
+   "ids_with_specials": [
+    101,
+    1045,
+    1005,
+    1049,
+    2469,
+    2057,
+    1005,
+    2222,
+    1005,
+    2310,
+    2589,
+    2009,
+    1010,
+    3475,
+    1005,
+    1056,
+    2009,
+    1029,
+    1017,
+    1012,
+    15471,
+    28154,
+    1015,
+    1010,
+    2199,
+    1010,
+    2199,
+    102
+   ],
+   "decode": "i ' m sure we ' ll ' ve done it, isn ' t it? 3. 14159 1, 000, 000",
+   "decode_skip_special": "i ' m sure we ' ll ' ve done it, isn ' t it? 3. 14159 1, 000, 000"
+  },
+  {
+   "text": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "ids": [
+    20118,
+    2226,
+    20118,
+    2226,
+    1096,
+    1517,
+    1574,
+    18613,
+    27813,
+    1071,
+    14142,
+    2692,
+    1075,
+    11387,
+    23833,
+    1092
+   ],
+   "ids_with_specials": [
+    101,
+    20118,
+    2226,
+    20118,
+    2226,
+    1096,
+    1517,
+    1574,
+    18613,
+    27813,
+    1071,
+    14142,
+    2692,
+    1075,
+    11387,
+    23833,
+    1092,
+    102
+   ],
+   "decode": "aou aou ß — €100 £5 ¥300 ©2026 ½",
+   "decode_skip_special": "aou aou ß — €100 £5 ¥300 ©2026 ½"
+  },
+  {
+   "text": "",
+   "ids": [],
+   "ids_with_specials": [
+    101,
+    102
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [],
+   "ids_with_specials": [
+    101,
+    102
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": "a",
+   "ids": [
+    1037
+   ],
+   "ids_with_specials": [
+    101,
+    1037,
+    102
+   ],
+   "decode": "a",
+   "decode_skip_special": "a"
+  },
+  {
+   "text": "[CLS] already wrapped [SEP]",
+   "ids": [
+    101,
+    2525,
+    5058,
+    102
+   ],
+   "ids_with_specials": [
+    101,
+    101,
+    2525,
+    5058,
+    102,
+    102
+   ],
+   "decode": "[CLS] already wrapped [SEP]",
+   "decode_skip_special": "already wrapped"
+  },
+  {
+   "text": "unaffable unwanted running",
+   "ids": [
+    14477,
+    20961,
+    3468,
+    18162,
+    2770
+   ],
+   "ids_with_specials": [
+    101,
+    14477,
+    20961,
+    3468,
+    18162,
+    2770,
+    102
+   ],
+   "decode": "unaffable unwanted running",
+   "decode_skip_special": "unaffable unwanted running"
+  },
+  {
+   "text": "[UNK] and [MASK]",
+   "ids": [
+    100,
+    1998,
+    103
+   ],
+   "ids_with_specials": [
+    101,
+    100,
+    1998,
+    103,
+    102
+   ],
+   "decode": "[UNK] and [MASK]",
+   "decode_skip_special": "and"
+  }
+ ],
+ "pair": {
+  "a": "first sentence",
+  "b": "second one",
+  "ids": [
+   101,
+   2034,
+   6251,
+   102,
+   2117,
+   2028,
+   102
+  ],
+  "type_ids": [
+   0,
+   0,
+   0,
+   0,
+   1,
+   1,
+   1
+  ],
+  "attention_mask": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   1,
+   1
+  ]
+ }
+}

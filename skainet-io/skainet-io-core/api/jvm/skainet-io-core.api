@@ -1,0 +1,661 @@
+public final class sk/ainet/io/ByteArrayMemoryChunk : sk/ainet/io/MemoryChunk {
+	public fun <init> ([BIJ)V
+	public synthetic fun <init> ([BIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getSize ()J
+	public fun readByte (J)B
+	public fun readBytes (JI)[B
+	public fun slice (JJ)Lsk/ainet/io/MemoryChunk;
+}
+
+public final class sk/ainet/io/FallbackMappedMemoryChunk : sk/ainet/io/MappedMemoryChunk {
+	public static final field Companion Lsk/ainet/io/FallbackMappedMemoryChunk$Companion;
+	public fun <init> (Ljava/lang/String;J[BIJ)V
+	public synthetic fun <init> (Ljava/lang/String;J[BIJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getFileOffset ()J
+	public fun getPath ()Ljava/lang/String;
+	public fun getSize ()J
+	public fun readByte (J)B
+	public fun readBytes (JI)[B
+	public fun slice (JJ)Lsk/ainet/io/MemoryChunk;
+}
+
+public final class sk/ainet/io/FallbackMappedMemoryChunk$Companion {
+	public final fun fromSource (Lsk/ainet/io/RandomAccessSource;Ljava/lang/String;JJ)Lsk/ainet/io/FallbackMappedMemoryChunk;
+	public static synthetic fun fromSource$default (Lsk/ainet/io/FallbackMappedMemoryChunk$Companion;Lsk/ainet/io/RandomAccessSource;Ljava/lang/String;JJILjava/lang/Object;)Lsk/ainet/io/FallbackMappedMemoryChunk;
+}
+
+public final class sk/ainet/io/JvmFileBackedResolver {
+	public static final field INSTANCE Lsk/ainet/io/JvmFileBackedResolver;
+	public final fun createResolver ()Lsk/ainet/lang/tensor/storage/DefaultBufferResolver;
+	public final fun resolveFileBacked (Lsk/ainet/lang/tensor/storage/BufferHandle$FileBacked;)Lsk/ainet/lang/tensor/storage/BufferAccessor;
+}
+
+public final class sk/ainet/io/JvmMappedFile : sk/ainet/io/MappedFile {
+	public static final field Companion Lsk/ainet/io/JvmMappedFile$Companion;
+	public synthetic fun <init> (Ljava/io/RandomAccessFile;Lsk/ainet/lang/tensor/data/MmapTensorSource;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun bytes (JI)[B
+	public fun close ()V
+	public fun denseFloats (JLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/TensorData;
+	public fun getSizeBytes ()J
+	public fun packedTensor (JLsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public final class sk/ainet/io/JvmMappedFile$Companion {
+	public final fun openOrNull (Ljava/lang/String;)Lsk/ainet/io/JvmMappedFile;
+}
+
+public final class sk/ainet/io/JvmMappedFileKt {
+	public static final fun openMappedFile (Ljava/lang/String;)Lsk/ainet/io/MappedFile;
+}
+
+public final class sk/ainet/io/JvmMappedMemoryChunk : sk/ainet/io/MappedMemoryChunk {
+	public static final field Companion Lsk/ainet/io/JvmMappedMemoryChunk$Companion;
+	public synthetic fun <init> (Ljava/lang/String;JJLjava/nio/MappedByteBuffer;Ljava/io/RandomAccessFile;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getFileOffset ()J
+	public fun getPath ()Ljava/lang/String;
+	public fun getSize ()J
+	public fun readByte (J)B
+	public fun readBytes (JI)[B
+	public fun slice (JJ)Lsk/ainet/io/MemoryChunk;
+}
+
+public final class sk/ainet/io/JvmMappedMemoryChunk$Companion {
+	public final fun open (Ljava/io/File;JJ)Lsk/ainet/io/JvmMappedMemoryChunk;
+	public final fun open (Ljava/lang/String;JJ)Lsk/ainet/io/JvmMappedMemoryChunk;
+	public static synthetic fun open$default (Lsk/ainet/io/JvmMappedMemoryChunk$Companion;Ljava/io/File;JJILjava/lang/Object;)Lsk/ainet/io/JvmMappedMemoryChunk;
+	public static synthetic fun open$default (Lsk/ainet/io/JvmMappedMemoryChunk$Companion;Ljava/lang/String;JJILjava/lang/Object;)Lsk/ainet/io/JvmMappedMemoryChunk;
+}
+
+public final class sk/ainet/io/JvmRandomAccessSource : sk/ainet/io/RandomAccessSource {
+	public static final field Companion Lsk/ainet/io/JvmRandomAccessSource$Companion;
+	public synthetic fun <init> (Ljava/nio/channels/FileChannel;Ljava/io/RandomAccessFile;JLjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getFilePath ()Ljava/lang/String;
+	public fun getSize ()J
+	public fun readAt (JI)[B
+	public fun readAt (J[BII)I
+	public fun readByteAt (J)B
+}
+
+public final class sk/ainet/io/JvmRandomAccessSource$Companion {
+	public final fun open (Ljava/io/File;)Lsk/ainet/io/JvmRandomAccessSource;
+	public final fun open (Ljava/lang/String;)Lsk/ainet/io/JvmRandomAccessSource;
+}
+
+public abstract interface class sk/ainet/io/MappedFile : java/lang/AutoCloseable {
+	public abstract fun bytes (JI)[B
+	public abstract fun denseFloats (JLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/TensorData;
+	public abstract fun getSizeBytes ()J
+	public fun packedTensor (JLsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public final class sk/ainet/io/MappedFile$DefaultImpls {
+	public static fun packedTensor (Lsk/ainet/io/MappedFile;JLsk/ainet/lang/tensor/Shape;Lsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/tensor/data/TensorData;
+}
+
+public abstract interface class sk/ainet/io/MappedMemoryChunk : java/lang/AutoCloseable, sk/ainet/io/MemoryChunk {
+	public abstract fun getFileOffset ()J
+	public abstract fun getPath ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/MappedRandomAccessSource : sk/ainet/io/RandomAccessSource {
+	public static final field Companion Lsk/ainet/io/MappedRandomAccessSource$Companion;
+	public synthetic fun <init> (Lsk/ainet/io/JvmMappedMemoryChunk;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getFilePath ()Ljava/lang/String;
+	public fun getSize ()J
+	public fun readAt (JI)[B
+	public fun readAt (J[BII)I
+	public fun readByteAt (J)B
+	public final fun sliceChunk (JJ)Lsk/ainet/io/MemoryChunk;
+}
+
+public final class sk/ainet/io/MappedRandomAccessSource$Companion {
+	public final fun open (Ljava/io/File;)Lsk/ainet/io/MappedRandomAccessSource;
+	public final fun open (Ljava/lang/String;)Lsk/ainet/io/MappedRandomAccessSource;
+}
+
+public abstract interface class sk/ainet/io/MemoryChunk {
+	public abstract fun getSize ()J
+	public abstract fun readByte (J)B
+	public abstract fun readBytes (JI)[B
+	public abstract fun slice (JJ)Lsk/ainet/io/MemoryChunk;
+}
+
+public abstract interface class sk/ainet/io/ModelReader : java/lang/AutoCloseable {
+	public abstract fun getMetadata ()Ljava/util/Map;
+	public abstract fun getTensors ()Ljava/util/Map;
+	public abstract fun loadTensor (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class sk/ainet/io/ParametersLoader {
+	public abstract fun load (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class sk/ainet/io/RandomAccessSource : java/lang/AutoCloseable {
+	public fun getFilePath ()Ljava/lang/String;
+	public abstract fun getSize ()J
+	public abstract fun readAt (JI)[B
+	public abstract fun readAt (J[BII)I
+	public static synthetic fun readAt$default (Lsk/ainet/io/RandomAccessSource;J[BIIILjava/lang/Object;)I
+	public fun readByteAt (J)B
+}
+
+public final class sk/ainet/io/RandomAccessSource$DefaultImpls {
+	public static fun getFilePath (Lsk/ainet/io/RandomAccessSource;)Ljava/lang/String;
+	public static synthetic fun readAt$default (Lsk/ainet/io/RandomAccessSource;J[BIIILjava/lang/Object;)I
+	public static fun readByteAt (Lsk/ainet/io/RandomAccessSource;J)B
+}
+
+public final class sk/ainet/io/RandomAccessSources_jvmKt {
+	public static final fun openRandomAccessSource (Ljava/lang/String;)Lsk/ainet/io/RandomAccessSource;
+}
+
+public abstract interface class sk/ainet/io/SuspendingRandomAccessSource : java/lang/AutoCloseable {
+	public abstract fun getSize ()J
+	public abstract fun read (JILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun read (J[BIILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun read$default (Lsk/ainet/io/SuspendingRandomAccessSource;J[BIILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class sk/ainet/io/SuspendingRandomAccessSource$DefaultImpls {
+	public static synthetic fun read$default (Lsk/ainet/io/SuspendingRandomAccessSource;J[BIILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class sk/ainet/io/SuspendingRandomAccessSourceKt {
+	public static final fun asSuspending (Lsk/ainet/io/RandomAccessSource;)Lsk/ainet/io/SuspendingRandomAccessSource;
+}
+
+public final class sk/ainet/io/TensorInfo {
+	public fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/Shape;Ljava/lang/String;JJLjava/util/Map;)V
+	public synthetic fun <init> (Ljava/lang/String;Lsk/ainet/lang/tensor/Shape;Ljava/lang/String;JJLjava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lsk/ainet/lang/tensor/Shape;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun component6 ()Ljava/util/Map;
+	public final fun copy (Ljava/lang/String;Lsk/ainet/lang/tensor/Shape;Ljava/lang/String;JJLjava/util/Map;)Lsk/ainet/io/TensorInfo;
+	public static synthetic fun copy$default (Lsk/ainet/io/TensorInfo;Ljava/lang/String;Lsk/ainet/lang/tensor/Shape;Ljava/lang/String;JJLjava/util/Map;ILjava/lang/Object;)Lsk/ainet/io/TensorInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDtype ()Ljava/lang/String;
+	public final fun getExtra ()Ljava/util/Map;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOffset ()J
+	public final fun getShape ()Lsk/ainet/lang/tensor/Shape;
+	public final fun getSize ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/json/JsonParametersLoader : sk/ainet/io/ParametersLoader {
+	public fun <init> (Lkotlin/jvm/functions/Function0;)V
+	public fun load (Lsk/ainet/context/ExecutionContext;Lkotlin/reflect/KClass;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class sk/ainet/io/mapper/ModelValuesMapper {
+	public abstract fun mapToModel (Lsk/ainet/lang/nn/Module;Ljava/util/Map;)V
+}
+
+public final class sk/ainet/io/mapper/NamesBasedValuesModelMapper : sk/ainet/io/mapper/ModelValuesMapper {
+	public fun <init> ()V
+	public fun <init> (Lkotlin/jvm/functions/Function2;)V
+	public synthetic fun <init> (Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun mapToModel (Lsk/ainet/lang/nn/Module;Ljava/util/Map;)V
+}
+
+public abstract class sk/ainet/io/model/BaseModelParser : sk/ainet/io/model/ModelParser {
+	public fun <init> ()V
+	protected final fun calculateElementCount (Ljava/util/List;)J
+	protected final fun calculateTensorSizeInBytes (Lsk/ainet/io/model/DataType;J)Ljava/lang/Long;
+	protected final fun createSource (Ljava/lang/String;)Lkotlinx/io/Source;
+	protected final fun createTensorInfo (Ljava/lang/String;Ljava/util/List;Lsk/ainet/io/model/DataType;Ljava/lang/String;)Lsk/ainet/io/model/TensorInfo;
+	protected final fun getInitialized ()Z
+	public fun getModelInfo ()Lsk/ainet/io/model/ModelInfo;
+	public fun getTensors (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	protected final fun get_modelInfo ()Lsk/ainet/io/model/ModelInfo;
+	protected final fun get_tensors ()Ljava/util/List;
+	protected final fun handleParsingError (Lsk/ainet/io/model/ModelParsingError;Ljava/lang/String;)Lsk/ainet/io/model/ModelMetadata;
+	public fun isInitialized ()Z
+	public fun isValid ()Z
+	protected final fun mapExceptionToError (Ljava/lang/Throwable;Ljava/lang/String;)Lsk/ainet/io/model/ModelParsingError;
+	protected final fun setInitialized (Z)V
+	protected final fun set_modelInfo (Lsk/ainet/io/model/ModelInfo;)V
+	protected final fun set_tensors (Ljava/util/List;)V
+	protected final fun validateFileExists (Ljava/lang/String;)V
+	protected final fun validateFilePath (Ljava/lang/String;)V
+}
+
+public final class sk/ainet/io/model/ClassNames {
+	public static final field INSTANCE Lsk/ainet/io/model/ClassNames;
+	public final fun coco ()Ljava/util/List;
+	public final fun cocoMap ()Ljava/util/Map;
+	public final fun imagenet1k ()Ljava/util/List;
+	public final fun voc ()Ljava/util/List;
+	public final fun vocMap ()Ljava/util/Map;
+}
+
+public final class sk/ainet/io/model/DTypeMapping {
+	public static final field INSTANCE Lsk/ainet/io/model/DTypeMapping;
+	public final fun allSkainetTypes ()Ljava/util/List;
+	public final fun bitsPerElement (Lsk/ainet/io/model/DataType;)Ljava/lang/Integer;
+	public final fun bytesPerElement (Lsk/ainet/io/model/DataType;)Ljava/lang/Integer;
+	public final fun findBestMatch (Lsk/ainet/io/model/DataType;)Lkotlin/Pair;
+	public final fun fromSkainetDType (Lsk/ainet/lang/types/DType;)Lsk/ainet/io/model/DataType;
+	public final fun getDisplayInfo (Lsk/ainet/io/model/DataType;)Ljava/lang/String;
+	public final fun isNativelySupported (Lsk/ainet/io/model/DataType;)Z
+	public final fun nativelySupportedTypes ()Ljava/util/List;
+	public final fun toSkainetDType (Lsk/ainet/io/model/DataType;)Lsk/ainet/lang/types/DType;
+}
+
+public final class sk/ainet/io/model/DataType : java/lang/Enum {
+	public static final field BFLOAT16 Lsk/ainet/io/model/DataType;
+	public static final field BOOL Lsk/ainet/io/model/DataType;
+	public static final field Companion Lsk/ainet/io/model/DataType$Companion;
+	public static final field FLOAT16 Lsk/ainet/io/model/DataType;
+	public static final field FLOAT32 Lsk/ainet/io/model/DataType;
+	public static final field FLOAT64 Lsk/ainet/io/model/DataType;
+	public static final field INT16 Lsk/ainet/io/model/DataType;
+	public static final field INT32 Lsk/ainet/io/model/DataType;
+	public static final field INT64 Lsk/ainet/io/model/DataType;
+	public static final field INT8 Lsk/ainet/io/model/DataType;
+	public static final field QUANT4 Lsk/ainet/io/model/DataType;
+	public static final field QUANT8 Lsk/ainet/io/model/DataType;
+	public static final field STRING Lsk/ainet/io/model/DataType;
+	public static final field UINT16 Lsk/ainet/io/model/DataType;
+	public static final field UINT32 Lsk/ainet/io/model/DataType;
+	public static final field UINT64 Lsk/ainet/io/model/DataType;
+	public static final field UINT8 Lsk/ainet/io/model/DataType;
+	public static final field UNKNOWN Lsk/ainet/io/model/DataType;
+	public final fun getDisplayName ()Ljava/lang/String;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getSizeInBits ()Ljava/lang/Integer;
+	public final fun getSizeInBytes ()Ljava/lang/Integer;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/io/model/DataType;
+	public static fun values ()[Lsk/ainet/io/model/DataType;
+}
+
+public final class sk/ainet/io/model/DataType$Companion {
+	public final fun fromDisplayName (Ljava/lang/String;)Lsk/ainet/io/model/DataType;
+}
+
+public abstract class sk/ainet/io/model/LoadingProgress {
+}
+
+public final class sk/ainet/io/model/LoadingProgress$Completed : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (JLjava/lang/String;)V
+	public synthetic fun <init> (JLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (JLjava/lang/String;)Lsk/ainet/io/model/LoadingProgress$Completed;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$Completed;JLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$Completed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSummary ()Ljava/lang/String;
+	public final fun getTotalDurationMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingProgress$Failed : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (Lsk/ainet/io/model/LoadingStage;Ljava/lang/Throwable;Ljava/lang/String;)V
+	public final fun component1 ()Lsk/ainet/io/model/LoadingStage;
+	public final fun component2 ()Ljava/lang/Throwable;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/io/model/LoadingStage;Ljava/lang/Throwable;Ljava/lang/String;)Lsk/ainet/io/model/LoadingProgress$Failed;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$Failed;Lsk/ainet/io/model/LoadingStage;Ljava/lang/Throwable;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getError ()Ljava/lang/Throwable;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getStage ()Lsk/ainet/io/model/LoadingStage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingProgress$StageCompleted : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (Lsk/ainet/io/model/LoadingStage;J)V
+	public final fun component1 ()Lsk/ainet/io/model/LoadingStage;
+	public final fun component2 ()J
+	public final fun copy (Lsk/ainet/io/model/LoadingStage;J)Lsk/ainet/io/model/LoadingProgress$StageCompleted;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$StageCompleted;Lsk/ainet/io/model/LoadingStage;JILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$StageCompleted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()J
+	public final fun getStage ()Lsk/ainet/io/model/LoadingStage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingProgress$StageProgress : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (Lsk/ainet/io/model/LoadingStage;FLjava/lang/Long;Ljava/lang/Long;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/io/model/LoadingStage;FLjava/lang/Long;Ljava/lang/Long;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/io/model/LoadingStage;
+	public final fun component2 ()F
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun component4 ()Ljava/lang/Long;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun component6 ()Ljava/lang/Integer;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/io/model/LoadingStage;FLjava/lang/Long;Ljava/lang/Long;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;)Lsk/ainet/io/model/LoadingProgress$StageProgress;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$StageProgress;Lsk/ainet/io/model/LoadingStage;FLjava/lang/Long;Ljava/lang/Long;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$StageProgress;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytesProcessed ()Ljava/lang/Long;
+	public final fun getItemsProcessed ()Ljava/lang/Integer;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getProgress ()F
+	public final fun getStage ()Lsk/ainet/io/model/LoadingStage;
+	public final fun getTotalBytes ()Ljava/lang/Long;
+	public final fun getTotalItems ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingProgress$StageStarted : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (Lsk/ainet/io/model/LoadingStage;Ljava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/io/model/LoadingStage;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/io/model/LoadingStage;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/io/model/LoadingStage;Ljava/lang/String;)Lsk/ainet/io/model/LoadingProgress$StageStarted;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$StageStarted;Lsk/ainet/io/model/LoadingStage;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$StageStarted;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getStage ()Lsk/ainet/io/model/LoadingStage;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingProgress$Started : sk/ainet/io/model/LoadingProgress {
+	public fun <init> (ILjava/lang/String;)V
+	public synthetic fun <init> (ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()I
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (ILjava/lang/String;)Lsk/ainet/io/model/LoadingProgress$Started;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingProgress$Started;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/LoadingProgress$Started;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getTotalStages ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/LoadingStage {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;II)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;II)Lsk/ainet/io/model/LoadingStage;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/LoadingStage;Ljava/lang/String;Ljava/lang/String;IIILjava/lang/Object;)Lsk/ainet/io/model/LoadingStage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getOrder ()I
+	public final fun getTotalStages ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/ModelArchitecture : java/lang/Enum {
+	public static final field BERT Lsk/ainet/io/model/ModelArchitecture;
+	public static final field Companion Lsk/ainet/io/model/ModelArchitecture$Companion;
+	public static final field GEMMA Lsk/ainet/io/model/ModelArchitecture;
+	public static final field LLAMA Lsk/ainet/io/model/ModelArchitecture;
+	public static final field QWEN Lsk/ainet/io/model/ModelArchitecture;
+	public static final field UNKNOWN Lsk/ainet/io/model/ModelArchitecture;
+	public static final field YOLO Lsk/ainet/io/model/ModelArchitecture;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/io/model/ModelArchitecture;
+	public static fun values ()[Lsk/ainet/io/model/ModelArchitecture;
+}
+
+public final class sk/ainet/io/model/ModelArchitecture$Companion {
+}
+
+public final class sk/ainet/io/model/ModelInfo {
+	public fun <init> (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/util/Map;)V
+	public synthetic fun <init> (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/model/ModelFormat;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/Long;
+	public final fun component6 ()Ljava/util/Map;
+	public final fun copy (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/util/Map;)Lsk/ainet/io/model/ModelInfo;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/ModelInfo;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/io/model/ModelInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdditionalMetadata ()Ljava/util/Map;
+	public final fun getDomain ()Ljava/lang/String;
+	public final fun getErrorMessage ()Ljava/lang/String;
+	public final fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public final fun getHasError ()Z
+	public final fun getIrVersion ()Ljava/lang/Long;
+	public final fun getProducer ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/ModelMetadata {
+	public fun <init> (Lsk/ainet/model/ModelFormat;ZLjava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/model/ModelFormat;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/model/ModelFormat;
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/model/ModelFormat;ZLjava/lang/String;)Lsk/ainet/io/model/ModelMetadata;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/ModelMetadata;Lsk/ainet/model/ModelFormat;ZLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/io/model/ModelMetadata;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getErrorMessage ()Ljava/lang/String;
+	public final fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public fun hashCode ()I
+	public final fun isValid ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/io/model/ModelParser {
+	public abstract fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public abstract fun getModelInfo ()Lsk/ainet/io/model/ModelInfo;
+	public abstract fun getSupportedExtension ()Ljava/lang/String;
+	public abstract fun getTensors (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun isInitialized ()Z
+	public abstract fun isValid ()Z
+	public abstract fun parseMetadata (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract class sk/ainet/io/model/ModelParsingError : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getUserFriendlyMessage ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/model/ModelParsingError$CorruptedData : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/model/ModelParsingError$FileNotFound : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/model/ModelParsingError$InvalidFormat : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/model/ModelParsingError$IoError : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/model/ModelParsingError$MemoryError : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/model/ModelParsingError$UnsupportedVersion : sk/ainet/io/model/ModelParsingError {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public abstract interface class sk/ainet/io/model/ProgressReportingLoader {
+	public abstract fun getProgress ()Lkotlinx/coroutines/flow/Flow;
+}
+
+public final class sk/ainet/io/model/TensorInfo {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Lsk/ainet/io/model/DataType;JLjava/lang/Long;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lsk/ainet/io/model/DataType;JLjava/lang/Long;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
+	public final fun component11 ()Ljava/lang/Integer;
+	public final fun component12 ()Ljava/lang/Integer;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lsk/ainet/io/model/DataType;
+	public final fun component4 ()J
+	public final fun component5 ()Ljava/lang/Long;
+	public final fun component6 ()Lsk/ainet/model/ModelFormat;
+	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Lsk/ainet/io/model/DataType;JLjava/lang/Long;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)Lsk/ainet/io/model/TensorInfo;
+	public static synthetic fun copy$default (Lsk/ainet/io/model/TensorInfo;Ljava/lang/String;Ljava/util/List;Lsk/ainet/io/model/DataType;JLjava/lang/Long;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;ILjava/lang/Object;)Lsk/ainet/io/model/TensorInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCanLoadNatively ()Z
+	public final fun getDataType ()Lsk/ainet/io/model/DataType;
+	public final fun getElementCount ()J
+	public final fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getNativeDType ()Ljava/lang/String;
+	public final fun getShape ()Ljava/util/List;
+	public final fun getShapeString ()Ljava/lang/String;
+	public final fun getShardIndex ()Ljava/lang/Integer;
+	public final fun getShardLocation ()Ljava/lang/String;
+	public final fun getSizeInBytes ()Ljava/lang/Long;
+	public final fun getSizeString ()Ljava/lang/String;
+	public final fun getSkainetDType ()Ljava/lang/String;
+	public final fun getSourceFile ()Ljava/lang/String;
+	public final fun getTotalShards ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public final fun isFromShardedModel ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/tokenizer/TokenizerFactory {
+	public static final field INSTANCE Lsk/ainet/io/tokenizer/TokenizerFactory;
+	public static final fun fromCheckpoint (Lsk/ainet/model/CheckpointView;)Lsk/ainet/frontend/text/TextFrontEnd;
+	public static final fun fromGguf (Ljava/util/Map;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTekkenJson (Ljava/lang/String;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTokenizerJson (Ljava/lang/String;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTokenizerJson (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromVocabTxt (Ljava/lang/String;Z)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun resolver (Lsk/ainet/model/ModelFamilyRegistry;)Lsk/ainet/frontend/FrontEndResolver;
+	public static synthetic fun resolver$default (Lsk/ainet/model/ModelFamilyRegistry;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndResolver;
+}
+
+public final class sk/ainet/io/tokenizer/UnsupportedTokenizerException : sk/ainet/frontend/UnsupportedFrontEndException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/io/weights/BertSafeTensorsNameResolver : sk/ainet/io/weights/WeightNameResolver {
+	public fun <init> ()V
+	public fun resolve (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/LlamaGGUFNameResolver : sk/ainet/io/weights/WeightNameResolver {
+	public fun <init> ()V
+	public fun resolve (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/LlamaSafeTensorsNameResolver : sk/ainet/io/weights/WeightNameResolver {
+	public fun <init> ()V
+	public fun resolve (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/MappingConfig {
+	public fun <init> ()V
+	public fun <init> (ZZZLsk/ainet/io/weights/WeightNameResolver;)V
+	public synthetic fun <init> (ZZZLsk/ainet/io/weights/WeightNameResolver;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component2 ()Z
+	public final fun component3 ()Z
+	public final fun component4 ()Lsk/ainet/io/weights/WeightNameResolver;
+	public final fun copy (ZZZLsk/ainet/io/weights/WeightNameResolver;)Lsk/ainet/io/weights/MappingConfig;
+	public static synthetic fun copy$default (Lsk/ainet/io/weights/MappingConfig;ZZZLsk/ainet/io/weights/WeightNameResolver;ILjava/lang/Object;)Lsk/ainet/io/weights/MappingConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDebug ()Z
+	public final fun getFallbackToShapeMatching ()Z
+	public final fun getNameResolver ()Lsk/ainet/io/weights/WeightNameResolver;
+	public final fun getUsePathBasedMatching ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/NameMapKt {
+	public static final fun WeightNameResolver (Lkotlin/jvm/functions/Function2;)Lsk/ainet/io/weights/WeightNameResolver;
+	public static final fun asWeightNameResolver (Lsk/ainet/model/NameMap;)Lsk/ainet/io/weights/WeightNameResolver;
+}
+
+public final class sk/ainet/io/weights/WeightLoadResult {
+	public fun <init> (Ljava/util/List;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;Ljava/util/List;)Lsk/ainet/io/weights/WeightLoadResult;
+	public static synthetic fun copy$default (Lsk/ainet/io/weights/WeightLoadResult;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/io/weights/WeightLoadResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSkipped ()Ljava/util/List;
+	public final fun getTensors ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/WeightMapper {
+	public static final field INSTANCE Lsk/ainet/io/weights/WeightMapper;
+	public final fun applyWeights (Lsk/ainet/lang/nn/Module;Ljava/util/List;Lsk/ainet/io/weights/MappingConfig;)Lsk/ainet/io/weights/WeightMapper$MappingResult;
+	public static synthetic fun applyWeights$default (Lsk/ainet/io/weights/WeightMapper;Lsk/ainet/lang/nn/Module;Ljava/util/List;Lsk/ainet/io/weights/MappingConfig;ILjava/lang/Object;)Lsk/ainet/io/weights/WeightMapper$MappingResult;
+	public final fun extractLayerNameFromPath (Ljava/lang/String;)Ljava/lang/String;
+	public final fun matchesLayerName (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun normalizeToOnnxFormat (Ljava/lang/String;)Ljava/lang/String;
+	public final fun validateAllParametersMapped (Lsk/ainet/io/weights/WeightMapper$MappingResult;Ljava/util/List;)V
+	public static synthetic fun validateAllParametersMapped$default (Lsk/ainet/io/weights/WeightMapper;Lsk/ainet/io/weights/WeightMapper$MappingResult;Ljava/util/List;ILjava/lang/Object;)V
+}
+
+public final class sk/ainet/io/weights/WeightMapper$MappingResult {
+	public fun <init> (IILjava/util/List;Ljava/util/List;)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (IILjava/util/List;Ljava/util/List;)Lsk/ainet/io/weights/WeightMapper$MappingResult;
+	public static synthetic fun copy$default (Lsk/ainet/io/weights/WeightMapper$MappingResult;IILjava/util/List;Ljava/util/List;ILjava/lang/Object;)Lsk/ainet/io/weights/WeightMapper$MappingResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMapped ()I
+	public final fun getMissingParams ()Ljava/util/List;
+	public final fun getTotal ()I
+	public final fun getUnusedTensors ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/io/weights/WeightNameResolver {
+	public abstract fun resolve (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/io/weights/WeightTensor {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/Tensor;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/Tensor;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun component4 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/Tensor;Z)Lsk/ainet/io/weights/WeightTensor;
+	public static synthetic fun copy$default (Lsk/ainet/io/weights/WeightTensor;Ljava/lang/String;Ljava/util/List;Lsk/ainet/lang/tensor/Tensor;ZILjava/lang/Object;)Lsk/ainet/io/weights/WeightTensor;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getShape ()Ljava/util/List;
+	public final fun getTensor ()Lsk/ainet/lang/tensor/Tensor;
+	public fun hashCode ()I
+	public final fun isBias ()Z
+	public fun toString ()Ljava/lang/String;
+}
+

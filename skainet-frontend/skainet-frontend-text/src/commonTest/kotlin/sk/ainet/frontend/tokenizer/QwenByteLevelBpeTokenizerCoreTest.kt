@@ -1,4 +1,4 @@
-package sk.ainet.io.tokenizer
+package sk.ainet.frontend.tokenizer
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

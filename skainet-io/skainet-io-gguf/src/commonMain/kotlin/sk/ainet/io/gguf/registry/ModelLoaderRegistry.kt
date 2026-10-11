@@ -34,6 +34,10 @@ public interface ModelLoaderDescriptor {
  * val (arch, descriptor) = ModelLoaderRegistry.detect(source)
  * ```
  */
+@Deprecated(
+    "Global mutable registry keyed on an enum; replaced by the immutable sk.ainet.model.ModelFamilyRegistry (SKEEP-006, FE-I-02/FE-I-04). Removed in 0.60.",
+    ReplaceWith("ModelFamilyRegistry", "sk.ainet.model.ModelFamilyRegistry"),
+)
 public object ModelLoaderRegistry {
 
     private val descriptors = mutableMapOf<ModelArchitecture, ModelLoaderDescriptor>()
@@ -62,6 +66,7 @@ public object ModelLoaderRegistry {
     public fun detectArchitecture(source: RandomAccessSource): ModelArchitecture {
         return StreamingGGUFReader.open(source).use { reader ->
             val arch = reader.fields["general.architecture"] as? String
+            @Suppress("DEPRECATION")
             ModelArchitecture.fromGguf(arch)
         }
     }

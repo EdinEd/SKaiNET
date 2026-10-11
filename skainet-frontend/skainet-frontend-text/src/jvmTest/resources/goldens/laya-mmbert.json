@@ -1,0 +1,488 @@
+{
+ "fixture": "laya-mmbert",
+ "tokenizer_json": "multilingual_tokenizer.json",
+ "tokenizer_config_json": null,
+ "reference": "tokenizers 0.23.3",
+ "vocab_size": 256000,
+ "vocab_size_base": 256000,
+ "cases": [
+  {
+   "text": "Hello world",
+   "ids": [
+    25957,
+    2134
+   ],
+   "ids_with_specials": [
+    2,
+    25957,
+    2134,
+    1
+   ],
+   "decode": " Hello world",
+   "decode_skip_special": " Hello world"
+  },
+  {
+   "text": "Bitte die doppelte Rechnung prüfen.",
+   "ids": [
+    60743,
+    1303,
+    114033,
+    488,
+    114045,
+    140973,
+    235265
+   ],
+   "ids_with_specials": [
+    2,
+    60743,
+    1303,
+    114033,
+    488,
+    114045,
+    140973,
+    235265,
+    1
+   ],
+   "decode": " Bitte die doppelte Rechnung prüfen.",
+   "decode_skip_special": " Bitte die doppelte Rechnung prüfen."
+  },
+  {
+   "text": "Which department handles this request?",
+   "ids": [
+    12236,
+    9888,
+    26446,
+    736,
+    3853,
+    235336
+   ],
+   "ids_with_specials": [
+    2,
+    12236,
+    9888,
+    26446,
+    736,
+    3853,
+    235336,
+    1
+   ],
+   "decode": " Which department handles this request?",
+   "decode_skip_special": " Which department handles this request?"
+  },
+  {
+   "text": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "ids": [
+    52721,
+    235269,
+    16490,
+    64849,
+    9132,
+    930,
+    101472,
+    1197,
+    1157,
+    155245,
+    18688,
+    84523,
+    79937,
+    237019,
+    239518,
+    239518,
+    526,
+    236703
+   ],
+   "ids_with_specials": [
+    2,
+    52721,
+    235269,
+    16490,
+    64849,
+    9132,
+    930,
+    101472,
+    1197,
+    1157,
+    155245,
+    18688,
+    84523,
+    79937,
+    237019,
+    239518,
+    239518,
+    526,
+    236703,
+    1
+   ],
+   "decode": " Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "decode_skip_special": " Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é"
+  },
+  {
+   "text": "false: No duplicate is mentioned",
+   "ids": [
+    1566,
+    235292,
+    1307,
+    38294,
+    603,
+    8248
+   ],
+   "ids_with_specials": [
+    2,
+    1566,
+    235292,
+    1307,
+    38294,
+    603,
+    8248,
+    1
+   ],
+   "decode": " false: No duplicate is mentioned",
+   "decode_skip_special": " false: No duplicate is mentioned"
+  },
+  {
+   "text": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "ids": [
+    235248,
+    235248,
+    8133,
+    14130,
+    578,
+    235248,
+    235274,
+    235284,
+    235304,
+    235310,
+    235308,
+    5968,
+    235269,
+    180082,
+    235290,
+    840,
+    3907,
+    1453,
+    235303,
+    235251
+   ],
+   "ids_with_specials": [
+    2,
+    235248,
+    235248,
+    8133,
+    14130,
+    578,
+    235248,
+    235274,
+    235284,
+    235304,
+    235310,
+    235308,
+    5968,
+    235269,
+    180082,
+    235290,
+    840,
+    3907,
+    1453,
+    235303,
+    235251,
+    1
+   ],
+   "decode": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "decode_skip_special": "   leading spaces and 12345 numbers, hyphen-ated words don't"
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    60732,
+    14130,
+    235248,
+    235248,
+    235248
+   ],
+   "ids_with_specials": [
+    2,
+    60732,
+    14130,
+    235248,
+    235248,
+    235248,
+    1
+   ],
+   "decode": " trailing spaces   ",
+   "decode_skip_special": " trailing spaces   "
+  },
+  {
+   "text": "tabs\tand\nnewlines\r\nmixed",
+   "ids": [
+    42607,
+    226,
+    639,
+    108,
+    888,
+    5448,
+    235316,
+    108,
+    10616
+   ],
+   "ids_with_specials": [
+    2,
+    42607,
+    226,
+    639,
+    108,
+    888,
+    5448,
+    235316,
+    108,
+    10616,
+    1
+   ],
+   "decode": " tabs\tand\n newlines\r\n mixed",
+   "decode_skip_special": " tabs\tand\n newlines\r\n mixed"
+  },
+  {
+   "text": "日本語のテキスト and 中文 mixed with English",
+   "ids": [
+    26867,
+    236333,
+    235372,
+    141972,
+    578,
+    102546,
+    10616,
+    675,
+    4645
+   ],
+   "ids_with_specials": [
+    2,
+    26867,
+    236333,
+    235372,
+    141972,
+    578,
+    102546,
+    10616,
+    675,
+    4645,
+    1
+   ],
+   "decode": " 日本語のテキスト and 中文 mixed with English",
+   "decode_skip_special": " 日本語のテキスト and 中文 mixed with English"
+  },
+  {
+   "text": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "ids": [
+    590,
+    235303,
+    235262,
+    2821,
+    783,
+    235303,
+    529,
+    235303,
+    524,
+    3015,
+    665,
+    235269,
+    5616,
+    235303,
+    235251,
+    665,
+    235336,
+    235248,
+    235304,
+    235265,
+    235274,
+    235310,
+    235274,
+    235308,
+    235315,
+    235248,
+    235274,
+    235269,
+    235276,
+    235276,
+    235276,
+    235269,
+    235276,
+    235276,
+    235276
+   ],
+   "ids_with_specials": [
+    2,
+    590,
+    235303,
+    235262,
+    2821,
+    783,
+    235303,
+    529,
+    235303,
+    524,
+    3015,
+    665,
+    235269,
+    5616,
+    235303,
+    235251,
+    665,
+    235336,
+    235248,
+    235304,
+    235265,
+    235274,
+    235310,
+    235274,
+    235308,
+    235315,
+    235248,
+    235274,
+    235269,
+    235276,
+    235276,
+    235276,
+    235269,
+    235276,
+    235276,
+    235276,
+    1
+   ],
+   "decode": " I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "decode_skip_special": " I'm sure we'll've done it, isn't it? 3.14159 1,000,000"
+  },
+  {
+   "text": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "ids": [
+    21416,
+    236158,
+    236069,
+    15341,
+    235397,
+    235387,
+    110870,
+    2062,
+    8296,
+    235274,
+    235276,
+    235276,
+    5955,
+    235308,
+    74393,
+    235304,
+    235276,
+    235276,
+    11532,
+    235284,
+    235276,
+    235284,
+    235318,
+    33121
+   ],
+   "ids_with_specials": [
+    2,
+    21416,
+    236158,
+    236069,
+    15341,
+    235397,
+    235387,
+    110870,
+    2062,
+    8296,
+    235274,
+    235276,
+    235276,
+    5955,
+    235308,
+    74393,
+    235304,
+    235276,
+    235276,
+    11532,
+    235284,
+    235276,
+    235284,
+    235318,
+    33121,
+    1
+   ],
+   "decode": " ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "decode_skip_special": " ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½"
+  },
+  {
+   "text": "",
+   "ids": [],
+   "ids_with_specials": [
+    2,
+    1
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [
+    235248
+   ],
+   "ids_with_specials": [
+    2,
+    235248,
+    1
+   ],
+   "decode": " ",
+   "decode_skip_special": " "
+  },
+  {
+   "text": "a",
+   "ids": [
+    476
+   ],
+   "ids_with_specials": [
+    2,
+    476,
+    1
+   ],
+   "decode": " a",
+   "decode_skip_special": " a"
+  },
+  {
+   "text": "<bos>Hi<eos>",
+   "ids": [
+    2,
+    11192,
+    1
+   ],
+   "ids_with_specials": [
+    2,
+    2,
+    11192,
+    1,
+    1
+   ],
+   "decode": "<bos> Hi<eos>",
+   "decode_skip_special": " Hi"
+  },
+  {
+   "text": "<start_of_turn>user\nhi<end_of_turn>",
+   "ids": [
+    106,
+    2425,
+    108,
+    5827,
+    107
+   ],
+   "ids_with_specials": [
+    2,
+    106,
+    2425,
+    108,
+    5827,
+    107,
+    1
+   ],
+   "decode": "<start_of_turn> user\n hi<end_of_turn>",
+   "decode_skip_special": " user\n hi"
+  }
+ ],
+ "pair": null
+}
