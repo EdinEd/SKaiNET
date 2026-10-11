@@ -25,6 +25,7 @@
 ** xref:how-to/minerva-export.adoc[Export secure MCU bundles with Minerva]
 * Reference
 ** xref:reference/architecture.adoc[Architecture]
+** xref:reference/input-frontends.adoc[Input front ends and tokenizers]
 ** xref:reference/graph-export-architecture.adoc[Graph export architecture]
 ** xref:reference/operators/generated/index.adoc[Operator reference]
 ** xref:reference/ops-status-matrix.adoc[Operator coverage matrix]

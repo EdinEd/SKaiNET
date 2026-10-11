@@ -18,11 +18,11 @@ runtime it documents. Start here instead:
 * https://skainet-developers.github.io/SKaiNET-transformers/[`SKaiNET-transformers` documentation site]
 
 If you were looking for the **tokenizer** side of LLM inference
-(Qwen byte-level BPE, SentencePiece for LLaMA / Gemma / TinyLlama),
-that still lives in mainline — see
-xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)]
-and the
-https://github.com/SKaiNET-developers/SKaiNET/blob/develop/skainet-io/skainet-io-core/src/commonMain/kotlin/sk/ainet/io/tokenizer/TokenizerFactory.kt[`TokenizerFactory` source].
+(byte-level BPE for Qwen / GPT-2, Metaspace BPE and SentencePiece for
+LLaMA / Gemma / TinyLlama, Unigram, WordPiece, Tekken), that still lives
+in mainline — see xref:reference/input-frontends.adoc[Input front ends
+and tokenizers] and
+xref:how-to/io-readers.adoc[Load models (GGUF, SafeTensors, ONNX)].
 
 If you were looking for the **Java entry point** for running
 tensor ops on CPU, see xref:tutorials/java-getting-started.adoc[Java getting started].

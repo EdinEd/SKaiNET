@@ -1,0 +1,112 @@
+= Input front ends and tokenizers
+:description: How a checkpoint's preprocessing is resolved in SKaiNET — the FrontEnd contract, the text (tokenizer) implementations, model identity and the FrontEndResolver.
+
+A checkpoint is weights, an identity, and the recipe that turns raw input into the tensors the
+weights expect — and, for text, back again. Since xref:skeep:006-input-frontends-and-model-identity.adoc[SKEEP-006]
+that recipe is a first-class engine object: an *input front end*, resolved from the checkpoint's
+own side files and decorated by its model family.
+
+== Modules
+
+[cols="1,2,2",options="header"]
+|===
+| Module | Holds | Depends on
+
+| `skainet-model-identity` (`sk.ainet.model`)
+| `ModelIdentity`, `ModelFormat`, `CheckpointView`, `ModelFamilyDescriptor`, `ModelFamilyRegistry`, `NameMap`, `TransformerNameMaps`
+| `skainet-lang-core`
+
+| `skainet-frontend-core` (`sk.ainet.frontend`)
+| `FrontEnd<I, O>`, `FrontEndSpec`, `FrontEndResolver`, `FrontEndProvider`, `FrontEndSet`; the text contract (`sk.ainet.frontend.text`: `Tokenizer`, `Vocabulary`, `SpecialTokens`, `Encoding`, `BatchTokenizer`, `TextFrontEnd`, `PromptRenderer`); audio and image contracts; multimodal composition
+| `skainet-model-identity`, kotlinx-serialization
+
+| `skainet-frontend-text` (`sk.ainet.frontend.tokenizer`)
+| `QwenByteLevelBpeTokenizer`, `MetaspaceBpeTokenizer`, `SentencePieceTokenizer`, `UnigramTokenizer`, `WordPieceTokenizer`, `TekkenTokenizer`, `SpecialTokenSplitter`, `Normalizer`, `PreTokenizer`, `TokenizerJson`, `TokenizerConfig`, `TextFrontEnds`
+| `skainet-frontend-core`
+
+| `skainet-io-gguf`, `skainet-io-safetensors`
+| `GgufCheckpointView`, `HfDirectoryCheckpointView`
+| `skainet-io-core`
+|===
+
+`skainet-io-core` keeps `sk.ainet.io.tokenizer.*`, `sk.ainet.io.model.ModelFormat` and
+`sk.ainet.io.weights.NameMap` as deprecated aliases for one release cycle, and
+`TokenizerFactory` as a forwarding object for Java callers.
+
+== Resolving a checkpoint's tokenizer
+
+[source,kotlin]
+----
+import sk.ainet.frontend.tokenizer.TextFrontEnds
+import sk.ainet.io.gguf.StreamingGGUFReader
+import sk.ainet.io.gguf.checkpointView
+import sk.ainet.io.openRandomAccessSource
+
+val reader = StreamingGGUFReader.open(openRandomAccessSource("model.gguf")!!)
+val resolver = TextFrontEnds.resolver()            // engine families, no ExecutionContext needed for text
+val text = resolver.resolveText(reader.checkpointView())
+
+val ids = text.tokenizer.encode("Hello", addSpecialTokens = true)   // bos added when the checkpoint says so
+val back = text.tokenizer.decode(ids, skipSpecialTokens = true)
+val stop = text.tokenizer.specialTokens.stopIds                      // eos plus family extras
+val template = text.chatTemplateSource                               // raw tokenizer.chat_template, if shipped
+----
+
+For a Hugging Face directory use `HfDirectoryCheckpointView.fromDirectory(path)`; for a single
+file the static entry points `TextFrontEnds.fromTokenizerJson(json, configJson)`,
+`fromGguf(fields)`, `fromTekkenJson(json)` and `fromVocabTxt(text)` build the tokenizer directly.
+`resolver.describe(view)` is the dry run: which algorithm would be built from which side file.
+
+Resolution order is fixed: identity from the registry → algorithmic base from side files
+(`frontend.json`, `tekken.json`, `tokenizer.json` + `tokenizer_config.json`, GGUF
+`tokenizer.ggml.*`, `vocab.txt`) → the family descriptor decorates (special tokens, stop ids,
+prompt renderer) → anything not found is `null` in the `FrontEndSet`; `resolveText` throws an
+`UnsupportedFrontEndException` that names the side files and the registry's families.
+
+== Dispatch table
+
+[cols="3,2",options="header"]
+|===
+| Evidence | Implementation
+
+| GGUF `tokenizer.ggml.model` ∈ {`gpt2`, `bpe`}; `tokenizer.json` `model.type: BPE` with a `ByteLevel` pre-tokenizer (or none)
+| `QwenByteLevelBpeTokenizer` — Qwen, GPT-2, ModernBERT
+
+| `tokenizer.json` `model.type: BPE` with a `Metaspace` pre-tokenizer, a `Prepend ▁` normalizer or `byte_fallback`
+| `MetaspaceBpeTokenizer` — Llama 2, TinyLlama, mmBERT
+
+| GGUF `llama`, `sentencepiece`, `gemma4`
+| `SentencePieceTokenizer` (+ `SpecialTokenSplitter` for CONTROL / USER_DEFINED tokens)
+
+| `tokenizer.json` `model.type: Unigram`
+| `UnigramTokenizer` (Viterbi lattice) — T5, ALBERT, Gemma exports
+
+| GGUF `bert`, `wordpiece`; `tokenizer.json` `model.type: WordPiece`; `vocab.txt`
+| `WordPieceTokenizer` (`encodeWithMetadata` for BERT-class encoders)
+
+| `tekken.json`
+| `TekkenTokenizer` — Mistral, Voxtral
+
+| `frontend.json` text spec
+| explicit selection by `artifact`
+|===
+
+Every `added_tokens` entry is matched atomically before pre-tokenization, special or not; the
+`special` flag decides what `decode(ids, skipSpecialTokens = true)` drops. The `normalizer`
+block is applied to every segment; unknown normalizer or pre-tokenizer types fail loudly.
+
+== Compatibility notes
+
+* `encode(text)` and `decode(ids)` keep their 0.57 meaning: no bos/eos added, special tokens
+  rendered as text. `encode(text, addSpecialTokens = true)` applies `SpecialTokens.addBos` /
+  `addEos`; `decode(ids, skipSpecialTokens = true)` drops every declared special id.
+* `bosTokenId` / `eosTokenId` stay nullable; `vocabSize` counts added tokens above `model.vocab`.
+* `TokenizerFactory.fromGguf` / `fromTokenizerJson` forward to `TextFrontEnds`; failures surface as
+  `UnsupportedTokenizerException`, a subclass of `UnsupportedFrontEndException`.
+
+== Goldens
+
+`skainet-frontend-text/src/jvmTest/resources/goldens/*.json` were recorded with the Hugging Face
+`tokenizers` library 0.23.3 over public tokenizer files (GPT-2, Qwen2.5, TinyLlama, T5-small,
+`bert-base-uncased`, the two Laya tokenizers). `./gradlew :skainet-frontend:skainet-frontend-text:downloadTokenizerFixtures`
+fetches the files; the tests skip when a fixture is absent.
