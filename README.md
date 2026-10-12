@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.57.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.58.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,18 +308,21 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.57.0
+## What's New in 0.58.0
 
-Grouped-query KV-cache graphs export with an attention mask, and the toolchain moves to Kotlin 2.4.20:
+Input front ends and model identity land as SKEEP-006:
 
-- **Masked grouped-query attention exports to valid StableHLO** — a per-head mask under GQA is split
-  into the K/V head groups instead of broadcast onto them, and a mask onto a dynamic key length (the
-  chunked-prefill shape of a KV-cache graph) uses `dynamic_broadcast_in_dim` with the expansion hints
-  IREE 3.11 needs. Static graphs emit exactly what they did before.
-- **kotlinx-io is part of `skainet-data-source`'s API** — callers of `openSource()` / `copyTo()` no
-  longer need to declare it themselves.
-- **Kotlin 2.4.20**, AGP 9.4.1, Ktor client 3.6.0; the `webpack` security pin is retired now that
-  the Kotlin toolchain's own webpack is past the fix.
+- **One front-end contract for every input modality** — `skainet-frontend-core` defines
+  `FrontEnd`, `FrontEndSpec` and the text, audio, image and multimodal contracts; a resolver turns a
+  checkpoint view into the front ends a model needs. The text lane ships in `skainet-frontend-text`.
+- **Tokenizers move out of io-core and cover more files** — Metaspace BPE with byte fallback,
+  Viterbi Unigram and WordPiece join byte-level BPE, SentencePiece and Tekken. A golden corpus
+  recorded with the Hugging Face `tokenizers` library guards exact id parity for GPT-2, Qwen2.5,
+  TinyLlama, T5, BERT, Gemma 4 and the two public Laya tokenizers.
+- **Families are identities** — `skainet-model-identity` carries `ModelIdentity`, `CheckpointView`
+  and an immutable `ModelFamilyRegistry`; the old enum-style detection is deprecated.
+- Everything that compiled against 0.57 still compiles: the io-core names are deprecated aliases
+  that forward to the new homes.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -344,6 +347,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.58.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — SKEEP-006: the
+  front-end and model-identity modules, the tokenizer move with Metaspace BPE, Unigram and
+  WordPiece, the golden corpus, and the release
 
 ### Contributors (0.57.0)
 
@@ -428,7 +437,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.57.0. MIT License},
+  note         = {Version 0.58.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
