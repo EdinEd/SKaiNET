@@ -152,13 +152,9 @@ public object TextFrontEnds : FrontEndProvider {
         }
         val added = parsed.addedTokens
         if (added.isEmpty() || base is WordPieceTokenizer) return base   // WordPiece matches its added tokens itself
-        return SpecialTokenSplitter(
-            base = base,
-            addedTokens = added.associate { it.content to it.id },
-            bosTokenId = base.specialTokens.bos,
-            eosTokenId = base.specialTokens.eos,
-            specialIds = added.filter { it.special }.map { it.id }.toSet(),
-        )
+        // Flags travel with the tokens: `<mask>` is `lstrip` in the ModernBERT / mmBERT files, so the
+        // whitespace before it belongs to the special token, not to the preceding segment.
+        return SpecialTokenSplitter(base = base, tokens = added, bosTokenId = base.specialTokens.bos, eosTokenId = base.specialTokens.eos)
     }
 
     /** Build the Mistral Tekken tokenizer from a `tekken.json` string. */

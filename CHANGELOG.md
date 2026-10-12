@@ -27,6 +27,7 @@
   the per-format `CheckpointView` implementations the resolver consumes.
 
 ### Fixed
+- `tokenizer.json` added tokens keep their `lstrip` / `rstrip` / `single_word` flags through `SpecialTokenSplitter`, so the whitespace before an `lstrip` token such as the ModernBERT / mmBERT `<mask>` belongs to the special token as in the reference library (SKEEP-006, #1324 corpus).
 
 - **`tokenizer.json` parity for byte-level BPE** (#1321): the array form of `model.merges`
   written by every `tokenizers` release since 0.20 loads (#1323); every `added_tokens` entry is

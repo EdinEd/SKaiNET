@@ -22,22 +22,43 @@ import sk.ainet.frontend.text.Vocabulary
  * byte-level spanning some bases do inside `decode(IntArray)` is preserved within each run.
  *
  * @param base the algorithm tokenizer
- * @param addedTokens added tokens keyed by surface form (the 0.57 `specialTokens` parameter)
+ * @param tokens the added tokens with their `lstrip` / `rstrip` / `single_word` flags; matching
+ *   honours them exactly as [AddedTokenMatcher] does for the algorithms that match inline
  * @param bosTokenId / eosTokenId 0.57 overrides, kept for source compatibility
- * @param specialIds the subset of [specialTokens] ids flagged `special` (defaults to all of them)
  */
-public class SpecialTokenSplitter(
+public class SpecialTokenSplitter private constructor(
     private val base: Tokenizer,
-    private val addedTokens: Map<String, Int>,
-    bosTokenId: Int? = base.specialTokens.bos,
-    eosTokenId: Int? = base.specialTokens.eos,
-    specialIds: Set<Int> = addedTokens.values.toSet(),
+    tokens: List<AddedToken>,
+    bosTokenId: Int?,
+    eosTokenId: Int?,
 ) : Tokenizer {
 
-    private val specialIdToString: Map<Int, String> = addedTokens.entries.associate { (k, v) -> v to k }
+    /**
+     * 0.57-compatible form: added tokens keyed by surface form, no whitespace flags.
+     *
+     * @param addedTokens added tokens keyed by surface form (the 0.57 `specialTokens` parameter)
+     * @param specialIds the subset of ids flagged `special` (defaults to all of them)
+     */
+    public constructor(
+        base: Tokenizer,
+        addedTokens: Map<String, Int>,
+        bosTokenId: Int? = base.specialTokens.bos,
+        eosTokenId: Int? = base.specialTokens.eos,
+        specialIds: Set<Int> = addedTokens.values.toSet(),
+    ) : this(base, addedTokens.map { (content, id) -> AddedToken(content = content, id = id, special = id in specialIds) }, bosTokenId, eosTokenId)
 
-    /** Longest-first ordering so e.g. `<|im_start|>` wins over `<|im`. */
-    private val specialsByLengthDesc: List<String> = addedTokens.keys.filter { it.isNotEmpty() }.sortedByDescending { it.length }
+    /** Added tokens as declared in `tokenizer.json`, flags included (`<mask>` is typically `lstrip`). */
+    public constructor(
+        base: Tokenizer,
+        tokens: Collection<AddedToken>,
+        bosTokenId: Int? = base.specialTokens.bos,
+        eosTokenId: Int? = base.specialTokens.eos,
+    ) : this(base, tokens.toList(), bosTokenId, eosTokenId)
+
+    private val matcher = AddedTokenMatcher(tokens)
+    private val addedTokens: Map<String, Int> = matcher.contentToId
+    private val specialIdToString: Map<Int, String> = matcher.idToContent
+    private val specialIds: Set<Int> = matcher.specialIds
 
     override val vocabulary: Vocabulary = ExtendedVocabulary(base.vocabulary, addedTokens)
 
@@ -50,21 +71,9 @@ public class SpecialTokenSplitter(
     override val spec: FrontEndSpec get() = base.spec
 
     override fun encode(text: String): IntArray {
-        if (specialsByLengthDesc.isEmpty()) return base.encode(text)
+        if (matcher.isEmpty) return base.encode(text)
         val out = ArrayList<Int>(text.length)
-        var i = 0
-        while (i < text.length) {
-            val matched = matchSpecialAt(text, i)
-            if (matched != null) {
-                out.add(addedTokens.getValue(matched))
-                i += matched.length
-                continue
-            }
-            val nextSpecial = nextSpecialStart(text, i)
-            val segment = text.substring(i, nextSpecial)
-            for (id in base.encode(segment)) out.add(id)
-            i = nextSpecial
-        }
+        matcher.encode(text, out) { segment -> for (id in base.encode(segment)) out.add(id) }
         return IntArray(out.size) { out[it] }
     }
 
@@ -103,22 +112,6 @@ public class SpecialTokenSplitter(
         var strip = runDecoder?.leadingSpacesToStrip ?: 0
         while (strip > 0 && result.startsWith(' ')) { result = result.substring(1); strip-- }
         return result
-    }
-
-    private fun matchSpecialAt(text: String, from: Int): String? {
-        for (tok in specialsByLengthDesc) {
-            if (text.regionMatches(from, tok, 0, tok.length)) return tok
-        }
-        return null
-    }
-
-    private fun nextSpecialStart(text: String, from: Int): Int {
-        var earliest = text.length
-        for (tok in specialsByLengthDesc) {
-            val idx = text.indexOf(tok, startIndex = from + 1)
-            if (idx in 0 until earliest) earliest = idx
-        }
-        return earliest
     }
 }
 

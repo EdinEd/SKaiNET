@@ -30,6 +30,27 @@ class SpecialTokenSplitterTest {
     }
 
     @Test
+    fun `lstrip and rstrip flags absorb the adjacent whitespace into the added token`() {
+        // The mmBERT / ModernBERT `<mask>` is declared `lstrip: true`: the reference drops the
+        // whitespace before it instead of handing it to the preceding segment (issue 1324 corpus).
+        val splitter = SpecialTokenSplitter(
+            CharBase,
+            listOf(
+                AddedToken(content = "<mask>", id = 4, special = true, lstrip = true),
+                AddedToken(content = "<pad>", id = 0, special = true),
+                AddedToken(content = "<r>", id = 7, special = false, rstrip = true),
+            ),
+        )
+        assertContentEquals(
+            CharBase.encode("please") + intArrayOf(4) + CharBase.encode(" this and ") + intArrayOf(0) + CharBase.encode(" that"),
+            splitter.encode("please <mask> this and <pad> that"),
+        )
+        assertContentEquals(CharBase.encode("a") + intArrayOf(7) + CharBase.encode("b"), splitter.encode("a<r>   b"))
+        // Flags change encoding only; decode still emits the literal.
+        assertEquals("please<mask> this", splitter.decode(splitter.encode("please <mask> this")))
+    }
+
+    @Test
     fun `empty special tokens map is a pass-through`() {
         val splitter = SpecialTokenSplitter(CharBase, emptyMap())
         val ids = splitter.encode("hello")

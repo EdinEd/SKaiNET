@@ -309,6 +309,8 @@ public final class sk/ainet/frontend/tokenizer/SentencePieceTokenizer$Companion 
 }
 
 public final class sk/ainet/frontend/tokenizer/SpecialTokenSplitter : sk/ainet/frontend/text/Tokenizer {
+	public fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Collection;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Collection;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;)V
 	public synthetic fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun decode ([I)Ljava/lang/String;
