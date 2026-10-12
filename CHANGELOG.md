@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-12
+
+Headline: **input front ends and model identity (SKEEP-006).** Tokenizers leave `skainet-io-core`
+for three new modules with one front-end contract across modalities, families become string
+identities with descriptors in an immutable registry, and `tokenizer.json` support grows to
+Metaspace BPE, Unigram and WordPiece with a golden corpus recorded against the Hugging Face
+`tokenizers` library. Every 0.57 call site keeps compiling through deprecated aliases.
+
+Version note: SKaiNET-transformers 0.58.0 follows on this engine release and resolves every
+tokenizer through the engine; the two stay on one version line.
+
 ### Added
 
 - **Input front ends and model identity (SKEEP-006, draft).** Three new modules:
@@ -27,8 +38,8 @@
   the per-format `CheckpointView` implementations the resolver consumes.
 
 ### Fixed
-- `tokenizer.json` added tokens keep their `lstrip` / `rstrip` / `single_word` flags through `SpecialTokenSplitter`, so the whitespace before an `lstrip` token such as the ModernBERT / mmBERT `<mask>` belongs to the special token as in the reference library (SKEEP-006, #1324 corpus).
 
+- `tokenizer.json` added tokens keep their `lstrip` / `rstrip` / `single_word` flags through `SpecialTokenSplitter`, so the whitespace before an `lstrip` token such as the ModernBERT / mmBERT `<mask>` belongs to the special token as in the reference library (SKEEP-006, #1324 corpus).
 - **`tokenizer.json` parity for byte-level BPE** (#1321): the array form of `model.merges`
   written by every `tokenizers` release since 0.20 loads (#1323); every `added_tokens` entry is
   matched atomically and counted in `vocabSize`, special or not (#1324); the `normalizer` block
