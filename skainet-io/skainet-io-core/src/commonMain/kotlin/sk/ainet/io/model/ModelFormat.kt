@@ -1,26 +1,8 @@
 package sk.ainet.io.model
 
-/**
- * Supported model file formats.
- */
-public enum class ModelFormat(public val extension: String, public val displayName: String) {
-    GGUF("gguf", "GGUF"),
-    ONNX("onnx", "ONNX"),
-    SAFETENSORS("safetensors", "SafeTensors");
-
-    public companion object {
-        /**
-         * Find ModelFormat by file extension (case-insensitive).
-         */
-        public fun fromExtension(extension: String): ModelFormat? =
-            entries.find { it.extension.equals(extension, ignoreCase = true) }
-
-        /**
-         * Find ModelFormat from a file path.
-         */
-        public fun fromFilePath(filePath: String): ModelFormat? {
-            val ext = filePath.substringAfterLast('.', "")
-            return fromExtension(ext)
-        }
-    }
-}
+/** Moved to `skainet-model-identity` (SKEEP-006); alias removed in 0.60. */
+@Deprecated(
+    "Moved to sk.ainet.model.ModelFormat (SKEEP-006); the alias is removed in 0.60.",
+    ReplaceWith("ModelFormat", "sk.ainet.model.ModelFormat"),
+)
+public typealias ModelFormat = sk.ainet.model.ModelFormat

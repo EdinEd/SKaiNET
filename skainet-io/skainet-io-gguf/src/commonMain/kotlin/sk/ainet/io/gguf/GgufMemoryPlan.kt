@@ -1,6 +1,6 @@
 package sk.ainet.io.gguf
 
-import sk.ainet.io.weights.NameMap
+import sk.ainet.model.NameMap
 import sk.ainet.lang.memory.Format
 import sk.ainet.lang.memory.plan.KvCacheMode
 import sk.ainet.lang.memory.plan.ModelGeometry

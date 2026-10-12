@@ -1,0 +1,524 @@
+public final class sk/ainet/frontend/tokenizer/AddedToken {
+	public fun <init> (Ljava/lang/String;IZZZZZ)V
+	public synthetic fun <init> (Ljava/lang/String;IZZZZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Z
+	public final fun component4 ()Z
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun component7 ()Z
+	public final fun copy (Ljava/lang/String;IZZZZZ)Lsk/ainet/frontend/tokenizer/AddedToken;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/tokenizer/AddedToken;Ljava/lang/String;IZZZZZILjava/lang/Object;)Lsk/ainet/frontend/tokenizer/AddedToken;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getId ()I
+	public final fun getLstrip ()Z
+	public final fun getNormalized ()Z
+	public final fun getRstrip ()Z
+	public final fun getSingleWord ()Z
+	public final fun getSpecial ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/ByteToUnicode {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/ByteToUnicode;
+	public final fun decode (Ljava/lang/String;)[B
+	public final fun encode (Ljava/lang/String;)Ljava/lang/String;
+	public final fun encode ([B)Ljava/lang/String;
+	public final fun getByteToUnicode ()[C
+	public final fun getUnicodeToByte ()Ljava/util/Map;
+}
+
+public final class sk/ainet/frontend/tokenizer/MetaspaceBpeTokenizer : sk/ainet/frontend/text/Tokenizer, sk/ainet/frontend/tokenizer/RunDecoder {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/MetaspaceBpeTokenizer$Companion;
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;ZLsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;ZLsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeRun ([I)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public final fun getByteFallback ()Z
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public fun getLeadingSpacesToStrip ()I
+	public final fun getMergeCount ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun getUnkId ()Ljava/lang/Integer;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/MetaspaceBpeTokenizer$Companion {
+}
+
+public final class sk/ainet/frontend/tokenizer/NormalizationForm : java/lang/Enum {
+	public static final field NFC Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public static final field NFD Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public static final field NFKC Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public static final field NFKD Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public static fun values ()[Lsk/ainet/frontend/tokenizer/NormalizationForm;
+}
+
+public abstract interface class sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field Companion Lsk/ainet/frontend/tokenizer/Normalizer$Companion;
+	public abstract fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Bert : sk/ainet/frontend/tokenizer/Normalizer {
+	public fun <init> (ZZLjava/lang/Boolean;Z)V
+	public synthetic fun <init> (ZZLjava/lang/Boolean;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getCleanText ()Z
+	public final fun getHandleChineseChars ()Z
+	public final fun getLowercase ()Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getStripAccents ()Ljava/lang/Boolean;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Companion {
+	public final fun fromJson (Lkotlinx/serialization/json/JsonElement;)Lsk/ainet/frontend/tokenizer/Normalizer;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Lowercase : sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/Normalizer$Lowercase;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$None : sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/Normalizer$None;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Precompiled : sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/Normalizer$Precompiled;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Prepend : sk/ainet/frontend/tokenizer/Normalizer {
+	public fun <init> (Ljava/lang/String;)V
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getPrepend ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Replace : sk/ainet/frontend/tokenizer/Normalizer {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Z)V
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Sequence : sk/ainet/frontend/tokenizer/Normalizer {
+	public fun <init> (Ljava/util/List;)V
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Strip : sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/Normalizer$Strip;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$StripAccents : sk/ainet/frontend/tokenizer/Normalizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/Normalizer$StripAccents;
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/Normalizer$Unicode : sk/ainet/frontend/tokenizer/Normalizer {
+	public fun <init> (Lsk/ainet/frontend/tokenizer/NormalizationForm;)V
+	public fun apply (Ljava/lang/String;)Ljava/lang/String;
+	public final fun getForm ()Lsk/ainet/frontend/tokenizer/NormalizationForm;
+	public fun getName ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field Companion Lsk/ainet/frontend/tokenizer/PreTokenizer$Companion;
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Bert : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/PreTokenizer$Bert;
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$ByteLevel : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public fun <init> ()V
+	public fun <init> (ZZ)V
+	public synthetic fun <init> (ZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAddPrefixSpace ()Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getUseRegex ()Z
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Companion {
+	public final fun fromJson (Lkotlinx/serialization/json/JsonElement;)Lsk/ainet/frontend/tokenizer/PreTokenizer;
+	public final fun getGPT2_REGEX ()Lkotlin/text/Regex;
+	public final fun isByteLevel (Lsk/ainet/frontend/tokenizer/PreTokenizer;)Z
+	public final fun metaspace (Lsk/ainet/frontend/tokenizer/PreTokenizer;)Lsk/ainet/frontend/tokenizer/PreTokenizer$Metaspace;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Digits : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public fun <init> ()V
+	public fun <init> (Z)V
+	public synthetic fun <init> (ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getIndividualDigits ()Z
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Metaspace : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public fun <init> ()V
+	public fun <init> (CLjava/lang/String;Z)V
+	public synthetic fun <init> (CLjava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getName ()Ljava/lang/String;
+	public final fun getPrependScheme ()Ljava/lang/String;
+	public final fun getReplacement ()C
+	public final fun getSplitOnReplacement ()Z
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$None : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/PreTokenizer$None;
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Punctuation : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/PreTokenizer$Punctuation;
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Sequence : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public fun <init> (Ljava/util/List;)V
+	public fun getName ()Ljava/lang/String;
+	public final fun getSteps ()Ljava/util/List;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Split : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBehavior ()Ljava/lang/String;
+	public final fun getInvert ()Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getPattern ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$Whitespace : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/PreTokenizer$Whitespace;
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/PreTokenizer$WhitespaceSplit : sk/ainet/frontend/tokenizer/PreTokenizer {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/PreTokenizer$WhitespaceSplit;
+	public fun getName ()Ljava/lang/String;
+	public fun split (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/QwenByteLevelBpeTokenizer : sk/ainet/frontend/text/Tokenizer {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/QwenByteLevelBpeTokenizer$Companion;
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Lsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Lsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public final fun getMergeCount ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/QwenByteLevelBpeTokenizer$Companion {
+	public final fun fromGgufFields (Ljava/util/Map;)Lsk/ainet/frontend/tokenizer/QwenByteLevelBpeTokenizer;
+	public final fun fromTokenizerJson (Lkotlinx/serialization/json/JsonObject;)Lsk/ainet/frontend/tokenizer/QwenByteLevelBpeTokenizer;
+	public final fun getDEFAULT_PIPELINE ()Lsk/ainet/frontend/tokenizer/TextPipeline;
+}
+
+public abstract interface class sk/ainet/frontend/tokenizer/RunDecoder {
+	public abstract fun decodeRun ([I)Ljava/lang/String;
+	public abstract fun getLeadingSpacesToStrip ()I
+}
+
+public final class sk/ainet/frontend/tokenizer/SentencePieceTokenizer : sk/ainet/frontend/text/Tokenizer, sk/ainet/frontend/tokenizer/RunDecoder {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/SentencePieceTokenizer$Companion;
+	public static final field WHITESPACE_ESCAPE C
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZLsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZLsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public final fun decodeRaw ([IZ)Ljava/lang/String;
+	public fun decodeRun ([I)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public final fun getAddSpacePrefix ()Z
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public fun getLeadingSpacesToStrip ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun getUnknownTokenId ()Ljava/lang/Integer;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/SentencePieceTokenizer$Companion {
+	public final fun byteTokenString (I)Ljava/lang/String;
+	public final fun fromGgufFields (Ljava/util/Map;)Lsk/ainet/frontend/tokenizer/SentencePieceTokenizer;
+	public final fun fromTokenizerJson (Lkotlinx/serialization/json/JsonObject;)Lsk/ainet/frontend/tokenizer/SentencePieceTokenizer;
+	public final fun parseByteToken (Ljava/lang/String;)Ljava/lang/Byte;
+}
+
+public final class sk/ainet/frontend/tokenizer/SpecialTokenSplitter : sk/ainet/frontend/text/Tokenizer {
+	public fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Collection;Ljava/lang/Integer;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Collection;Ljava/lang/Integer;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/util/Map;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/TekkenTokenizer : sk/ainet/frontend/text/Tokenizer {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/TekkenTokenizer$Companion;
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/Map;ILkotlin/text/Regex;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/Map;ILkotlin/text/Regex;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun decode (I)Ljava/lang/String;
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public final fun getNumSpecialTokens ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun getTotalTokens ()I
+	public fun getVocabSize ()I
+	public final fun getVocabTokenCount ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/TekkenTokenizer$Companion {
+	public final fun fromJson (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/TekkenTokenizer;
+}
+
+public final class sk/ainet/frontend/tokenizer/TextFrontEnds : sk/ainet/frontend/FrontEndProvider {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/TextFrontEnds;
+	public final fun algorithmFor (Lsk/ainet/frontend/tokenizer/TokenizerJson;)Ljava/lang/String;
+	public fun build (Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/frontend/FrontEnd;
+	public fun describe (Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;)Lsk/ainet/frontend/FrontEndSpec;
+	public static final fun fromGguf (Ljava/util/Map;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTekkenJson (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/TekkenTokenizer;
+	public static final fun fromTokenizerJson (Ljava/lang/String;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTokenizerJson (Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromTokenizerJson (Lkotlinx/serialization/json/JsonObject;)Lsk/ainet/frontend/text/Tokenizer;
+	public static synthetic fun fromTokenizerJson$default (Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/frontend/text/Tokenizer;
+	public static final fun fromVocabTxt (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/WordPieceTokenizer;
+	public static final fun fromVocabTxt (Ljava/lang/String;Z)Lsk/ainet/frontend/tokenizer/WordPieceTokenizer;
+	public static synthetic fun fromVocabTxt$default (Ljava/lang/String;ZILjava/lang/Object;)Lsk/ainet/frontend/tokenizer/WordPieceTokenizer;
+	public fun getModality ()Lsk/ainet/frontend/Modality;
+	public static final fun resolver ()Lsk/ainet/frontend/FrontEndResolver;
+	public static final fun resolver (Lsk/ainet/model/ModelFamilyRegistry;)Lsk/ainet/frontend/FrontEndResolver;
+	public static final fun resolver (Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/frontend/FrontEndResolver;
+	public static synthetic fun resolver$default (Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndResolver;
+}
+
+public final class sk/ainet/frontend/tokenizer/TextPipeline {
+	public static final field Companion Lsk/ainet/frontend/tokenizer/TextPipeline$Companion;
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/frontend/tokenizer/Normalizer;Lsk/ainet/frontend/tokenizer/PreTokenizer;I)V
+	public synthetic fun <init> (Lsk/ainet/frontend/tokenizer/Normalizer;Lsk/ainet/frontend/tokenizer/PreTokenizer;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun chunks (Ljava/lang/String;)Ljava/util/List;
+	public final fun getNormalizer ()Lsk/ainet/frontend/tokenizer/Normalizer;
+	public final fun getPreTokenizer ()Lsk/ainet/frontend/tokenizer/PreTokenizer;
+	public final fun getStripLeadingSpaces ()I
+}
+
+public final class sk/ainet/frontend/tokenizer/TextPipeline$Companion {
+	public final fun getNONE ()Lsk/ainet/frontend/tokenizer/TextPipeline;
+}
+
+public final class sk/ainet/frontend/tokenizer/TokenizerConfig {
+	public static final field Companion Lsk/ainet/frontend/tokenizer/TokenizerConfig$Companion;
+	public static final field FILE_NAME Ljava/lang/String;
+	public fun <init> (Lkotlinx/serialization/json/JsonObject;)V
+	public final fun getAddBosToken ()Ljava/lang/Boolean;
+	public final fun getAddEosToken ()Ljava/lang/Boolean;
+	public final fun getBosToken ()Ljava/lang/String;
+	public final fun getChatTemplate ()Ljava/lang/String;
+	public final fun getDoLowerCase ()Ljava/lang/Boolean;
+	public final fun getEosToken ()Ljava/lang/String;
+	public final fun getModelMaxLength ()Ljava/lang/Long;
+	public final fun getPadToken ()Ljava/lang/String;
+	public final fun getRoot ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getTokenizerClass ()Ljava/lang/String;
+	public final fun getUnkToken ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/TokenizerConfig$Companion {
+	public final fun parse (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/TokenizerConfig;
+}
+
+public final class sk/ainet/frontend/tokenizer/TokenizerJson {
+	public static final field Companion Lsk/ainet/frontend/tokenizer/TokenizerJson$Companion;
+	public static final field FILE_NAME Ljava/lang/String;
+	public fun <init> (Lkotlinx/serialization/json/JsonObject;)V
+	public final fun getAddedTokens ()Ljava/util/List;
+	public final fun getByteFallback ()Z
+	public final fun getDecoder ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getIgnoreMerges ()Z
+	public final fun getModel ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getModelType ()Ljava/lang/String;
+	public final fun getNormalizer ()Lsk/ainet/frontend/tokenizer/Normalizer;
+	public final fun getNormalizerPrepends ()Z
+	public final fun getPostProcessor ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getPreTokenizer ()Lsk/ainet/frontend/tokenizer/PreTokenizer;
+	public final fun getRoot ()Lkotlinx/serialization/json/JsonObject;
+	public final fun merges ()Ljava/util/List;
+	public final fun pipeline ()Lsk/ainet/frontend/tokenizer/TextPipeline;
+	public final fun specialTokens (Lsk/ainet/frontend/tokenizer/TokenizerConfig;Lsk/ainet/frontend/text/Vocabulary;)Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun templateSpecials ()Lkotlin/Pair;
+	public final fun unigramVocab ()Lkotlin/Pair;
+	public final fun unkId (Lsk/ainet/frontend/text/Vocabulary;)Ljava/lang/Integer;
+	public final fun vocabArray ()Ljava/util/List;
+	public final fun vocabMap ()Ljava/util/Map;
+}
+
+public final class sk/ainet/frontend/tokenizer/TokenizerJson$Companion {
+	public final fun parse (Ljava/lang/String;)Lsk/ainet/frontend/tokenizer/TokenizerJson;
+}
+
+public final class sk/ainet/frontend/tokenizer/UnicodeNormalization {
+	public static final field INSTANCE Lsk/ainet/frontend/tokenizer/UnicodeNormalization;
+	public final fun isExact ()Z
+	public final fun normalize (Ljava/lang/String;Lsk/ainet/frontend/tokenizer/NormalizationForm;)Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/tokenizer/UnigramTokenizer : sk/ainet/frontend/text/Tokenizer, sk/ainet/frontend/tokenizer/RunDecoder {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/UnigramTokenizer$Companion;
+	public static final field UNK_PENALTY F
+	public fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;ZLsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/util/List;Ljava/lang/Integer;ZLsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeRun ([I)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public final fun getByteFallback ()Z
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public fun getLeadingSpacesToStrip ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun getUnkId ()Ljava/lang/Integer;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/tokenizer/UnigramTokenizer$Companion {
+}
+
+public final class sk/ainet/frontend/tokenizer/WordPieceTokenizer : sk/ainet/frontend/text/BatchTokenizer {
+	public static final field ALGORITHM Ljava/lang/String;
+	public static final field CLS Ljava/lang/String;
+	public static final field Companion Lsk/ainet/frontend/tokenizer/WordPieceTokenizer$Companion;
+	public static final field MASK Ljava/lang/String;
+	public static final field PAD Ljava/lang/String;
+	public static final field SEP Ljava/lang/String;
+	public fun <init> (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;ILsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;ILsk/ainet/frontend/tokenizer/TextPipeline;Lsk/ainet/frontend/text/SpecialTokens;Ljava/lang/String;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun encodeBatch (Ljava/util/List;Lsk/ainet/frontend/text/Padding;Lsk/ainet/frontend/text/Truncation;)Lsk/ainet/frontend/text/BatchEncoding;
+	public fun encodeWithMetadata (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/frontend/text/Truncation;)Lsk/ainet/frontend/text/Encoding;
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public final fun getCleanup ()Z
+	public final fun getContinuingSubwordPrefix ()Ljava/lang/String;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public final fun getMaxInputCharsPerWord ()I
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public final fun getUnkToken ()Ljava/lang/String;
+	public fun getVocabSize ()I
+	public fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+	public final fun tokenize (Ljava/lang/String;)Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/tokenizer/WordPieceTokenizer$Companion {
+	public final fun fromVocabTxt (Ljava/lang/String;Z)Lsk/ainet/frontend/tokenizer/WordPieceTokenizer;
+	public static synthetic fun fromVocabTxt$default (Lsk/ainet/frontend/tokenizer/WordPieceTokenizer$Companion;Ljava/lang/String;ZILjava/lang/Object;)Lsk/ainet/frontend/tokenizer/WordPieceTokenizer;
+	public final fun getCASED_PIPELINE ()Lsk/ainet/frontend/tokenizer/TextPipeline;
+	public final fun getDEFAULT_PIPELINE ()Lsk/ainet/frontend/tokenizer/TextPipeline;
+}
+

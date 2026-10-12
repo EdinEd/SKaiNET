@@ -1,12 +1,15 @@
 package sk.ainet.io.gguf
 
-import sk.ainet.io.weights.NameMap
-import sk.ainet.io.weights.TransformerNameMaps
 import sk.ainet.lang.tensor.TensorId
+import sk.ainet.model.ModelFamilyRegistry
+import sk.ainet.model.NameMap
 
-/** The [NameMap] for this GGUF's `general.architecture`, or `null` if the family is not known. */
-public fun StreamingGGUFReader.nameMap(): NameMap? =
-    (fields["general.architecture"] as? String)?.let { TransformerNameMaps.Gguf.forArchitecture(it) }
+/**
+ * The [NameMap] for this GGUF's `general.architecture` through [registry] (default: the engine's
+ * built-in families), or `null` if no registered family claims the architecture (SKEEP-006).
+ */
+public fun StreamingGGUFReader.nameMap(registry: ModelFamilyRegistry = ModelFamilyRegistry.builtIn): NameMap? =
+    registry.nameMapFor(registry.identify(checkpointView()))
 
 /**
  * Translate every tensor of this GGUF to a [TensorId] through [map] (default: the map for the

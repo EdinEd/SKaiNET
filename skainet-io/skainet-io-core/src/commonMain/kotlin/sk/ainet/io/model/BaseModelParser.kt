@@ -1,5 +1,6 @@
 package sk.ainet.io.model
 
+import sk.ainet.model.ModelFormat
 import kotlinx.io.RawSource
 import kotlinx.io.Source
 import kotlinx.io.buffered

@@ -1,0 +1,538 @@
+public final class sk/ainet/frontend/CompositeFrontEnd : sk/ainet/frontend/FrontEnd {
+	public fun <init> (Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/image/ImageFrontEnd;Lsk/ainet/frontend/audio/AudioFrontEnd;Lsk/ainet/frontend/PlaceholderPolicy;)V
+	public final fun getAudio ()Lsk/ainet/frontend/audio/AudioFrontEnd;
+	public final fun getImage ()Lsk/ainet/frontend/image/ImageFrontEnd;
+	public final fun getPolicy ()Lsk/ainet/frontend/PlaceholderPolicy;
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public final fun getText ()Lsk/ainet/frontend/text/TextFrontEnd;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Lsk/ainet/frontend/MultimodalInput;)Lsk/ainet/frontend/ModelInputs;
+}
+
+public abstract interface class sk/ainet/frontend/FamilyFrontEnds {
+	public fun decorate (Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;Lsk/ainet/frontend/FrontEndSet;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/frontend/FrontEndSet;
+}
+
+public final class sk/ainet/frontend/FamilyFrontEnds$DefaultImpls {
+	public static fun decorate (Lsk/ainet/frontend/FamilyFrontEnds;Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;Lsk/ainet/frontend/FrontEndSet;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/frontend/FrontEndSet;
+}
+
+public abstract interface class sk/ainet/frontend/FrontEnd {
+	public abstract fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public abstract fun process (Ljava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface class sk/ainet/frontend/FrontEndProvider {
+	public abstract fun build (Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;Lsk/ainet/context/ExecutionContext;)Lsk/ainet/frontend/FrontEnd;
+	public abstract fun describe (Lsk/ainet/model/CheckpointView;Lsk/ainet/model/ModelIdentity;)Lsk/ainet/frontend/FrontEndSpec;
+	public abstract fun getModality ()Lsk/ainet/frontend/Modality;
+}
+
+public final class sk/ainet/frontend/FrontEndResolver {
+	public fun <init> (Ljava/util/List;Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;)V
+	public synthetic fun <init> (Ljava/util/List;Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lsk/ainet/frontend/FrontEndProvider;Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/FrontEndProvider;Lsk/ainet/model/ModelFamilyRegistry;Lsk/ainet/context/ExecutionContext;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun describe (Lsk/ainet/model/CheckpointView;)Ljava/util/List;
+	public final fun identify (Lsk/ainet/model/CheckpointView;)Lsk/ainet/model/ModelIdentity;
+	public final fun resolve (Lsk/ainet/model/CheckpointView;)Lsk/ainet/frontend/FrontEndSet;
+	public final fun resolveAudio (Lsk/ainet/model/CheckpointView;)Lsk/ainet/frontend/audio/AudioFrontEnd;
+	public final fun resolveImage (Lsk/ainet/model/CheckpointView;)Lsk/ainet/frontend/image/ImageFrontEnd;
+	public final fun resolveText (Lsk/ainet/model/CheckpointView;)Lsk/ainet/frontend/text/TextFrontEnd;
+}
+
+public final class sk/ainet/frontend/FrontEndSet {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSet$Companion;
+	public fun <init> ()V
+	public fun <init> (Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/audio/AudioFrontEnd;Lsk/ainet/frontend/image/ImageFrontEnd;Lsk/ainet/frontend/CompositeFrontEnd;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/audio/AudioFrontEnd;Lsk/ainet/frontend/image/ImageFrontEnd;Lsk/ainet/frontend/CompositeFrontEnd;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun copy (Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/audio/AudioFrontEnd;Lsk/ainet/frontend/image/ImageFrontEnd;Lsk/ainet/frontend/CompositeFrontEnd;)Lsk/ainet/frontend/FrontEndSet;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/FrontEndSet;Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/audio/AudioFrontEnd;Lsk/ainet/frontend/image/ImageFrontEnd;Lsk/ainet/frontend/CompositeFrontEnd;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndSet;
+	public final fun getAudio ()Lsk/ainet/frontend/audio/AudioFrontEnd;
+	public final fun getComposite ()Lsk/ainet/frontend/CompositeFrontEnd;
+	public final fun getImage ()Lsk/ainet/frontend/image/ImageFrontEnd;
+	public final fun getSpecs ()Ljava/util/List;
+	public final fun getText ()Lsk/ainet/frontend/text/TextFrontEnd;
+	public final fun isEmpty ()Z
+}
+
+public final class sk/ainet/frontend/FrontEndSet$Companion {
+	public final fun getEMPTY ()Lsk/ainet/frontend/FrontEndSet;
+}
+
+public abstract class sk/ainet/frontend/FrontEndSpec {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSpec$Companion;
+	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
+	public abstract fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun toJson ()Ljava/lang/String;
+	public static final synthetic fun write$Self (Lsk/ainet/frontend/FrontEndSpec;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Audio : sk/ainet/frontend/FrontEndSpec {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSpec$Audio$Companion;
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)Lsk/ainet/frontend/FrontEndSpec$Audio;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/FrontEndSpec$Audio;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndSpec$Audio;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun getParams ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class sk/ainet/frontend/FrontEndSpec$Audio$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lsk/ainet/frontend/FrontEndSpec$Audio$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lsk/ainet/frontend/FrontEndSpec$Audio;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lsk/ainet/frontend/FrontEndSpec$Audio;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Audio$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Companion {
+	public final fun fromJson (Ljava/lang/String;)Lsk/ainet/frontend/FrontEndSpec;
+	public final fun listFromJson (Ljava/lang/String;)Ljava/util/List;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Composite : sk/ainet/frontend/FrontEndSpec {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSpec$Composite$Companion;
+	public fun <init> (Ljava/util/List;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/util/List;Ljava/lang/String;)Lsk/ainet/frontend/FrontEndSpec$Composite;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/FrontEndSpec$Composite;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndSpec$Composite;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun getParts ()Ljava/util/List;
+	public final fun getPolicy ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class sk/ainet/frontend/FrontEndSpec$Composite$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lsk/ainet/frontend/FrontEndSpec$Composite$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lsk/ainet/frontend/FrontEndSpec$Composite;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lsk/ainet/frontend/FrontEndSpec$Composite;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Composite$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Image : sk/ainet/frontend/FrontEndSpec {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSpec$Image$Companion;
+	public fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public synthetic fun <init> (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lsk/ainet/frontend/FrontEndSpec$Image;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/FrontEndSpec$Image;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndSpec$Image;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun getParams ()Lkotlinx/serialization/json/JsonObject;
+	public final fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class sk/ainet/frontend/FrontEndSpec$Image$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lsk/ainet/frontend/FrontEndSpec$Image$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lsk/ainet/frontend/FrontEndSpec$Image;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lsk/ainet/frontend/FrontEndSpec$Image;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Image$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Text : sk/ainet/frontend/FrontEndSpec {
+	public static final field Companion Lsk/ainet/frontend/FrontEndSpec$Text$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Lsk/ainet/frontend/FrontEndSpec$Text;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/FrontEndSpec$Text;Ljava/lang/String;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)Lsk/ainet/frontend/FrontEndSpec$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAlgorithm ()Ljava/lang/String;
+	public final fun getArtifact ()Ljava/lang/String;
+	public fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun getParams ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class sk/ainet/frontend/FrontEndSpec$Text$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lsk/ainet/frontend/FrontEndSpec$Text$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lsk/ainet/frontend/FrontEndSpec$Text;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lsk/ainet/frontend/FrontEndSpec$Text;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class sk/ainet/frontend/FrontEndSpec$Text$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class sk/ainet/frontend/FrontEndStream : java/lang/AutoCloseable {
+	public abstract fun finish ()Ljava/lang/Object;
+	public abstract fun poll ()Ljava/util/List;
+	public abstract fun push (Ljava/lang/Object;)V
+}
+
+public abstract interface class sk/ainet/frontend/InputSegment {
+}
+
+public final class sk/ainet/frontend/InputSegment$Audio : sk/ainet/frontend/InputSegment {
+	public fun <init> (Lsk/ainet/frontend/audio/PcmAudio;)V
+	public final fun getAudio ()Lsk/ainet/frontend/audio/PcmAudio;
+}
+
+public final class sk/ainet/frontend/InputSegment$Image : sk/ainet/frontend/InputSegment {
+	public fun <init> (Lsk/ainet/frontend/image/RgbImage;)V
+	public final fun getImage ()Lsk/ainet/frontend/image/RgbImage;
+}
+
+public final class sk/ainet/frontend/InputSegment$Text : sk/ainet/frontend/InputSegment {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lsk/ainet/frontend/InputSegment$Text;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/InputSegment$Text;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/frontend/InputSegment$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getText ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/frontend/InvertibleFrontEnd : sk/ainet/frontend/FrontEnd {
+	public abstract fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class sk/ainet/frontend/Modality : java/lang/Enum {
+	public static final field AUDIO Lsk/ainet/frontend/Modality;
+	public static final field COMPOSITE Lsk/ainet/frontend/Modality;
+	public static final field IMAGE Lsk/ainet/frontend/Modality;
+	public static final field TEXT Lsk/ainet/frontend/Modality;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/frontend/Modality;
+	public static fun values ()[Lsk/ainet/frontend/Modality;
+}
+
+public final class sk/ainet/frontend/ModelInputs {
+	public fun <init> ([I[ILjava/util/List;Ljava/util/List;Ljava/util/List;)V
+	public final fun getAttentionMask ()[I
+	public final fun getAudio ()Ljava/util/List;
+	public final fun getImages ()Ljava/util/List;
+	public final fun getPlaceholders ()Ljava/util/List;
+	public final fun getTokenIds ()[I
+}
+
+public final class sk/ainet/frontend/MultimodalInput {
+	public static final field Companion Lsk/ainet/frontend/MultimodalInput$Companion;
+	public fun <init> (Ljava/util/List;)V
+	public final fun getSegments ()Ljava/util/List;
+}
+
+public final class sk/ainet/frontend/MultimodalInput$Companion {
+	public final fun text (Ljava/lang/String;)Lsk/ainet/frontend/MultimodalInput;
+}
+
+public abstract interface class sk/ainet/frontend/PlaceholderPolicy {
+	public abstract fun getName ()Ljava/lang/String;
+	public abstract fun placeholderTokens (Lsk/ainet/frontend/Modality;Ljava/lang/Object;Lsk/ainet/frontend/text/Vocabulary;)[I
+}
+
+public final class sk/ainet/frontend/PlaceholderSpan {
+	public fun <init> (Lsk/ainet/frontend/Modality;III)V
+	public final fun component1 ()Lsk/ainet/frontend/Modality;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun copy (Lsk/ainet/frontend/Modality;III)Lsk/ainet/frontend/PlaceholderSpan;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/PlaceholderSpan;Lsk/ainet/frontend/Modality;IIIILjava/lang/Object;)Lsk/ainet/frontend/PlaceholderSpan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIndex ()I
+	public final fun getLength ()I
+	public final fun getModality ()Lsk/ainet/frontend/Modality;
+	public final fun getStart ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/frontend/StreamingFrontEnd : sk/ainet/frontend/FrontEnd {
+	public abstract fun openStream ()Lsk/ainet/frontend/FrontEndStream;
+}
+
+public class sk/ainet/frontend/UnsupportedFrontEndException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class sk/ainet/frontend/audio/AudioFeatures {
+	public fun <init> (Lsk/ainet/lang/tensor/Tensor;FI)V
+	public final fun getFrameHopMillis ()F
+	public final fun getTensor ()Lsk/ainet/lang/tensor/Tensor;
+	public final fun getValidFrames ()I
+}
+
+public abstract interface class sk/ainet/frontend/audio/AudioFrontEnd : sk/ainet/frontend/StreamingFrontEnd {
+	public abstract fun getChunkMillis ()Ljava/lang/Integer;
+	public abstract fun getExpectedSampleRate ()I
+}
+
+public final class sk/ainet/frontend/audio/PcmAudio {
+	public fun <init> ([FII)V
+	public synthetic fun <init> ([FIIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getChannels ()I
+	public final fun getDurationMillis ()F
+	public final fun getFrames ()I
+	public final fun getSampleRate ()I
+	public final fun getSamples ()[F
+}
+
+public final class sk/ainet/frontend/image/ImageFeatures {
+	public fun <init> (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/frontend/image/ImageGeometry;)V
+	public final fun getGeometry ()Lsk/ainet/frontend/image/ImageGeometry;
+	public final fun getTensor ()Lsk/ainet/lang/tensor/Tensor;
+}
+
+public abstract interface class sk/ainet/frontend/image/ImageFrontEnd : sk/ainet/frontend/FrontEnd {
+	public abstract fun getInputSize ()Lkotlin/Pair;
+}
+
+public final class sk/ainet/frontend/image/ImageGeometry {
+	public fun <init> (IIFII)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()F
+	public final fun component4 ()I
+	public final fun component5 ()I
+	public final fun copy (IIFII)Lsk/ainet/frontend/image/ImageGeometry;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/image/ImageGeometry;IIFIIILjava/lang/Object;)Lsk/ainet/frontend/image/ImageGeometry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPadLeft ()I
+	public final fun getPadTop ()I
+	public final fun getScale ()F
+	public final fun getSrcHeight ()I
+	public final fun getSrcWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/image/RgbImage {
+	public fun <init> (II[B)V
+	public final fun getHeight ()I
+	public final fun getRgb ()[B
+	public final fun getWidth ()I
+}
+
+public final class sk/ainet/frontend/text/ArrayVocabulary : sk/ainet/frontend/text/Vocabulary {
+	public fun <init> (Ljava/util/List;)V
+	public fun getSize ()I
+	public fun idToToken (I)Ljava/lang/String;
+	public fun tokenToId (Ljava/lang/String;)Ljava/lang/Integer;
+}
+
+public final class sk/ainet/frontend/text/BatchEncoding {
+	public fun <init> (II[I[I[I)V
+	public final fun getAttentionMask ()[I
+	public final fun getBatchSize ()I
+	public final fun getIds ()[I
+	public final fun getSeqLen ()I
+	public final fun getTokenTypeIds ()[I
+	public final fun row (I)[I
+}
+
+public abstract interface class sk/ainet/frontend/text/BatchTokenizer : sk/ainet/frontend/text/Tokenizer {
+	public fun encodeBatch (Ljava/util/List;Lsk/ainet/frontend/text/Padding;Lsk/ainet/frontend/text/Truncation;)Lsk/ainet/frontend/text/BatchEncoding;
+	public static synthetic fun encodeBatch$default (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/util/List;Lsk/ainet/frontend/text/Padding;Lsk/ainet/frontend/text/Truncation;ILjava/lang/Object;)Lsk/ainet/frontend/text/BatchEncoding;
+	public abstract fun encodeWithMetadata (Ljava/lang/String;Ljava/lang/String;Lsk/ainet/frontend/text/Truncation;)Lsk/ainet/frontend/text/Encoding;
+	public static synthetic fun encodeWithMetadata$default (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/frontend/text/Truncation;ILjava/lang/Object;)Lsk/ainet/frontend/text/Encoding;
+}
+
+public final class sk/ainet/frontend/text/BatchTokenizer$DefaultImpls {
+	public static fun decode (Lsk/ainet/frontend/text/BatchTokenizer;[IZ)Ljava/lang/String;
+	public static fun decodeToken (Lsk/ainet/frontend/text/BatchTokenizer;I)Ljava/lang/String;
+	public static fun encode (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/lang/String;Z)[I
+	public static fun encodeBatch (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/util/List;Lsk/ainet/frontend/text/Padding;Lsk/ainet/frontend/text/Truncation;)Lsk/ainet/frontend/text/BatchEncoding;
+	public static synthetic fun encodeBatch$default (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/util/List;Lsk/ainet/frontend/text/Padding;Lsk/ainet/frontend/text/Truncation;ILjava/lang/Object;)Lsk/ainet/frontend/text/BatchEncoding;
+	public static synthetic fun encodeWithMetadata$default (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/lang/String;Ljava/lang/String;Lsk/ainet/frontend/text/Truncation;ILjava/lang/Object;)Lsk/ainet/frontend/text/Encoding;
+	public static fun getBosTokenId (Lsk/ainet/frontend/text/BatchTokenizer;)Ljava/lang/Integer;
+	public static fun getEosTokenId (Lsk/ainet/frontend/text/BatchTokenizer;)Ljava/lang/Integer;
+	public static fun getSpec (Lsk/ainet/frontend/text/BatchTokenizer;)Lsk/ainet/frontend/FrontEndSpec;
+	public static fun getVocabSize (Lsk/ainet/frontend/text/BatchTokenizer;)I
+	public static fun invert (Lsk/ainet/frontend/text/BatchTokenizer;[I)Ljava/lang/String;
+	public static fun process (Lsk/ainet/frontend/text/BatchTokenizer;Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/text/Encoding {
+	public fun <init> ([I[I[I[I[Lkotlin/ranges/IntRange;)V
+	public synthetic fun <init> ([I[I[I[I[Lkotlin/ranges/IntRange;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttentionMask ()[I
+	public final fun getIds ()[I
+	public final fun getLength ()I
+	public final fun getOffsets ()[Lkotlin/ranges/IntRange;
+	public final fun getSpecialTokensMask ()[I
+	public final fun getTokenTypeIds ()[I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/text/MapVocabulary : sk/ainet/frontend/text/Vocabulary {
+	public fun <init> (Ljava/util/Map;)V
+	public fun getSize ()I
+	public fun idToToken (I)Ljava/lang/String;
+	public fun tokenToId (Ljava/lang/String;)Ljava/lang/Integer;
+}
+
+public abstract interface class sk/ainet/frontend/text/Padding {
+}
+
+public final class sk/ainet/frontend/text/Padding$Fixed : sk/ainet/frontend/text/Padding {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lsk/ainet/frontend/text/Padding$Fixed;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/text/Padding$Fixed;IILjava/lang/Object;)Lsk/ainet/frontend/text/Padding$Fixed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLength ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/text/Padding$Longest : sk/ainet/frontend/text/Padding {
+	public static final field INSTANCE Lsk/ainet/frontend/text/Padding$Longest;
+}
+
+public abstract interface class sk/ainet/frontend/text/PromptRenderer {
+}
+
+public final class sk/ainet/frontend/text/SpecialTokens {
+	public static final field Companion Lsk/ainet/frontend/text/SpecialTokens$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZZLjava/util/Set;Ljava/util/Set;)V
+	public synthetic fun <init> (Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZZLjava/util/Set;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/Integer;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun component3 ()Ljava/lang/Integer;
+	public final fun component4 ()Ljava/lang/Integer;
+	public final fun component5 ()Z
+	public final fun component6 ()Z
+	public final fun component7 ()Ljava/util/Set;
+	public final fun component8 ()Ljava/util/Set;
+	public final fun copy (Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZZLjava/util/Set;Ljava/util/Set;)Lsk/ainet/frontend/text/SpecialTokens;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/text/SpecialTokens;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;ZZLjava/util/Set;Ljava/util/Set;ILjava/lang/Object;)Lsk/ainet/frontend/text/SpecialTokens;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddBos ()Z
+	public final fun getAddEos ()Z
+	public final fun getAllSpecialIds ()Ljava/util/Set;
+	public final fun getBos ()Ljava/lang/Integer;
+	public final fun getDeclared ()Ljava/util/Set;
+	public final fun getEos ()Ljava/lang/Integer;
+	public final fun getExtraStop ()Ljava/util/Set;
+	public final fun getPad ()Ljava/lang/Integer;
+	public final fun getStopIds ()Ljava/util/Set;
+	public final fun getUnk ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public final fun surround ([I)[I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/text/SpecialTokens$Companion {
+	public final fun getNONE ()Lsk/ainet/frontend/text/SpecialTokens;
+}
+
+public final class sk/ainet/frontend/text/TextFrontEnd : sk/ainet/frontend/FrontEnd {
+	public fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;Lsk/ainet/frontend/text/PromptRenderer;)V
+	public synthetic fun <init> (Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;Lsk/ainet/frontend/text/PromptRenderer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun copy (Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;Lsk/ainet/frontend/text/PromptRenderer;)Lsk/ainet/frontend/text/TextFrontEnd;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/text/TextFrontEnd;Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;Lsk/ainet/frontend/text/PromptRenderer;ILjava/lang/Object;)Lsk/ainet/frontend/text/TextFrontEnd;
+	public final fun getChatTemplateSource ()Ljava/lang/String;
+	public final fun getPromptRenderer ()Lsk/ainet/frontend/text/PromptRenderer;
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public final fun getTokenizer ()Lsk/ainet/frontend/text/Tokenizer;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public abstract interface class sk/ainet/frontend/text/Tokenizer : sk/ainet/frontend/InvertibleFrontEnd {
+	public abstract fun decode ([I)Ljava/lang/String;
+	public fun decode ([IZ)Ljava/lang/String;
+	public fun decodeToken (I)Ljava/lang/String;
+	public abstract fun encode (Ljava/lang/String;)[I
+	public fun encode (Ljava/lang/String;Z)[I
+	public fun getBosTokenId ()Ljava/lang/Integer;
+	public fun getEosTokenId ()Ljava/lang/Integer;
+	public fun getSpec ()Lsk/ainet/frontend/FrontEndSpec;
+	public abstract fun getSpecialTokens ()Lsk/ainet/frontend/text/SpecialTokens;
+	public fun getVocabSize ()I
+	public abstract fun getVocabulary ()Lsk/ainet/frontend/text/Vocabulary;
+	public synthetic fun invert (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun invert ([I)Ljava/lang/String;
+	public synthetic fun process (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun process (Ljava/lang/String;)[I
+}
+
+public final class sk/ainet/frontend/text/Tokenizer$DefaultImpls {
+	public static fun decode (Lsk/ainet/frontend/text/Tokenizer;[IZ)Ljava/lang/String;
+	public static fun decodeToken (Lsk/ainet/frontend/text/Tokenizer;I)Ljava/lang/String;
+	public static fun encode (Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;Z)[I
+	public static fun getBosTokenId (Lsk/ainet/frontend/text/Tokenizer;)Ljava/lang/Integer;
+	public static fun getEosTokenId (Lsk/ainet/frontend/text/Tokenizer;)Ljava/lang/Integer;
+	public static fun getSpec (Lsk/ainet/frontend/text/Tokenizer;)Lsk/ainet/frontend/FrontEndSpec;
+	public static fun getVocabSize (Lsk/ainet/frontend/text/Tokenizer;)I
+	public static fun invert (Lsk/ainet/frontend/text/Tokenizer;[I)Ljava/lang/String;
+	public static fun process (Lsk/ainet/frontend/text/Tokenizer;Ljava/lang/String;)[I
+}
+
+public abstract interface class sk/ainet/frontend/text/Truncation {
+}
+
+public final class sk/ainet/frontend/text/Truncation$Longest : sk/ainet/frontend/text/Truncation {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Lsk/ainet/frontend/text/Truncation$Longest;
+	public static synthetic fun copy$default (Lsk/ainet/frontend/text/Truncation$Longest;IILjava/lang/Object;)Lsk/ainet/frontend/text/Truncation$Longest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMaxLength ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/frontend/text/Truncation$None : sk/ainet/frontend/text/Truncation {
+	public static final field INSTANCE Lsk/ainet/frontend/text/Truncation$None;
+}
+
+public abstract interface class sk/ainet/frontend/text/Vocabulary {
+	public abstract fun getSize ()I
+	public abstract fun idToToken (I)Ljava/lang/String;
+	public abstract fun tokenToId (Ljava/lang/String;)Ljava/lang/Integer;
+}
+

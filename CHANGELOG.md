@@ -2,6 +2,59 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Input front ends and model identity (SKEEP-006, draft).** Three new modules:
+  `skainet-model-identity` (`ModelIdentity`, `CheckpointView`, `ModelFamilyDescriptor`, the
+  immutable `ModelFamilyRegistry`; `ModelFormat`, `NameMap`, `RoleTableNameMap` and
+  `TransformerNameMaps` moved here), `skainet-frontend-core` (`FrontEnd<I, O>`, `FrontEndSpec`,
+  the text contract `Tokenizer` / `Vocabulary` / `SpecialTokens` / `Encoding` / `BatchTokenizer` /
+  `TextFrontEnd`, the audio and image contracts, multimodal composition, `FrontEndProvider`,
+  `FrontEndResolver`) and `skainet-frontend-text` (every tokenizer algorithm plus the
+  `TextFrontEnds` provider and static entry points). All three carry binary-compatibility dumps
+  from the start; `skainet-io-core` gains its first dump.
+- **Tokenizer coverage.** `tokenizer.json` files with `model.type: BPE` and a Metaspace
+  pre-tokenizer or byte fallback (Llama 2, TinyLlama, mmBERT) encode and decode through the new
+  `MetaspaceBpeTokenizer` (#912 decode, #1326 encode); `Unigram` files use the Viterbi lattice
+  (`UnigramTokenizer`, T5 / ALBERT / Gemma exports); `WordPiece` files and `vocab.txt` are
+  supported (`WordPieceTokenizer`, with `encodeWithMetadata` for BERT-class encoders); Tekken is
+  reachable from the resolver; `tokenizer_config.json` is read for bos/eos/pad/unk names, the
+  add-bos/add-eos flags and the chat template. A golden corpus recorded with the Hugging Face
+  `tokenizers` library (0.23.3) over GPT-2, Qwen2.5, TinyLlama, T5, BERT and the two public Laya
+  tokenizers guards exact id parity, including special tokens, emoji, CJK, decomposed characters
+  and leading/trailing whitespace.
+- `GgufCheckpointView` (`skainet-io-gguf`) and `HfDirectoryCheckpointView` (`skainet-io-safetensors`):
+  the per-format `CheckpointView` implementations the resolver consumes.
+
+### Fixed
+- `tokenizer.json` added tokens keep their `lstrip` / `rstrip` / `single_word` flags through `SpecialTokenSplitter`, so the whitespace before an `lstrip` token such as the ModernBERT / mmBERT `<mask>` belongs to the special token as in the reference library (SKEEP-006, #1324 corpus).
+
+- **`tokenizer.json` parity for byte-level BPE** (#1321): the array form of `model.merges`
+  written by every `tokenizers` release since 0.20 loads (#1323); every `added_tokens` entry is
+  matched atomically and counted in `vocabSize`, special or not (#1324); the `normalizer` block
+  (`NFC`, `Replace`, `Prepend`, `Sequence`, `Lowercase`, `BertNormalizer`, …) is applied and
+  unknown normalizer types fail loudly instead of being skipped (#1325); `Split` regex
+  pre-tokenizers (Qwen) are honoured.
+
+### Changed
+
+- **`sk.ainet.io.tokenizer.*`, `sk.ainet.io.model.ModelFormat`, `sk.ainet.io.weights.NameMap` /
+  `RoleTableNameMap` / `TransformerNameMaps` are deprecated aliases** (WARNING; ERROR in 0.59,
+  removed in 0.60) of their new homes. `TokenizerFactory` stays a real object forwarding to the
+  resolver — its `@JvmStatic fromGguf` / `fromTokenizerJson` keep their signatures and
+  `UnsupportedTokenizerException` now extends `UnsupportedFrontEndException`. `WordPiece` and
+  `Unigram` sources that threw `UnsupportedTokenizerException` at 0.57 now load.
+- `Tokenizer.encode(text)` and `decode(ids)` keep their 0.57 meaning (no bos/eos added, specials
+  rendered); the new `encode(text, addSpecialTokens)` and `decode(ids, skipSpecialTokens)`
+  overloads apply the checkpoint's policy. `vocabSize` counts added tokens above `model.vocab`
+  (ModernBERT: 50368, not 50280). `TekkenTokenizer.vocabSize` is the total id space (specials
+  included); the vocab-only count is `vocabTokenCount`. `SentencePieceTokenizer.decode(ids,
+  stripLeadingSpace)` is renamed `decodeRaw(ids, stripLeadingSpace)` because the contract's
+  `decode(ids, skipSpecialTokens)` has the same JVM signature.
+- `ModelArchitecture.fromGguf`, `TransformerNameMaps.Gguf.forArchitecture` and
+  `ModelLoaderRegistry` (plus its two descriptors) are deprecated in favour of
+  `ModelFamilyRegistry`; `StreamingGGUFReader.nameMap()` resolves through the registry.
+
 ## [0.57.0] - 2026-09-24
 
 Headline: **grouped-query KV-cache graphs export with an attention mask, and the toolchain moves to

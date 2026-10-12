@@ -108,13 +108,13 @@ private fun OnnxModelParser.buildMetadataFromReader(reader: StreamingOnnxReader,
     // Trigger the same initialization that parseWithStreaming does
     // by calling setInitialized through the public interface
     val metadata = sk.ainet.io.model.ModelMetadata(
-        format = sk.ainet.io.model.ModelFormat.ONNX,
+        format = sk.ainet.model.ModelFormat.ONNX,
         isValid = true
     )
 
     // Set model info through the base class mechanism
     this.asDynamic()._modelInfo = sk.ainet.io.model.ModelInfo(
-        format = sk.ainet.io.model.ModelFormat.ONNX,
+        format = sk.ainet.model.ModelFormat.ONNX,
         version = reader.modelVersion.toString(),
         producer = reader.producerName.takeIf { it.isNotBlank() },
         domain = reader.domain.takeIf { it.isNotBlank() },
@@ -137,7 +137,7 @@ private fun OnnxModelParser.buildMetadataFromReader(reader: StreamingOnnxReader,
                 dataType = mapOnnxDataTypeJs(st.dataType),
                 elementCount = st.nElements,
                 sizeInBytes = st.estimatedBytes.toLong(),
-                format = sk.ainet.io.model.ModelFormat.ONNX,
+                format = sk.ainet.model.ModelFormat.ONNX,
                 nativeDType = st.dataTypeName
             )
         } catch (e: Exception) {

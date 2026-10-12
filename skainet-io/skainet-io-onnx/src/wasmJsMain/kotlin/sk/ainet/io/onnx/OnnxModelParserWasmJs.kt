@@ -5,7 +5,7 @@ import sk.ainet.io.JsBlobRandomAccessSource
 import sk.ainet.io.model.ModelMetadata
 import sk.ainet.io.model.ModelInfo
 import sk.ainet.io.model.TensorInfo
-import sk.ainet.io.model.ModelFormat
+import sk.ainet.model.ModelFormat
 import sk.ainet.io.model.DataType
 
 /**

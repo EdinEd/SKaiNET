@@ -1,0 +1,188 @@
+public abstract interface class sk/ainet/model/CheckpointView {
+	public static final field Companion Lsk/ainet/model/CheckpointView$Companion;
+	public static final field FRONTEND_JSON Ljava/lang/String;
+	public static final field PREPROCESSOR_CONFIG_JSON Ljava/lang/String;
+	public static final field SPECIAL_TOKENS_MAP_JSON Ljava/lang/String;
+	public static final field TEKKEN_JSON Ljava/lang/String;
+	public static final field TOKENIZER_CONFIG_JSON Ljava/lang/String;
+	public static final field TOKENIZER_JSON Ljava/lang/String;
+	public static final field VOCAB_TXT Ljava/lang/String;
+	public abstract fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public abstract fun getMetadata ()Ljava/util/Map;
+	public abstract fun listSideFiles ()Ljava/util/Set;
+	public abstract fun sideFile (Ljava/lang/String;)[B
+	public fun sideFileText (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/model/CheckpointView$Companion {
+	public static final field FRONTEND_JSON Ljava/lang/String;
+	public static final field PREPROCESSOR_CONFIG_JSON Ljava/lang/String;
+	public static final field SPECIAL_TOKENS_MAP_JSON Ljava/lang/String;
+	public static final field TEKKEN_JSON Ljava/lang/String;
+	public static final field TOKENIZER_CONFIG_JSON Ljava/lang/String;
+	public static final field TOKENIZER_JSON Ljava/lang/String;
+	public static final field VOCAB_TXT Ljava/lang/String;
+	public final fun getKNOWN_SIDE_FILES ()Ljava/util/Set;
+}
+
+public final class sk/ainet/model/CheckpointView$DefaultImpls {
+	public static fun sideFileText (Lsk/ainet/model/CheckpointView;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/model/InMemoryCheckpointView : sk/ainet/model/CheckpointView {
+	public static final field Companion Lsk/ainet/model/InMemoryCheckpointView$Companion;
+	public fun <init> (Lsk/ainet/model/ModelFormat;Ljava/util/Map;Ljava/util/Map;)V
+	public synthetic fun <init> (Lsk/ainet/model/ModelFormat;Ljava/util/Map;Ljava/util/Map;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public fun getMetadata ()Ljava/util/Map;
+	public fun listSideFiles ()Ljava/util/Set;
+	public fun sideFile (Ljava/lang/String;)[B
+	public fun sideFileText (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class sk/ainet/model/InMemoryCheckpointView$Companion {
+	public final fun ofText (Lsk/ainet/model/ModelFormat;Ljava/util/Map;Ljava/util/Map;)Lsk/ainet/model/InMemoryCheckpointView;
+	public static synthetic fun ofText$default (Lsk/ainet/model/InMemoryCheckpointView$Companion;Lsk/ainet/model/ModelFormat;Ljava/util/Map;Ljava/util/Map;ILjava/lang/Object;)Lsk/ainet/model/InMemoryCheckpointView;
+}
+
+public abstract interface class sk/ainet/model/ModelFamilyDescriptor {
+	public abstract fun getArchitectures ()Ljava/util/Set;
+	public abstract fun getFamily ()Ljava/lang/String;
+	public fun nameMap (Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/ModelFamilyDescriptor$DefaultImpls {
+	public static fun nameMap (Lsk/ainet/model/ModelFamilyDescriptor;Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/ModelFamilyRegistry {
+	public static final field Companion Lsk/ainet/model/ModelFamilyRegistry$Companion;
+	public static final field UNKNOWN_ARCHITECTURE Ljava/lang/String;
+	public synthetic fun <init> (Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun descriptorFor (Lsk/ainet/model/ModelIdentity;)Lsk/ainet/model/ModelFamilyDescriptor;
+	public final fun descriptorForArchitecture (Ljava/lang/String;)Lsk/ainet/model/ModelFamilyDescriptor;
+	public final fun descriptorForFamily (Ljava/lang/String;)Lsk/ainet/model/ModelFamilyDescriptor;
+	public final fun getAll ()Ljava/util/List;
+	public final fun getFamilies ()Ljava/util/List;
+	public final fun identify (Lsk/ainet/model/CheckpointView;)Lsk/ainet/model/ModelIdentity;
+	public final fun nameMapFor (Lsk/ainet/model/ModelIdentity;)Lsk/ainet/model/NameMap;
+	public final fun plus (Ljava/lang/Iterable;)Lsk/ainet/model/ModelFamilyRegistry;
+	public final fun plus (Lsk/ainet/model/ModelFamilyDescriptor;)Lsk/ainet/model/ModelFamilyRegistry;
+}
+
+public final class sk/ainet/model/ModelFamilyRegistry$Companion {
+	public final fun architectureOf (Ljava/util/Map;)Ljava/lang/String;
+	public final fun getARCHITECTURE_KEYS ()Ljava/util/List;
+	public final fun getBuiltIn ()Lsk/ainet/model/ModelFamilyRegistry;
+	public final fun getEmpty ()Lsk/ainet/model/ModelFamilyRegistry;
+	public final fun of ([Lsk/ainet/model/ModelFamilyDescriptor;)Lsk/ainet/model/ModelFamilyRegistry;
+}
+
+public final class sk/ainet/model/ModelFormat : java/lang/Enum {
+	public static final field Companion Lsk/ainet/model/ModelFormat$Companion;
+	public static final field GGUF Lsk/ainet/model/ModelFormat;
+	public static final field ONNX Lsk/ainet/model/ModelFormat;
+	public static final field SAFETENSORS Lsk/ainet/model/ModelFormat;
+	public final fun getDisplayName ()Ljava/lang/String;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getExtension ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/model/ModelFormat;
+	public static fun values ()[Lsk/ainet/model/ModelFormat;
+}
+
+public final class sk/ainet/model/ModelFormat$Companion {
+	public final fun fromExtension (Ljava/lang/String;)Lsk/ainet/model/ModelFormat;
+	public final fun fromFilePath (Ljava/lang/String;)Lsk/ainet/model/ModelFormat;
+}
+
+public final class sk/ainet/model/ModelIdentity {
+	public fun <init> (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lsk/ainet/model/ModelFormat;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lsk/ainet/model/ModelIdentity;
+	public static synthetic fun copy$default (Lsk/ainet/model/ModelIdentity;Lsk/ainet/model/ModelFormat;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/model/ModelIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArchitecture ()Ljava/lang/String;
+	public final fun getFamily ()Ljava/lang/String;
+	public final fun getFormat ()Lsk/ainet/model/ModelFormat;
+	public final fun getLabel ()Ljava/lang/String;
+	public final fun getVariant ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class sk/ainet/model/NameMap {
+	public abstract fun getFamily ()Ljava/lang/String;
+	public abstract fun getFormat ()Ljava/lang/String;
+	public abstract fun toCheckpointName (Lsk/ainet/lang/tensor/TensorId;)Ljava/lang/String;
+	public abstract fun toTensorId (Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+	public fun toTensorIds (Ljava/lang/Iterable;)Ljava/util/Map;
+	public fun unmapped (Ljava/lang/Iterable;)Ljava/util/List;
+}
+
+public final class sk/ainet/model/NameMap$DefaultImpls {
+	public static fun toTensorIds (Lsk/ainet/model/NameMap;Ljava/lang/Iterable;)Ljava/util/Map;
+	public static fun unmapped (Lsk/ainet/model/NameMap;Ljava/lang/Iterable;)Ljava/util/List;
+}
+
+public final class sk/ainet/model/RoleTableNameMap : sk/ainet/model/NameMap {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getFamily ()Ljava/lang/String;
+	public fun getFormat ()Ljava/lang/String;
+	public fun toCheckpointName (Lsk/ainet/lang/tensor/TensorId;)Ljava/lang/String;
+	public fun toTensorId (Ljava/lang/String;)Lsk/ainet/lang/tensor/TensorId;
+	public fun toTensorIds (Ljava/lang/Iterable;)Ljava/util/Map;
+	public fun unmapped (Ljava/lang/Iterable;)Ljava/util/List;
+}
+
+public final class sk/ainet/model/TransformerNameMaps {
+	public static final field INSTANCE Lsk/ainet/model/TransformerNameMaps;
+}
+
+public final class sk/ainet/model/TransformerNameMaps$Gguf {
+	public static final field INSTANCE Lsk/ainet/model/TransformerNameMaps$Gguf;
+	public final fun forArchitecture (Ljava/lang/String;)Lsk/ainet/model/NameMap;
+	public final fun getGemma3 ()Lsk/ainet/model/NameMap;
+	public final fun getLlama ()Lsk/ainet/model/NameMap;
+	public final fun getQwen2 ()Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/TransformerNameMaps$Hf {
+	public static final field INSTANCE Lsk/ainet/model/TransformerNameMaps$Hf;
+	public final fun getGemma3 ()Lsk/ainet/model/NameMap;
+	public final fun getLlama ()Lsk/ainet/model/NameMap;
+	public final fun getQwen2 ()Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/families/BertFamilyDescriptor : sk/ainet/model/ModelFamilyDescriptor {
+	public static final field INSTANCE Lsk/ainet/model/families/BertFamilyDescriptor;
+	public fun getArchitectures ()Ljava/util/Set;
+	public fun getFamily ()Ljava/lang/String;
+	public fun nameMap (Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/families/GemmaFamilyDescriptor : sk/ainet/model/ModelFamilyDescriptor {
+	public static final field INSTANCE Lsk/ainet/model/families/GemmaFamilyDescriptor;
+	public fun getArchitectures ()Ljava/util/Set;
+	public fun getFamily ()Ljava/lang/String;
+	public fun nameMap (Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/families/LlamaFamilyDescriptor : sk/ainet/model/ModelFamilyDescriptor {
+	public static final field INSTANCE Lsk/ainet/model/families/LlamaFamilyDescriptor;
+	public fun getArchitectures ()Ljava/util/Set;
+	public fun getFamily ()Ljava/lang/String;
+	public fun nameMap (Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+
+public final class sk/ainet/model/families/QwenFamilyDescriptor : sk/ainet/model/ModelFamilyDescriptor {
+	public static final field INSTANCE Lsk/ainet/model/families/QwenFamilyDescriptor;
+	public fun getArchitectures ()Ljava/util/Set;
+	public fun getFamily ()Ljava/lang/String;
+	public fun nameMap (Lsk/ainet/model/ModelFormat;)Lsk/ainet/model/NameMap;
+}
+

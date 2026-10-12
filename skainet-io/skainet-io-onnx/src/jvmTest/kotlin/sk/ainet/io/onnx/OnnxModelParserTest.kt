@@ -1,7 +1,7 @@
 package sk.ainet.io.onnx
 
 import kotlinx.coroutines.test.runTest
-import sk.ainet.io.model.ModelFormat
+import sk.ainet.model.ModelFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

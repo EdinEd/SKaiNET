@@ -1,5 +1,7 @@
 package sk.ainet.io.model
 
+import sk.ainet.model.ModelFormat
+
 /**
  * Common interface for all model format parsers.
  *

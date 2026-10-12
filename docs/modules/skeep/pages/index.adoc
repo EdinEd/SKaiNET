@@ -130,4 +130,8 @@ Every proposal should include:
 | xref:skeep:005-schedules-structured-concurrency.adoc[SKEEP-005]
 | Implemented
 | Schedules — structured concurrency for the compute layer (algorithm/schedule split)
+
+| xref:skeep:006-input-frontends-and-model-identity.adoc[SKEEP-006]
+| Draft
+| Input front ends and model identity — one resolvable preprocessing contract (tokenizers first) keyed on a string-based family registry
 |===

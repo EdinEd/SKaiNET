@@ -21,6 +21,10 @@ private val ggufIdMap: Map<String, ModelArchitecture> = mapOf(
  * @param arch The architecture string from GGUF metadata (may be null)
  * @return The matching architecture, or [UNKNOWN][ModelArchitecture.UNKNOWN] if not recognized
  */
+@Deprecated(
+    "The enum cannot grow with new families; identify checkpoints through sk.ainet.model.ModelFamilyRegistry (SKEEP-006). Removed in 0.60.",
+    ReplaceWith("ModelFamilyRegistry.builtIn.identify(view)", "sk.ainet.model.ModelFamilyRegistry"),
+)
 public fun ModelArchitecture.Companion.fromGguf(arch: String?): ModelArchitecture =
     arch?.let { a -> ggufIdMap.entries.firstOrNull { it.key.equals(a, ignoreCase = true) }?.value }
         ?: ModelArchitecture.UNKNOWN

@@ -60,6 +60,7 @@ kotlin {
                 implementation(libs.kotlinx.coroutines)
                 implementation(project(":skainet-lang:skainet-lang-core"))
                 implementation(project(":skainet-io:skainet-io-core"))
+                implementation(libs.kotlinx.serialization.json)
             }
         }
         val commonTest by getting {

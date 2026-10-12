@@ -1,0 +1,453 @@
+{
+ "fixture": "t5-small",
+ "tokenizer_json": "t5-small-tokenizer.json",
+ "tokenizer_config_json": "t5-small-tokenizer_config.json",
+ "reference": "tokenizers 0.23.3",
+ "vocab_size": 32100,
+ "vocab_size_base": 32100,
+ "cases": [
+  {
+   "text": "Hello world",
+   "ids": [
+    8774,
+    296
+   ],
+   "ids_with_specials": [
+    8774,
+    296,
+    1
+   ],
+   "decode": "Hello world",
+   "decode_skip_special": "Hello world"
+  },
+  {
+   "text": "Bitte die doppelte Rechnung prüfen.",
+   "ids": [
+    11181,
+    67,
+    29132,
+    15,
+    20242,
+    28485,
+    5
+   ],
+   "ids_with_specials": [
+    11181,
+    67,
+    29132,
+    15,
+    20242,
+    28485,
+    5,
+    1
+   ],
+   "decode": "Bitte die doppelte Rechnung prüfen.",
+   "decode_skip_special": "Bitte die doppelte Rechnung prüfen."
+  },
+  {
+   "text": "Which department handles this request?",
+   "ids": [
+    4073,
+    3066,
+    13338,
+    48,
+    1690,
+    58
+   ],
+   "ids_with_specials": [
+    4073,
+    3066,
+    13338,
+    48,
+    1690,
+    58,
+    1
+   ],
+   "decode": "Which department handles this request?",
+   "decode_skip_special": "Which department handles this request?"
+  },
+  {
+   "text": "Straße, Übergrößen und Ärger – naïve café façade 😀👍🏽🏽 é",
+   "ids": [
+    5438,
+    5202,
+    15,
+    6,
+    3333,
+    19392,
+    29,
+    64,
+    3,
+    2,
+    52,
+    1304,
+    3,
+    104,
+    3,
+    29,
+    9,
+    2,
+    162,
+    11949,
+    24369,
+    3,
+    2,
+    3,
+    154
+   ],
+   "ids_with_specials": [
+    5438,
+    5202,
+    15,
+    6,
+    3333,
+    19392,
+    29,
+    64,
+    3,
+    2,
+    52,
+    1304,
+    3,
+    104,
+    3,
+    29,
+    9,
+    2,
+    162,
+    11949,
+    24369,
+    3,
+    2,
+    3,
+    154,
+    1
+   ],
+   "decode": "Straße, Übergrößen und <unk>rger – na<unk>ve café façade <unk> é",
+   "decode_skip_special": "Straße, Übergrößen und rger – nave café façade  é"
+  },
+  {
+   "text": "false: No duplicate is mentioned",
+   "ids": [
+    6136,
+    10,
+    465,
+    19197,
+    19,
+    2799
+   ],
+   "ids_with_specials": [
+    6136,
+    10,
+    465,
+    19197,
+    19,
+    2799,
+    1
+   ],
+   "decode": "false: No duplicate is mentioned",
+   "decode_skip_special": "false: No duplicate is mentioned"
+  },
+  {
+   "text": "   leading spaces and 12345 numbers, hyphen-ated words don't",
+   "ids": [
+    1374,
+    4856,
+    11,
+    3,
+    14574,
+    2128,
+    2302,
+    6,
+    3,
+    13397,
+    3225,
+    18,
+    920,
+    1234,
+    278,
+    31,
+    17
+   ],
+   "ids_with_specials": [
+    1374,
+    4856,
+    11,
+    3,
+    14574,
+    2128,
+    2302,
+    6,
+    3,
+    13397,
+    3225,
+    18,
+    920,
+    1234,
+    278,
+    31,
+    17,
+    1
+   ],
+   "decode": "leading spaces and 12345 numbers, hyphen-ated words don't",
+   "decode_skip_special": "leading spaces and 12345 numbers, hyphen-ated words don't"
+  },
+  {
+   "text": "trailing spaces   ",
+   "ids": [
+    5032,
+    53,
+    4856
+   ],
+   "ids_with_specials": [
+    5032,
+    53,
+    4856,
+    1
+   ],
+   "decode": "trailing spaces",
+   "decode_skip_special": "trailing spaces"
+  },
+  {
+   "text": "tabs\tand\nnewlines\r\nmixed",
+   "ids": [
+    3808,
+    7,
+    11,
+    126,
+    6972,
+    4838
+   ],
+   "ids_with_specials": [
+    3808,
+    7,
+    11,
+    126,
+    6972,
+    4838,
+    1
+   ],
+   "decode": "tabs and newlines mixed",
+   "decode_skip_special": "tabs and newlines mixed"
+  },
+  {
+   "text": "日本語のテキスト and 中文 mixed with English",
+   "ids": [
+    3,
+    2,
+    11,
+    3,
+    2,
+    4838,
+    28,
+    1566
+   ],
+   "ids_with_specials": [
+    3,
+    2,
+    11,
+    3,
+    2,
+    4838,
+    28,
+    1566,
+    1
+   ],
+   "decode": "<unk> and <unk> mixed with English",
+   "decode_skip_special": " and  mixed with English"
+  },
+  {
+   "text": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "ids": [
+    27,
+    31,
+    51,
+    417,
+    62,
+    31,
+    195,
+    31,
+    162,
+    612,
+    34,
+    6,
+    19,
+    29,
+    31,
+    17,
+    34,
+    58,
+    1877,
+    2534,
+    27904,
+    209,
+    23916
+   ],
+   "ids_with_specials": [
+    27,
+    31,
+    51,
+    417,
+    62,
+    31,
+    195,
+    31,
+    162,
+    612,
+    34,
+    6,
+    19,
+    29,
+    31,
+    17,
+    34,
+    58,
+    1877,
+    2534,
+    27904,
+    209,
+    23916,
+    1
+   ],
+   "decode": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000",
+   "decode_skip_special": "I'm sure we'll've done it, isn't it? 3.14159 1,000,000"
+  },
+  {
+   "text": "ÄÖÜ äöü ß — €100 £5 ¥300 ©2026 ½",
+   "ids": [
+    3,
+    2,
+    14858,
+    3,
+    1864,
+    1872,
+    1272,
+    3,
+    5202,
+    3,
+    318,
+    3416,
+    2915,
+    23978,
+    3,
+    2,
+    5426,
+    3,
+    2,
+    1755,
+    2688,
+    209,
+    2,
+    357
+   ],
+   "ids_with_specials": [
+    3,
+    2,
+    14858,
+    3,
+    1864,
+    1872,
+    1272,
+    3,
+    5202,
+    3,
+    318,
+    3416,
+    2915,
+    23978,
+    3,
+    2,
+    5426,
+    3,
+    2,
+    1755,
+    2688,
+    209,
+    2,
+    357,
+    1
+   ],
+   "decode": "<unk>Ü äöü ß — €100 £5 <unk>300 <unk>2026 1<unk>2",
+   "decode_skip_special": "Ü äöü ß — €100 £5 300 2026 12"
+  },
+  {
+   "text": "",
+   "ids": [],
+   "ids_with_specials": [
+    1
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": " ",
+   "ids": [],
+   "ids_with_specials": [
+    1
+   ],
+   "decode": "",
+   "decode_skip_special": ""
+  },
+  {
+   "text": "a",
+   "ids": [
+    3,
+    9
+   ],
+   "ids_with_specials": [
+    3,
+    9,
+    1
+   ],
+   "decode": "a",
+   "decode_skip_special": "a"
+  },
+  {
+   "text": "translate English to German: The house is wonderful.",
+   "ids": [
+    13959,
+    1566,
+    12,
+    2968,
+    10,
+    37,
+    629,
+    19,
+    1627,
+    5
+   ],
+   "ids_with_specials": [
+    13959,
+    1566,
+    12,
+    2968,
+    10,
+    37,
+    629,
+    19,
+    1627,
+    5,
+    1
+   ],
+   "decode": "translate English to German: The house is wonderful.",
+   "decode_skip_special": "translate English to German: The house is wonderful."
+  },
+  {
+   "text": "<extra_id_0> fill </s>",
+   "ids": [
+    32099,
+    14,
+    1
+   ],
+   "ids_with_specials": [
+    32099,
+    14,
+    1,
+    1
+   ],
+   "decode": "<extra_id_0> fill</s>",
+   "decode_skip_special": "fill"
+  }
+ ],
+ "pair": null
+}
