@@ -56,6 +56,24 @@ class DefaultCpuOpsJvmElementwiseTest {
     }
 
     @Test
+    fun erf_and_exact_gelu_match_scalar_reference_with_tails() {
+        val species = jdk.incubator.vector.FloatVector.SPECIES_PREFERRED.length()
+        val lengths = listOf(1, 3, 7, species - 1, species, species + 1, species * 2 + 5, 257)
+        val scalar = DefaultCpuOps(dataFactory)
+        val jvm = DefaultCpuOpsJvm(dataFactory)
+        for (n in lengths) {
+            val a = FloatArray(n) { -8f + 16f * it / n.coerceAtLeast(2) }
+            val tA = floatTensor(Shape(n), a)
+            // erf: lane-wise single-precision polynomial vs the double-evaluated scalar kernel
+            compareTensors(scalar.erf(tA), jvm.erf(tA), eps = 1e-6f)
+            // exact gelu: |x| up to 8, so allow two ulps at that magnitude
+            compareTensors(scalar.gelu(tA, approximate = false), jvm.gelu(tA, approximate = false), eps = 2e-6f)
+            // the tanh default must stay byte-identical: the JVM tier delegates to the base kernel
+            compareTensors(scalar.gelu(tA), jvm.gelu(tA), eps = 0f)
+        }
+    }
+
+    @Test
     fun vector_flag_on_and_off_produce_same_results() {
         val n = 257 // ensure tail
         val a = FloatArray(n) { (it - 128).toFloat() / 9f }

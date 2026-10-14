@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+- **`TensorOps.erf` and exact GELU** (#1342): `gelu(tensor, approximate: Boolean = true)` keeps the tanh form as the default and selects the exact `0.5·x·(1 + erf(x/√2))` with `approximate = false`, the form BERT-class encoders and the Laya decision models were trained with (the two differ by up to 4.7e-4 near |x| ≈ 2.7). CPU: Abramowitz–Stegun 7.1.26 erf evaluated in double (|err| < 1.5e-7) with a JVM Vector API lane kernel; `GELU(approximate)` module, `network {}` `gelu(approximate)`, Java `TensorJavaOps.gelu(a, approximate)` / `erf(a)` and `SequentialModelBuilder.gelu(approximate)`; exact backward rule and `erfBackward`.
+- **GELU carries its form as op metadata**: the flag is recorded as `parameters["approximate"]` on the graph node (`GeluOperation`, `ErfOperation`), read by `ComputeGraphExecutor`, the backward rule and the StableHLO converter, so the compiled path cannot silently diverge from eager execution. StableHLO lowers `erf` to `chlo.erf` and exact GELU to `0.5·x·(1 + chlo.erf(x·√½))`; one `GeluLowering` builder emits both forms.
+
+### Changed
+- `TensorOps.gelu` gained the `approximate` parameter: implementors of the interface must update the override (callers are source-compatible through the default). The legacy recording decorator now records `gelu`/`erf` as graph operations instead of delegating them unrecorded.
+
+### Fixed
+- `DefaultCpuOps.gelu` printed a literal `${tensor.dtype}` in its unsupported-dtype message.
+
 ## [0.58.0] - 2026-10-12
 
 Headline: **input front ends and model identity (SKEEP-006).** Tokenizers leave `skainet-io-core`

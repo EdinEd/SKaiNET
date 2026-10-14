@@ -153,11 +153,14 @@ class NetworkDslGenerator(
     }
 
     private fun getDefaultValue(param: ParameterInfo): String? {
-        // Handle known default values for activation parameters
+        // Handle known default values for activation parameters. KSP does not expose the
+        // default-value expression of an interface parameter, so this table is keyed by
+        // parameter name and must mirror the declaration in TensorOps.
         return when {
             param.name == "negativeSlope" && param.type.contains("Float") -> "0.01f"
             param.name == "alpha" && param.type.contains("Float") -> "1.0f"
             param.name == "dim" && param.type.contains("Int") -> "-1"
+            param.name == "approximate" && param.type.contains("Boolean") -> "true"
             param.defaultValue != null -> param.defaultValue
             param.isOptional -> when {
                 param.type.contains("Float") -> "0.0f"
@@ -175,6 +178,7 @@ class NetworkDslGenerator(
             "negativeSlope" -> "Controls the angle of the negative slope in LeakyReLU"
             "alpha" -> "Scale for the negative factor in ELU"
             "dim" -> "Dimension along which to compute the operation"
+            "approximate" -> "true = tanh approximation (default), false = exact erf form"
             else -> "Parameter for the activation function"
         }
     }

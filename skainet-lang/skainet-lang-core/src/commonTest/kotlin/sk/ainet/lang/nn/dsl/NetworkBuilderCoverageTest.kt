@@ -463,6 +463,21 @@ class NetworkBuilderCoverageTest {
     }
 
     @Test
+    fun testGeneratedGeluActivationDslExactForm() {
+        // The KSP-generated gelu(approximate, id) must default to the tanh form and accept the exact one
+        val net = definition<FP32, Float> {
+            sequential {
+                input(8)
+                dense(4) { weights { ones() }; bias { zeros() } }
+                gelu(approximate = false, id = "gelu_exact")
+                dense(2) { weights { ones() }; bias { zeros() } }
+                gelu(id = "gelu_default")
+            }
+        }
+        assertNotNull(net)
+    }
+
+    @Test
     fun testMultipleGeneratedActivationMethods() {
         // Test using multiple KSP-generated activation methods in one network
         val net = definition<FP32, Float> {
@@ -475,7 +490,7 @@ class NetworkBuilderCoverageTest {
                 dense(8) { weights { ones() }; bias { zeros() } }
                 elu(1.0f, "elu_1")
                 dense(4) { weights { ones() }; bias { zeros() } }
-                gelu("gelu_1")
+                gelu(id = "gelu_1")
                 dense(2) { weights { ones() }; bias { zeros() } }
                 sigmoid("output")
             }

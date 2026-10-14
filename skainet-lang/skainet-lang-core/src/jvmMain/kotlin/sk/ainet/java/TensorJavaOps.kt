@@ -162,12 +162,21 @@ public object TensorJavaOps {
         return ta.ops.silu(ta)
     }
 
-    /** GELU activation (Gaussian Error Linear Unit). */
+    /** GELU activation (Gaussian Error Linear Unit); `approximate = false` selects the exact erf form. */
     @JvmStatic
-    public fun gelu(a: Tensor<*, *>): Tensor<*, *> {
+    @JvmOverloads
+    public fun gelu(a: Tensor<*, *>, approximate: Boolean = true): Tensor<*, *> {
         @Suppress("UNCHECKED_CAST")
         val ta = a as Tensor<DType, Any?>
-        return ta.ops.gelu(ta)
+        return ta.ops.gelu(ta, approximate)
+    }
+
+    /** Element-wise Gauss error function. */
+    @JvmStatic
+    public fun erf(a: Tensor<*, *>): Tensor<*, *> {
+        @Suppress("UNCHECKED_CAST")
+        val ta = a as Tensor<DType, Any?>
+        return ta.ops.erf(ta)
     }
 
     /** Softmax along the given dimension. */

@@ -35,6 +35,9 @@ public class UnaryMathConverter : StableHloOperationConverter {
         "round" to "stablehlo.round_nearest_even",
         "cos" to "stablehlo.cosine",
         "sin" to "stablehlo.sine",
+        // StableHLO has no erf; CHLO's `chlo.erf` is what `chlo-legalize-to-stablehlo` expands
+        // (IREE's StableHLO input pipeline runs it). CHLO unary ops print `: inType -> outType`.
+        "erf" to "chlo.erf",
     )
 
     override val supportedOperations: Set<String> = opMap.keys
@@ -62,7 +65,11 @@ public class UnaryMathConverter : StableHloOperationConverter {
             ?: "tensor<?xf32>"
 
         val resultValue = context.nextTempValue()
-        val op = "$resultValue = $hloOp ${operands[0]} : $outputType"
+        val op = if (hloOp.startsWith("chlo.")) {
+            "$resultValue = $hloOp ${operands[0]} : $outputType -> $outputType"
+        } else {
+            "$resultValue = $hloOp ${operands[0]} : $outputType"
+        }
         context.emitOperation(op)
 
         return ConversionResult.Success(

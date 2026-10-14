@@ -914,6 +914,17 @@ public class DefaultGradientTape(
     }
 
     override fun geluBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        val approximate = attributes["approximate"] as? Boolean ?: true
+        if (!approximate) {
+            // Exact form: GELU(x) = x · Φ(x) with Φ(x) = 0.5 · (1 + erf(x / √2))
+            // dGELU/dx = Φ(x) + x · φ(x), φ(x) = exp(−x² / 2) / √(2π)
+            val x = inputs[0]
+            val ops = x.ops
+            val cdf = ops.mulScalar(ops.addScalar(ops.erf(ops.mulScalar(x, 0.7071067811865476)), 1.0), 0.5)
+            val pdf = ops.mulScalar(ops.exp(ops.mulScalar(ops.multiply(x, x), -0.5)), 0.3989422804014327)
+            val gradX = ops.add(cdf, ops.multiply(x, pdf))
+            return listOf(ops.multiply(upstream, gradX))
+        }
         // GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
         // dGELU(x)/dx = 0.5 * (1 + erf(x / sqrt(2))) + (x / sqrt(2*pi)) * exp(-x^2 / 2)
         // Using approximation:
@@ -1031,6 +1042,14 @@ public class DefaultGradientTape(
         val ops = upstream.ops
         val expX = ops.addScalar(output, 1f)
         return listOf(ops.multiply(upstream, expX))
+    }
+
+    override fun erfBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
+        // d(erf(x))/dx = (2 / √π) · exp(−x²)
+        val x = inputs[0]
+        val ops = x.ops
+        val gradX = ops.mulScalar(ops.exp(ops.mulScalar(ops.multiply(x, x), -1.0)), 1.1283791670955126)
+        return listOf(ops.multiply(upstream, gradX))
     }
 
     override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
@@ -1289,6 +1308,7 @@ public class DefaultGradientTape(
             "split" to ::splitBackward,
             "exp" to ::expBackward,
             "expm1" to ::expm1Backward,
+            "erf" to ::erfBackward,
             "sin" to ::sinBackward,
             "cos" to ::cosBackward,
             "tril" to ::trilBackward,

@@ -12,6 +12,8 @@ import sk.ainet.lang.tensor.data.DenseTensorDataFactory
 import sk.ainet.lang.tensor.ops.AddOperation
 import sk.ainet.lang.tensor.ops.Conv1dOperation
 import sk.ainet.lang.tensor.ops.Conv3dOperation
+import sk.ainet.lang.tensor.ops.ErfOperation
+import sk.ainet.lang.tensor.ops.GeluOperation
 import sk.ainet.lang.tensor.ops.ReluOperation
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.tensor.ops.VoidTensorOps
@@ -60,6 +62,32 @@ class SimpleExecutionTapeTest {
         // Basic shape and dtype sanity
         assertEquals(shape.dimensions.toList(), first.inputs[0].shape)
         assertEquals("FP32", first.inputs[0].dtype)
+    }
+
+    @Test
+    fun records_gelu_with_approximate_flag_and_erf() {
+        val shape = Shape(3)
+        val a = VoidOpsTensor<FP32, Float>(dataFactory.full(shape, FP32::class, 0.5f), FP32::class)
+
+        val tape = Execution.withTape {
+            val ops = Execution.recordingOps(VoidTensorOps())
+            val g = ops.gelu<FP32, Float>(a, approximate = false)
+            val h = ops.gelu<FP32, Float>(g)
+            ops.erf<FP32, Float>(h)
+        }
+
+        assertEquals(3, tape.operations.size, "gelu, gelu, erf must all be recorded")
+        val exact = tape.operations[0].operation
+        assertTrue(exact is GeluOperation<*, *>, "First op should be GeluOperation")
+        assertEquals(false, exact.parameters[GeluOperation.APPROXIMATE], "exact form must carry approximate=false")
+        assertFalse((exact as GeluOperation<*, *>).approximate)
+
+        val approx = tape.operations[1].operation
+        assertTrue(approx is GeluOperation<*, *>)
+        assertEquals(true, approx.parameters[GeluOperation.APPROXIMATE], "default must record approximate=true")
+
+        assertTrue(tape.operations[2].operation is ErfOperation<*, *>, "Third op should be ErfOperation")
+        assertEquals("erf", tape.operations[2].operation.name)
     }
 
     @Test

@@ -71,6 +71,8 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun divide$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun elu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun elu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun erf (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun erf$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun exp (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun exp$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun expm1 (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
@@ -81,8 +83,8 @@ public final class sk/ainet/lang/dag/GraphDslOpsGraphDslKt {
 	public static synthetic fun gather$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun ge (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun ge$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
-	public static final fun gelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
-	public static synthetic fun gelu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
+	public static final fun gelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ZLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
+	public static synthetic fun gelu$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;ZLjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun indexSelect (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;
 	public static synthetic fun indexSelect$default (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;Lsk/ainet/lang/dag/GraphValue;ILjava/lang/String;ILjava/lang/Object;)Lsk/ainet/lang/dag/GraphValue;
 	public static final fun leakyRelu (Lsk/ainet/lang/dag/DagBuilder;Lsk/ainet/lang/dag/GraphValue;FLjava/lang/String;)Lsk/ainet/lang/dag/GraphValue;

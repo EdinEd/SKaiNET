@@ -104,7 +104,9 @@ class GraphDslGenerator(
                     } else if (param.type == "sk.ainet.lang.tensor.ops.UpsampleMode") {
                         " = UpsampleMode.Nearest"
                     } else if (param.type == "kotlin.Boolean") {
+                        // Name-keyed defaults (KSP cannot read the declared expression); keep in sync with TensorOps.
                         if (param.name == "alignCorners") " = false"
+                        else if (param.name == "approximate") " = true"
                         else ""
                     } else ""
                 } else ""

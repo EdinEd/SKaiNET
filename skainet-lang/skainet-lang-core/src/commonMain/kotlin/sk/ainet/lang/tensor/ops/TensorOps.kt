@@ -219,9 +219,18 @@ public interface TensorOps {
     @Diff
     @ActivationDsl
     public fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V>
+    /**
+     * Gaussian Error Linear Unit.
+     *
+     * `approximate = true` (default) is the tanh form `0.5·x·(1 + tanh(√(2/π)·(x + 0.044715·x³)))`,
+     * numerically unchanged from earlier releases. `approximate = false` is the exact form
+     * `0.5·x·(1 + erf(x/√2))` used by BERT-class encoders trained with `hidden_act = "gelu"`;
+     * the two differ by at most ≈ 4.7e-4 (near |x| ≈ 2.7). The flag is recorded as the
+     * operation parameter `approximate` so the compiled path and exporters see the same choice.
+     */
     @Diff
     @ActivationDsl
-    public fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V>
+    public fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean = true): Tensor<T, V>
 
     // Reduction operations
     @Diff
@@ -356,6 +365,11 @@ public interface TensorOps {
     @Diff
     @ActivationDsl
     public fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V>
+
+    /** Element-wise Gauss error function `erf(x) = 2/√π · ∫₀ˣ e^(−t²) dt`, odd, saturating at ±1. */
+    @Diff
+    @ActivationDsl
+    public fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V>
 
     // Trigonometric operations
     @Diff
