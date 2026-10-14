@@ -325,6 +325,32 @@ class RgbEnhanceOp : HloConverter {
 }
 ----
 
+==== Fused ops and `stablehlo.composite`
+
+Some ops have a `LoweringSpec` (`sk.ainet.compile.hlo.lowering`): a namespaced composite name, the node parameters that become `composite_attributes`, a version, and one decomposition builder. Whether a target sees the composite or the primitives is decided per op by the target's `OpGranularityPolicy`:
+
+[source,kotlin]
+----
+// A target that has a fused GELU kernel keeps the op; everything else decomposes.
+val policy = FusedOpAllowList("my-npu", setOf("gelu"))
+val module = toStableHlo(graph, "main", target = "my-npu", granularity = policy)
+----
+
+[source,mlir]
+----
+%v8 = stablehlo.composite "skainet.gelu" %v7 {composite_attributes = {approximate = false},
+        decomposition = @skainet_gelu_approximate_false_128x768xf32, version = 1 : i32}
+        : (tensor<128x768xf32>) -> tensor<128x768xf32>
+...
+func.func private @skainet_gelu_approximate_false_128x768xf32(%arg0: tensor<128x768xf32>) -> tensor<128x768xf32> {
+  // the same lines the portable emission inlines
+}
+----
+
+The private decomposition functions follow the entry function in the module. A composite is replaceable by its decomposition by definition, so a vendor compiler may pattern-match `skainet.gelu` while `stablehlo-legalize-composite-to-call` (or plain inlining) restores the exact formula everywhere else. Specs today: `GeluLowering.spec` (`skainet.gelu`, attribute `approximate`) and `ErfLowering.spec` (`skainet.erf`).
+
+Targets that cannot lower `erf` at all register `GeluApproximationLegalizationPass` through `TargetOptimizers.registerDagPasses`; it rewrites `gelu(approximate = false)` to the tanh form and records `legalizedFrom` / `maxAbsError` on the node, so the substitution shows up in the pass diagnostics instead of happening silently.
+
 ==== Debugging HLO
 
 Use SKaiNET's built-in debugging tools:

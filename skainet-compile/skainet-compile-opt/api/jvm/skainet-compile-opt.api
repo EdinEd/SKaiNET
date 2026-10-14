@@ -121,6 +121,25 @@ public final class sk/ainet/compile/opt/passes/DtypeForwardPropagationPass : sk/
 	public fun getName ()Ljava/lang/String;
 }
 
+public final class sk/ainet/compile/opt/passes/GeluApproximationLegalizationPass : sk/ainet/compile/opt/GraphOptimizationPass {
+	public static final field APPROXIMATE Ljava/lang/String;
+	public static final field Companion Lsk/ainet/compile/opt/passes/GeluApproximationLegalizationPass$Companion;
+	public static final field LEGALIZED_FROM Ljava/lang/String;
+	public static final field MAX_ABS_ERROR Ljava/lang/String;
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;
+	public fun getName ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/opt/passes/GeluApproximationLegalizationPass$Companion {
+}
+
+public final class sk/ainet/compile/opt/passes/GeluApproximationLegalizationPassKt {
+	public static final field GELU_TANH_MAX_ABS_ERROR D
+}
+
 public final class sk/ainet/compile/opt/passes/LLMFusionPass : sk/ainet/compile/opt/GraphOptimizationPass {
 	public fun <init> ()V
 	public fun apply (Lsk/ainet/lang/graph/ComputeGraph;)Lsk/ainet/compile/opt/GraphOptimizationResult;

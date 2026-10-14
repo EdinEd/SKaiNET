@@ -109,6 +109,10 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
         assembled.appendLine("  func.func $functionSignature {")
         assembled.append(context.getContent())
         assembled.appendLine("  }")
+        val trailer = context.getModuleTrailer()
+        if (trailer.isNotEmpty()) {
+            assembled.append(trailer)
+        }
         assembled.appendLine("}")
 
         val content = assembled.toString()

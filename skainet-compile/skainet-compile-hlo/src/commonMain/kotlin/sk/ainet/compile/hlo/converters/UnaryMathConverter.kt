@@ -64,6 +64,14 @@ public class UnaryMathConverter : StableHloOperationConverter {
         val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?xf32>"
 
+        if (name == "erf") {
+            // erf has a lowering spec: chlo.erf inline, or a `skainet.erf` composite when the
+            // target's OpGranularityPolicy keeps it fused.
+            val emitter = ContextEmitter(context)
+            val resultValue = ErfLowering.spec.lower(context, emitter, operands[0], outputType, emptyMap())
+            return ConversionResult.Success(outputValueName = resultValue, emittedOperations = emitter.lines)
+        }
+
         val resultValue = context.nextTempValue()
         val op = if (hloOp.startsWith("chlo.")) {
             "$resultValue = $hloOp ${operands[0]} : $outputType -> $outputType"

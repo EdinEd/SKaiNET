@@ -47,6 +47,8 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
     private val valueTypes = mutableMapOf<String, String>()
     private val stringBuilder = StringBuilder()
     private val moduleDeclarationsBuilder = StringBuilder()
+    private val moduleTrailerBuilder = StringBuilder()
+    private val claimedSymbols = mutableSetOf<String>()
     private val externalParams = mutableListOf<ExternalParameterRef>()
     private var tempCounter = 0
 
@@ -169,6 +171,25 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
     public fun getModuleDeclarations(): String = moduleDeclarationsBuilder.toString()
 
     /**
+     * Emit a module-scope line that must follow the entry function — the private
+     * `func.func` decompositions a `stablehlo.composite` points at. They go *after*
+     * `@main` so text tooling that takes the first `func.func` as the entry
+     * ([sk.ainet.compile.hlo.validation.MlirParser]) keeps working.
+     */
+    public fun emitModuleTrailer(line: String) {
+        moduleTrailerBuilder.appendLine("  $line")
+    }
+
+    /** Every trailer line emitted so far; appended by [StableHloConverter] after the entry function. */
+    public fun getModuleTrailer(): String = moduleTrailerBuilder.toString()
+
+    /**
+     * Claim a module-level symbol (e.g. a decomposition function name). Returns `true` the
+     * first time, `false` afterwards, so a helper emitted once per (op, type) is not duplicated.
+     */
+    public fun claimSymbol(symbol: String): Boolean = claimedSymbols.add(symbol)
+
+    /**
      * Register an externalized constant tensor. The converter records
      * these alongside MLIR emission so a downstream packager (see PR C
      * in issue #523) can write them into an IREE `.irpa` archive.
@@ -247,6 +268,8 @@ public class ConversionContext @kotlin.jvm.JvmOverloads constructor(
         valueTypes.clear()
         stringBuilder.clear()
         moduleDeclarationsBuilder.clear()
+        moduleTrailerBuilder.clear()
+        claimedSymbols.clear()
         externalParams.clear()
         tempCounter = 0
     }

@@ -130,7 +130,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Generated from `operators.json` version `${module.version}` on ${formatTimestamp(module.timestamp)}.")
             appendLine("")
-            appendLine("Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as \"unknown\", not \"not supported\").")
+            appendLine("Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). The `Lowering` column lists the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared. Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as \"unknown\", not \"not supported\").")
             appendLine("")
             if (rows.isEmpty() || allBackends.isEmpty()) {
                 appendLine("NOTE: No backend status information found in the source data.")
@@ -139,10 +139,10 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             }
 
             // Header: row label, validation column, then one column per backend.
-            val colSpec = (listOf("2", "1") + List(allBackends.size) { "1" }).joinToString(",")
+            val colSpec = (listOf("2", "1", "1") + List(allBackends.size) { "1" }).joinToString(",")
             appendLine("[cols=\"$colSpec\", options=\"header\"]")
             appendLine("|===")
-            append("| Operator.function | Validated ")
+            append("| Operator.function | Validated | Lowering ")
             allBackends.forEach { append("| $it ") }
             appendLine("")
             appendLine("")
@@ -150,6 +150,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             rows.forEach { row ->
                 append("| `${row.operator}.${row.function.name}` ")
                 append("| ${darcCell(row.function, row.hasPartial)} ")
+                append("| ${row.function.lowering.ifEmpty { "—" }} ")
                 allBackends.forEach { backend ->
                     val raw = row.function.statusByBackend[backend]
                     val cell = if (raw == null) "—" else shortStatus(raw)
@@ -158,10 +159,11 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 appendLine("")
             }
 
-            // Totals footer: validated count followed by per-backend done count.
+            // Totals footer: validated count, declared-lowering count, then per-backend done count.
             appendLine("")
             val validatedCount = rows.count { it.function.validated }
-            append("| *Done* | *$validatedCount / ${rows.size}* ")
+            val loweringCount = rows.count { it.function.lowering.isNotEmpty() }
+            append("| *Done* | *$validatedCount / ${rows.size}* | *$loweringCount / ${rows.size}* ")
             allBackends.forEach { backend ->
                 val n = rows.count { isDone(it.function.statusByBackend[backend]) }
                 append("| *$n / ${rows.size}* ")

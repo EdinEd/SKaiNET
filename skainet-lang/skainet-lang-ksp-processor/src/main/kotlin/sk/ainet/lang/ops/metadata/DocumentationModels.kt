@@ -42,6 +42,8 @@ data class FunctionDoc(
     val validatedOn: String = "",
     val validatedCommit: String = "",
     val referencesChecked: Boolean = true,
+    /** Lowering forms from `@Lowering`: `composite`, `decompose`, `native` joined by ` · `; empty = undeclared. */
+    val lowering: String = "",
 )
 
 /**

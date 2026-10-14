@@ -53,11 +53,13 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;)V
 	public fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;)V
 	public synthetic fun <init> (Lsk/ainet/compile/hlo/TypeMapper;Lsk/ainet/lang/graph/ComputeGraph;Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;Ljava/lang/String;Lsk/ainet/compile/target/OpGranularityPolicy;Lsk/ainet/compile/hlo/ConversionErrorPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun claimSymbol (Ljava/lang/String;)Z
 	public final fun clear ()V
 	public final fun emitComment (Ljava/lang/String;)V
 	public final fun emitEncodingAnnotation (Ljava/lang/String;ILsk/ainet/lang/tensor/ops/TensorSpec;)V
 	public final fun emitLine (Ljava/lang/String;)V
 	public final fun emitModuleDeclaration (Ljava/lang/String;)V
+	public final fun emitModuleTrailer (Ljava/lang/String;)V
 	public final fun emitOperation (Ljava/lang/String;)V
 	public final fun getContent ()Ljava/lang/String;
 	public final fun getErrorPolicy ()Lsk/ainet/compile/hlo/ConversionErrorPolicy;
@@ -66,6 +68,7 @@ public final class sk/ainet/compile/hlo/ConversionContext {
 	public final fun getInputNodes (Lsk/ainet/lang/graph/GraphNode;)Ljava/util/List;
 	public final fun getMaterializationPolicy ()Lsk/ainet/compile/hlo/ConstantMaterializationPolicy;
 	public final fun getModuleDeclarations ()Ljava/lang/String;
+	public final fun getModuleTrailer ()Ljava/lang/String;
 	public final fun getTarget ()Ljava/lang/String;
 	public final fun getTypeMapper ()Lsk/ainet/compile/hlo/TypeMapper;
 	public final fun getValueName (Ljava/lang/String;)Ljava/lang/String;
@@ -405,6 +408,12 @@ public final class sk/ainet/compile/hlo/converters/ContextEmitter : sk/ainet/com
 	public fun op (Ljava/lang/String;)V
 }
 
+public final class sk/ainet/compile/hlo/converters/ErfLowering {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/converters/ErfLowering;
+	public final fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun getSpec ()Lsk/ainet/compile/hlo/lowering/LoweringSpec;
+}
+
 public final class sk/ainet/compile/hlo/converters/GatherOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;
@@ -417,6 +426,7 @@ public final class sk/ainet/compile/hlo/converters/GeluLowering {
 	public final fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
 	public final fun emitExact (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public final fun emitTanh (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun getSpec ()Lsk/ainet/compile/hlo/lowering/LoweringSpec;
 }
 
 public abstract interface class sk/ainet/compile/hlo/converters/HloEmitter {
@@ -566,6 +576,34 @@ public final class sk/ainet/compile/hlo/generate/JvmHloGenerator {
 	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static final fun generateBlocking (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;)Lsk/ainet/compile/hlo/StableHloModule;
 	public static synthetic fun generateBlocking$default (Lsk/ainet/lang/model/Model;Lsk/ainet/lang/tensor/Tensor;Ljava/lang/String;ILjava/lang/Object;)Lsk/ainet/compile/hlo/StableHloModule;
+}
+
+public abstract interface class sk/ainet/compile/hlo/lowering/HloDecomposition {
+	public abstract fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/lowering/LoweringSpec {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILsk/ainet/compile/hlo/lowering/HloDecomposition;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()I
+	public final fun component5 ()Lsk/ainet/compile/hlo/lowering/HloDecomposition;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILsk/ainet/compile/hlo/lowering/HloDecomposition;)Lsk/ainet/compile/hlo/lowering/LoweringSpec;
+	public static synthetic fun copy$default (Lsk/ainet/compile/hlo/lowering/LoweringSpec;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILsk/ainet/compile/hlo/lowering/HloDecomposition;ILjava/lang/Object;)Lsk/ainet/compile/hlo/lowering/LoweringSpec;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAttributes ()Ljava/util/List;
+	public final fun getCompositeName ()Ljava/lang/String;
+	public final fun getDecomposition ()Lsk/ainet/compile/hlo/lowering/HloDecomposition;
+	public final fun getOp ()Ljava/lang/String;
+	public final fun getVersion ()I
+	public fun hashCode ()I
+	public final fun lower (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/lowering/LoweringSpecKt {
+	public static final fun emitComposite (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/lowering/LoweringSpec;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 }
 
 public final class sk/ainet/compile/hlo/validation/BenchmarkResults {

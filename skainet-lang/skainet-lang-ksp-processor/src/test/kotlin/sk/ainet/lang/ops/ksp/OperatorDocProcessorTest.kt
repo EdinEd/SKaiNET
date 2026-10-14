@@ -68,6 +68,58 @@ class OperatorDocProcessorTest {
     }
 
     @Test
+    fun testLoweringFlowsIntoJson() {
+        val sourceCode = """
+            package sk.ainet.lang.ops
+
+            @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class InProgress(
+                vararg val backends: String,
+                val owner: String = "",
+                val issue: String = ""
+            )
+
+            @Target(AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class Lowering(
+                val composite: String = "",
+                val decomposes: Boolean = true,
+                val native: Boolean = false,
+            )
+
+            @InProgress("cpu", owner = "ops-team", issue = "GH-1")
+            @Lowering(composite = "skainet.gelu")
+            fun geluFn(): String = "ok"
+
+            @InProgress("cpu", owner = "ops-team", issue = "GH-2")
+            @Lowering(decomposes = false, native = true)
+            fun tanhFn(): String = "ok"
+
+            @InProgress("cpu", owner = "ops-team", issue = "GH-3")
+            fun plainFn(): String = "ok"
+        """.trimIndent()
+
+        val source = SourceFile.kotlin("sk/ainet/lang/ops/TestLoweringOps.kt", sourceCode)
+        val compilation = KotlinCompilation().apply {
+            sources = listOf(source)
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(OperatorDocProcessorProvider())
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }
+        val result = compilation.compile()
+        assertTrue(result.messages.contains("Generated operators.json"), "Processor should generate operators.json")
+
+        val operatorsJson = compilation.workingDir.walkTopDown().firstOrNull { it.isFile && it.name == "operators.json" }
+        assertTrue(operatorsJson != null && operatorsJson.exists(), "operators.json should be present")
+        val text = operatorsJson!!.readText()
+        assertTrue(text.contains("\"lowering\": \"composite · decompose\""), "composite + default decompose expected: $text")
+        assertTrue(text.contains("\"lowering\": \"native\""), "native-only expected: $text")
+        assertTrue(Regex("\"lowering\"").findAll(text).count() == 2, "plainFn must not carry a lowering field: $text")
+    }
+
+    @Test
     fun testDarcValidatedFlowsIntoJson() {
         // Two functions annotated with @InProgress so the processor picks
         // them up via the annotation-discovery path. Only one of them
