@@ -206,7 +206,8 @@ class DefaultCpuOpsActivationsTest {
         val xs = FloatArray(121) { -6f + it * 0.1f }
         val out = cpuOps.gelu(fTensor(Shape(xs.size), xs), approximate = false)
         for (i in xs.indices) {
-            assertEquals(geluExactRef(xs[i]), out.data[i] as Float, "exact gelu at x=${xs[i]}")
+            // Bit-equal on the JVM; JS/Wasm evaluate Float in double precision, so allow one ulp there.
+            assertAlmostEquals(geluExactRef(xs[i]), out.data[i] as Float, 2e-7f, "exact gelu at x=${xs[i]}")
         }
     }
 
@@ -246,7 +247,7 @@ class DefaultCpuOpsActivationsTest {
         val asInt = input as sk.ainet.lang.tensor.Tensor<Int32, Int>
         var threw = 0
         try { cpuOps.erf(asInt) } catch (e: IllegalArgumentException) { threw++; assertTrue(e.message?.contains("Unsupported dtype for erf") == true) }
-        try { cpuOps.gelu(asInt, approximate = false) } catch (e: IllegalArgumentException) { threw++; assertTrue(e.message?.contains("Unsupported dtype for gelu: class sk.ainet.lang.types.Int32") == true, e.message) }
+        try { cpuOps.gelu(asInt, approximate = false) } catch (e: IllegalArgumentException) { threw++; assertTrue(e.message?.contains("Unsupported dtype for gelu: ") == true && e.message?.contains("Int32") == true, e.message) }
         assertEquals(2, threw)
     }
 }
