@@ -2,19 +2,34 @@
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-14
+
+Headline: **exact GELU and lowering metadata (#1342).** `erf` becomes a first-class op and `gelu`
+carries its form (`approximate: Boolean = true`) as op metadata, so DIRECT execution, the compiled
+graph and the StableHLO export make the same numeric choice. On the export side a `LoweringSpec` per
+fused-able op emits a `stablehlo.composite` when a target keeps the op fused and the inline
+decomposition otherwise, an explicit legalization pass replaces the silent exact→tanh substitution,
+and `@Lowering` records each op's lowering in the operator matrix.
+
+Version note: SKaiNET-transformers follows on this release; its Laya adapter replaces the host-side
+exact GELU with `gelu(approximate = false)`. The io-core deprecation aliases introduced in 0.58 stay
+at WARNING in this release; their schedule moves by one minor (ERROR in 0.60, removed in 0.61) to
+match the SKaiNET-transformers schedule.
+
 ### Added
+
+- **`TensorOps.erf` and exact GELU** (#1342): `gelu(tensor, approximate: Boolean = true)` keeps the tanh form as the default and selects the exact `0.5·x·(1 + erf(x/√2))` with `approximate = false`, the form BERT-class encoders and the Laya decision models were trained with (the two differ by up to 4.7e-4 near |x| ≈ 2.7). CPU: Abramowitz–Stegun 7.1.26 erf evaluated in double (|err| < 1.5e-7) with a JVM Vector API lane kernel; `GELU(approximate)` module, `network {}` `gelu(approximate)`, Java `TensorJavaOps.gelu(a, approximate)` / `erf(a)` and `SequentialModelBuilder.gelu(approximate)`; exact backward rule and `erfBackward`.
+- **GELU carries its form as op metadata**: the flag is recorded as `parameters["approximate"]` on the graph node (`GeluOperation`, `ErfOperation`), read by `ComputeGraphExecutor`, the backward rule and the StableHLO converter, so the compiled path cannot silently diverge from eager execution. StableHLO lowers `erf` to `chlo.erf` and exact GELU to `0.5·x·(1 + chlo.erf(x·√½))`; one `GeluLowering` builder emits both forms.
 - **Composite emission behind `OpGranularityPolicy`** (#1342 part 2): a `LoweringSpec` per fused-able op (`skainet.gelu`, `skainet.erf`) and `ConversionContext.emitComposite` emit `stablehlo.composite "<name>" {composite_attributes, decomposition = @fn, version}` plus one private decomposition function per (op, attributes, type) when a target's policy keeps the op fused; otherwise the same builder emits the decomposition inline. Helper functions go to a module trailer after the entry function so existing text tooling keeps finding `@main` first. First consumer of `OpGranularityPolicy.keepFused`.
 - **`GeluApproximationLegalizationPass`** (`skainet-compile-opt`): targets without any erf lowering rewrite `gelu(approximate = false)` to the tanh form explicitly, recording `legalizedFrom` and `maxAbsError = 4.8e-4` on the node and a `GELU_APPROX_LEGALIZED` diagnostic, instead of a silent default. Registered per target through `TargetOptimizers.registerDagPasses`.
 - **`@Lowering` annotation** and a *Lowering* column in the generated operator coverage matrix (`composite · decompose · native`); `operators.json` carries the field.
 
-### Added
-- **`TensorOps.erf` and exact GELU** (#1342): `gelu(tensor, approximate: Boolean = true)` keeps the tanh form as the default and selects the exact `0.5·x·(1 + erf(x/√2))` with `approximate = false`, the form BERT-class encoders and the Laya decision models were trained with (the two differ by up to 4.7e-4 near |x| ≈ 2.7). CPU: Abramowitz–Stegun 7.1.26 erf evaluated in double (|err| < 1.5e-7) with a JVM Vector API lane kernel; `GELU(approximate)` module, `network {}` `gelu(approximate)`, Java `TensorJavaOps.gelu(a, approximate)` / `erf(a)` and `SequentialModelBuilder.gelu(approximate)`; exact backward rule and `erfBackward`.
-- **GELU carries its form as op metadata**: the flag is recorded as `parameters["approximate"]` on the graph node (`GeluOperation`, `ErfOperation`), read by `ComputeGraphExecutor`, the backward rule and the StableHLO converter, so the compiled path cannot silently diverge from eager execution. StableHLO lowers `erf` to `chlo.erf` and exact GELU to `0.5·x·(1 + chlo.erf(x·√½))`; one `GeluLowering` builder emits both forms.
-
 ### Changed
+
 - `TensorOps.gelu` gained the `approximate` parameter: implementors of the interface must update the override (callers are source-compatible through the default). The legacy recording decorator now records `gelu`/`erf` as graph operations instead of delegating them unrecorded.
 
 ### Fixed
+
 - `DefaultCpuOps.gelu` printed a literal `${tensor.dtype}` in its unsupported-dtype message.
 
 ## [0.58.0] - 2026-10-12
