@@ -388,7 +388,7 @@ public class VoidTensorOps : TensorOps {
         return VoidOpsTensor(resultData, tensor.dtype)
     }
 
-    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> {
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean): Tensor<T, V> {
         // GELU activation function preserves shape
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)
@@ -536,6 +536,11 @@ public class VoidTensorOps : TensorOps {
     }
 
     override fun <T : DType, V> expm1(tensor: Tensor<T, V>): Tensor<T, V> {
+        val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
+        return VoidOpsTensor(resultData, tensor.dtype)
+    }
+
+    override fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V> {
         val resultData = dataFactory.zeros<T, V>(tensor.shape, tensor.dtype)
         return VoidOpsTensor(resultData, tensor.dtype)
     }

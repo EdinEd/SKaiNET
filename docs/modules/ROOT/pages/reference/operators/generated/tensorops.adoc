@@ -778,12 +778,13 @@ fun silu(tensor:Tensor): Tensor
 
 [source,kotlin]
 ----
-fun gelu(tensor:Tensor): Tensor
+fun gelu(tensor:Tensor, approximate:Boolean): Tensor
 ----
 
 === Parameters
 
 * `tensor: Tensor`
+* `approximate: Boolean`
 
 === Return Type
 
@@ -1277,6 +1278,25 @@ fun exp(tensor:Tensor): Tensor
 [source,kotlin]
 ----
 fun expm1(tensor:Tensor): Tensor
+----
+
+=== Parameters
+
+* `tensor: Tensor`
+
+=== Return Type
+
+`Tensor`
+
+== erf
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun erf(tensor:Tensor): Tensor
 ----
 
 === Parameters

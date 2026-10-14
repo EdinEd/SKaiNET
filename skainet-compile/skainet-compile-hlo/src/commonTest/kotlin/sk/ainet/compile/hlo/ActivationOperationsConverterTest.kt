@@ -133,6 +133,37 @@ class ActivationOperationsConverterTest {
     }
 
     @Test
+    fun testGeluApproximateTrueParameterMatchesDefault() {
+        val byDefault = StableHloConverterFactory.createExtended()
+            .convert(createActivationGraph("gelu"), "test_gelu").content
+        val explicit = StableHloConverterFactory.createExtended()
+            .convert(createActivationGraphWithParameters("gelu", mapOf("approximate" to true)), "test_gelu").content
+        assertEquals(byDefault, explicit)
+    }
+
+    @Test
+    fun testGeluExactOperation() {
+        val graph = createActivationGraphWithParameters("gelu", mapOf("approximate" to false))
+        val converter = StableHloConverterFactory.createExtended()
+        val module = converter.convert(graph, "test_gelu_exact")
+
+        // 0.5·x·(1 + erf(x/√2)) through chlo.erf (CHLO unary assembly: `: in -> out`)
+        assertTrue(module.content.contains("stablehlo.constant dense<0.5>"))
+        assertTrue(module.content.contains("stablehlo.constant dense<0.70710678118654752>"))
+        assertTrue(module.content.contains("chlo.erf"))
+        assertTrue(module.content.contains(": tensor<2x3xf32> -> tensor<2x3xf32>"))
+        assertFalse(module.content.contains("stablehlo.tanh"))
+        assertFalse(module.content.contains("0.044715"))
+    }
+
+    @Test
+    fun testErfOperationLowersToChlo() {
+        val graph = createActivationGraph("erf")
+        val module = StableHloConverterFactory.createExtended().convert(graph, "test_erf")
+        assertTrue(module.content.contains("chlo.erf %arg0 : tensor<2x3xf32> -> tensor<2x3xf32>"), module.content)
+    }
+
+    @Test
     fun testGeluOperation() {
         val graph = createActivationGraph("gelu")
         val converter = StableHloConverterFactory.createExtended()

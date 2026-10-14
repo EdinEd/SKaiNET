@@ -70,6 +70,52 @@ class DefaultExecutionTapeTest {
     }
 
     @Test
+    fun gelu_exact_gradient_matches_finite_difference() {
+        val trainCtx = createTrainCtx()
+        val values = floatArrayOf(-2f, -0.5f, 0f, 0.5f, 2f)
+        val a = trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, values).withRequiresGrad()
+
+        val pair = trainCtx.record { a.gelu(approximate = false).sum() }
+        val tape = pair.first as DefaultGradientTape
+        tape.computeGradients(targets = listOf(pair.second), sources = listOf(a))
+        val analytic = fbuf(a.grad!!)
+
+        val eps = 1e-3f
+        val num = FloatArray(values.size)
+        for (i in values.indices) {
+            val plus = values.copyOf(); plus[i] += eps
+            val minus = values.copyOf(); minus[i] -= eps
+            val lPlus = fbuf(trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, plus).gelu(approximate = false).sum())[0]
+            val lMinus = fbuf(trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, minus).gelu(approximate = false).sum())[0]
+            num[i] = (lPlus - lMinus) / (2 * eps)
+        }
+        assertTrue(approxEqual(analytic, num, tol = 1e-2f), "Analytic: ${analytic.joinToString()}, Numeric: ${num.joinToString()}")
+    }
+
+    @Test
+    fun erf_gradient_matches_finite_difference() {
+        val trainCtx = createTrainCtx()
+        val values = floatArrayOf(-2f, -0.5f, 0f, 0.5f, 2f)
+        val a = trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, values).withRequiresGrad()
+
+        val pair = trainCtx.record { a.erf().sum() }
+        val tape = pair.first as DefaultGradientTape
+        tape.computeGradients(targets = listOf(pair.second), sources = listOf(a))
+        val analytic = fbuf(a.grad!!)
+
+        val eps = 1e-3f
+        val num = FloatArray(values.size)
+        for (i in values.indices) {
+            val plus = values.copyOf(); plus[i] += eps
+            val minus = values.copyOf(); minus[i] -= eps
+            val lPlus = fbuf(trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, plus).erf().sum())[0]
+            val lMinus = fbuf(trainCtx.fromFloatArray<FP32, Float>(Shape(values.size), FP32::class, minus).erf().sum())[0]
+            num[i] = (lPlus - lMinus) / (2 * eps)
+        }
+        assertTrue(approxEqual(analytic, num, tol = 1e-2f), "Analytic: ${analytic.joinToString()}, Numeric: ${num.joinToString()}")
+    }
+
+    @Test
     fun concat_gradient_matches_finite_difference() {
         val trainCtx = createTrainCtx()
         val a = trainCtx.fromFloatArray<FP32, Float>(Shape(2), FP32::class, floatArrayOf(1f, 2f)).withRequiresGrad()

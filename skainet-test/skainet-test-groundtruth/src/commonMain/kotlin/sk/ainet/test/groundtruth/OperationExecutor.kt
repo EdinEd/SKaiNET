@@ -129,7 +129,11 @@ public class OperationExecutor(
             }
             "gelu" -> {
                 val a = getSingleInput(inputs)
-                ops.gelu(a)
+                ops.gelu(a, params.approximate ?: true)
+            }
+            "erf" -> {
+                val a = getSingleInput(inputs)
+                ops.erf(a)
             }
             "softmax" -> {
                 val a = getSingleInput(inputs)
@@ -313,6 +317,7 @@ public class OperationParamsBuilder {
     private var endDim: Int? = null
     private var negativeSlope: Float? = null
     private var alpha: Float? = null
+    private var approximate: Boolean? = null
 
     public fun stride(h: Int, w: Int): OperationParamsBuilder {
         stride = h to w
@@ -367,6 +372,11 @@ public class OperationParamsBuilder {
         return this
     }
 
+    public fun approximate(value: Boolean): OperationParamsBuilder {
+        approximate = value
+        return this
+    }
+
     public fun alpha(value: Float): OperationParamsBuilder {
         alpha = value
         return this
@@ -382,7 +392,8 @@ public class OperationParamsBuilder {
         startDim = startDim,
         endDim = endDim,
         negativeSlope = negativeSlope,
-        alpha = alpha
+        alpha = alpha,
+        approximate = approximate
     )
 }
 

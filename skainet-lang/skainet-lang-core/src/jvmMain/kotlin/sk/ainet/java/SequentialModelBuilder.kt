@@ -88,9 +88,10 @@ public class SequentialModelBuilder @JvmOverloads constructor(
         return this
     }
 
-    /** Adds a GELU activation. */
-    public fun gelu(): SequentialModelBuilder {
-        layers.add(ActivationsWrapperModule({ tensor -> tensor.ops.gelu(tensor) }, "gelu"))
+    /** Adds a GELU activation; `approximate = false` selects the exact erf form. */
+    @JvmOverloads
+    public fun gelu(approximate: Boolean = true): SequentialModelBuilder {
+        layers.add(ActivationsWrapperModule({ tensor -> tensor.ops.gelu(tensor, approximate) }, "gelu"))
         return this
     }
 

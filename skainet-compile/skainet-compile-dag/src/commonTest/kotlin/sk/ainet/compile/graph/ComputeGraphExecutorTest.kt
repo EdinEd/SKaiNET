@@ -233,7 +233,8 @@ private class TestTensorOps : TensorOps {
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> = tensor
-    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> = tensor
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean): Tensor<T, V> = tensor
+    override fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V> = tensor
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = tensor
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = tensor
     override fun <T : DType, V> variance(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> = tensor

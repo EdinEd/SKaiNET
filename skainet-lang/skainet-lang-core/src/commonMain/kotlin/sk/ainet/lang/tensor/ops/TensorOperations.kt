@@ -751,6 +751,83 @@ public class ReluOperation<T : DType, V>(
     override fun clone(newParameters: Map<String, Any>): Operation = ReluOperation<T, V>(newParameters)
 }
 
+/**
+ * GELU activation node. `parameters["approximate"]` (default `true`) selects the tanh form;
+ * `false` the exact erf form. The flag is what the graph executor, the backward rule and
+ * the exporters read, so the compiled path cannot silently diverge from eager execution.
+ */
+public class GeluOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("gelu", "activation", parameters) {
+
+    /** `true` = tanh approximation, `false` = exact `0.5·x·(1 + erf(x/√2))`. */
+    public val approximate: Boolean get() = parameters[APPROXIMATE] as? Boolean ?: true
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        require(inputs.size == 1) { "GELU operation requires exactly 1 input" }
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        val errors = mutableListOf<String>()
+        if (inputs.size != 1) errors += "GELU operation requires exactly 1 input, got ${inputs.size}"
+        val flag = parameters[APPROXIMATE]
+        if (flag != null && flag !is Boolean) errors += "GELU parameter '$APPROXIMATE' must be a Boolean, got $flag"
+        return if (errors.isEmpty()) ValidationResult.Valid else ValidationResult.Invalid(errors)
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size == 1) { "GELU operation requires exactly 1 input" }
+        return listOf(
+            TensorSpec(
+                name = "gelu_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs[0].requiresGrad
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = GeluOperation<T, V>(newParameters)
+
+    public companion object {
+        /** Parameter key carrying the approximation flag. */
+        public const val APPROXIMATE: String = "approximate"
+    }
+}
+
+/** Element-wise Gauss error function node. */
+public class ErfOperation<T : DType, V>(
+    parameters: Map<String, Any> = emptyMap()
+) : BaseOperation("erf", "math", parameters) {
+
+    override fun <T2 : DType, V2> execute(inputs: List<Tensor<T2, V2>>): List<Tensor<T2, V2>> {
+        require(inputs.size == 1) { "erf operation requires exactly 1 input" }
+        throw UnsupportedOperationException("Direct execution not supported in graph mode")
+    }
+
+    override fun validateInputs(inputs: List<TensorSpec>): ValidationResult {
+        if (inputs.size != 1) {
+            return ValidationResult.Invalid(listOf("erf operation requires exactly 1 input, got ${inputs.size}"))
+        }
+        return ValidationResult.Valid
+    }
+
+    override fun inferOutputs(inputs: List<TensorSpec>): List<TensorSpec> {
+        require(inputs.size == 1) { "erf operation requires exactly 1 input" }
+        return listOf(
+            TensorSpec(
+                name = "erf_output",
+                shape = inputs[0].shape,
+                dtype = inputs[0].dtype,
+                requiresGrad = inputs[0].requiresGrad
+            )
+        )
+    }
+
+    override fun clone(newParameters: Map<String, Any>): Operation = ErfOperation<T, V>(newParameters)
+}
+
 public class SoftmaxOperation<T : DType, V>(
     parameters: Map<String, Any> = emptyMap()
 ) : BaseOperation("softmax", "activation", parameters) {

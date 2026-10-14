@@ -859,6 +859,39 @@ internal class DefaultCpuOpsJvm(
         return floatResult(Shape(tensor.shape.dimensions.copyOf()), tensor.dtype, out)
     }
 
+    override fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V> {
+        vectorFloatUnary(tensor, { v -> erfVector(v) }, ErfKernel::erfFloat)?.let { return it }
+        return super.erf(tensor)
+    }
+
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean): Tensor<T, V> {
+        if (approximate) return super.gelu(tensor, true)
+        vectorFloatUnary(tensor, { v ->
+            val half = FloatVector.broadcast(floatSpecies, 0.5f)
+            val one = FloatVector.broadcast(floatSpecies, 1f)
+            half.mul(v).mul(one.add(erfVector(v.mul(ErfKernel.SQRT1_2_F))))
+        }, ErfKernel::geluExactFloat)?.let { return it }
+        return super.gelu(tensor, false)
+    }
+
+    /**
+     * Lane-wise Abramowitz–Stegun 7.1.26 erf in single precision — the same operation order as
+     * [ErfKernel.erfFloat], which serves the scalar tail, so lanes and tail agree up to the
+     * last-ulp difference between `VectorOperators.EXP` and `kotlin.math.exp`.
+     */
+    private fun erfVector(x: FloatVector): FloatVector {
+        val one = FloatVector.broadcast(floatSpecies, 1f)
+        val a = x.abs()
+        val t = one.div(a.mul(ErfKernel.P_F).add(1f))
+        var poly = t.mul(ErfKernel.A5_F).add(ErfKernel.A4_F)
+        poly = poly.mul(t).add(ErfKernel.A3_F)
+        poly = poly.mul(t).add(ErfKernel.A2_F)
+        poly = poly.mul(t).add(ErfKernel.A1_F)
+        val e = a.mul(a).neg().lanewise(VectorOperators.EXP)
+        val y = one.sub(poly.mul(t).mul(e))
+        return y.blend(y.neg(), x.lt(0f))
+    }
+
     override fun <T : DType, V> sum(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> {
         if (dim == null) {
             vectorFloatReduceAllSum<T, V>(tensor)?.let { return it }

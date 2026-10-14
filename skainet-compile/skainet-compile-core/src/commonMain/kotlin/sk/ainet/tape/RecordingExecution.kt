@@ -381,6 +381,19 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
         return out
     }
 
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean): Tensor<T, V> {
+        val out = base.gelu(tensor, approximate)
+        // The flag is the node parameter every later stage reads (executor, backward, exporters).
+        record(GeluOperation<T, V>(mapOf(GeluOperation.APPROXIMATE to approximate)), listOf(tensor), listOf(out))
+        return out
+    }
+
+    override fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V> {
+        val out = base.erf(tensor)
+        record(ErfOperation<T, V>(), listOf(tensor), listOf(out))
+        return out
+    }
+
     // --- Shape ops ---
     override fun <T : DType, V> reshape(tensor: Tensor<T, V>, newShape: Shape): Tensor<T, V> {
         val out = base.reshape(tensor, newShape)
@@ -440,7 +453,6 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
 
     // Delegations for unrecorded/less critical ops
     override fun <T : DType, V> split(tensor: Tensor<T, V>, splitSize: Int, dim: Int): List<Tensor<T, V>> = base.split(tensor, splitSize, dim)
-    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> = base.gelu(tensor)
     override fun <T : DType, V> leakyRelu(tensor: Tensor<T, V>, negativeSlope: Float): Tensor<T, V> = base.leakyRelu(tensor, negativeSlope)
     override fun <T : DType, V> elu(tensor: Tensor<T, V>, alpha: Float): Tensor<T, V> = base.elu(tensor, alpha)
     override fun <T : DType, V> avgPool2d(input: Tensor<T, V>, kernelSize: Pair<Int, Int>, stride: Pair<Int, Int>, padding: Pair<Int, Int>, countIncludePad: Boolean): Tensor<T, V> = base.avgPool2d(input, kernelSize, stride, padding, countIncludePad)

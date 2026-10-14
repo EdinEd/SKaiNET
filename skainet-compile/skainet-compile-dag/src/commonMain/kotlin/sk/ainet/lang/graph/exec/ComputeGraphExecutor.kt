@@ -159,7 +159,8 @@ public class ComputeGraphExecutor(
             // Unary math ops
             "relu" -> listOf(ops.relu(inputs[0]))
             "silu" -> listOf(ops.silu(inputs[0]))
-            "gelu" -> listOf(ops.gelu(inputs[0]))
+            "gelu" -> listOf(ops.gelu(inputs[0], params["approximate"] as? Boolean ?: true))
+            "erf" -> listOf(ops.erf(inputs[0]))
             "sigmoid" -> listOf(ops.sigmoid(inputs[0]))
             "exp" -> listOf(ops.exp(inputs[0]))
             "expm1" -> listOf(ops.expm1(inputs[0]))

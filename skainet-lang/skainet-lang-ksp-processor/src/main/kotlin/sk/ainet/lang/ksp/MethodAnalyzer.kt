@@ -315,7 +315,7 @@ class MethodAnalyzer {
             }
             
             // Unary operations
-            method.name in listOf("relu", "sigmoid", "tanh", "exp", "log", "abs", "neg", "silu", "softmax", "logSoftmax", "sqrt") && 
+            method.name in listOf("relu", "sigmoid", "tanh", "exp", "log", "abs", "neg", "silu", "softmax", "logSoftmax", "sqrt", "gelu", "erf") && 
             tensorParams.size == 1 && method.returnType.isTensor -> {
                 val param = tensorParams[0].name
                 "unary($param as Tensor<*, *>, result as Tensor<*, *>)"

@@ -151,5 +151,8 @@ public data class OperationParams(
     val negativeSlope: Float? = null,
 
     /** Alpha for ELU */
-    val alpha: Float? = null
+    val alpha: Float? = null,
+
+    /** GELU form: `false` = exact erf, `true`/null = tanh approximation */
+    val approximate: Boolean? = null
 )

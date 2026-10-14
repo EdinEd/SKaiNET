@@ -2596,8 +2596,8 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-gelu")
-    override fun <T : DType, V> gelu(tensor: Tensor<T, V>): Tensor<T, V> {
+    override fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean): Tensor<T, V> {
+        if (!approximate) return geluExact(tensor)
         floatUnaryFast(tensor) { x ->
             val inner = x + 0.044715f * (x * x * x)
             0.5f * x * (1.0f + kotlin.math.tanh(0.7978845608f * inner))
@@ -2615,7 +2615,39 @@ public open class DefaultCpuOpsBase(
                     @Suppress("UNCHECKED_CAST")
                     y as V
                 }
-                else -> throw IllegalArgumentException("Unsupported dtype for gelu: ${'$'}{tensor.dtype}")
+                else -> throw IllegalArgumentException("Unsupported dtype for gelu: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    /** Exact GELU `0.5·x·(1 + erf(x/√2))`; erf from [ErfKernel] (|err| < 1.5e-7, evaluated in double). */
+    private fun <T : DType, V> geluExact(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> ErfKernel.geluExact(x) }?.let { return it }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val x = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    ErfKernel.geluExact(x) as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for gelu: ${tensor.dtype}")
+            }
+        }
+        return newTensor(outData, tensor.dtype, tensor)
+    }
+
+    @TensorOp()
+    override fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V> {
+        floatUnaryFast(tensor) { x -> ErfKernel.erf(x.toDouble()).toFloat() }?.let { return it }
+        val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
+            when (tensor.dtype) {
+                sk.ainet.lang.types.FP32::class, sk.ainet.lang.types.FP16::class -> {
+                    val x = tensor.data.get(*idx) as Float
+                    @Suppress("UNCHECKED_CAST")
+                    ErfKernel.erf(x.toDouble()).toFloat() as V
+                }
+                else -> throw IllegalArgumentException("Unsupported dtype for erf: ${tensor.dtype}")
             }
         }
         return newTensor(outData, tensor.dtype, tensor)

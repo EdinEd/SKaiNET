@@ -256,8 +256,8 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
     }
     
     /**
-     * Convert GELU activation using approximation.
-     * GELU(x) ≈ 0.5 * x * (1 + tanh(sqrt(2/π) * (x + 0.044715 * x^3)))
+     * Convert GELU. `parameters["approximate"]` (default `true`) selects the tanh chain; `false`
+     * the exact `chlo.erf` form — both emitted by [GeluLowering], the single source of the formula.
      */
     private fun convertGelu(
         node: GraphNode,
@@ -270,49 +270,21 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
                 "Unsupported gelu arity for node ${node.id}"
             )
         }
-        
+
         val outputSpec = node.outputs.firstOrNull()
-        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) } 
+        val outputType = outputSpec?.let { context.getTypeMapper().mapTensorType(it) }
             ?: "tensor<?xf32>"
-        
-        val halfConst = context.nextTempValue()
-        val oneConst = context.nextTempValue()
-        val coeff1Const = context.nextTempValue()  // sqrt(2/π) ≈ 0.7978845608
-        val coeff2Const = context.nextTempValue()  // 0.044715
-        val xSquared = context.nextTempValue()
-        val xCubed = context.nextTempValue()
-        val cubicTerm = context.nextTempValue()
-        val innerSum = context.nextTempValue()
-        val scaledSum = context.nextTempValue()
-        val tanhValue = context.nextTempValue()
-        val onePlusTanh = context.nextTempValue()
-        val halfX = context.nextTempValue()
-        val resultValue = context.nextTempValue()
-        
-        val operations = listOf(
-            "$halfConst = stablehlo.constant dense<0.5> : $outputType",
-            "$oneConst = stablehlo.constant dense<1.0> : $outputType",
-            "$coeff1Const = stablehlo.constant dense<0.7978845608> : $outputType",
-            "$coeff2Const = stablehlo.constant dense<0.044715> : $outputType",
-            "$xSquared = stablehlo.multiply ${operands[0]}, ${operands[0]} : $outputType",
-            "$xCubed = stablehlo.multiply $xSquared, ${operands[0]} : $outputType",
-            "$cubicTerm = stablehlo.multiply $coeff2Const, $xCubed : $outputType",
-            "$innerSum = stablehlo.add ${operands[0]}, $cubicTerm : $outputType",
-            "$scaledSum = stablehlo.multiply $coeff1Const, $innerSum : $outputType",
-            "$tanhValue = stablehlo.tanh $scaledSum : $outputType",
-            "$onePlusTanh = stablehlo.add $oneConst, $tanhValue : $outputType",
-            "$halfX = stablehlo.multiply $halfConst, ${operands[0]} : $outputType",
-            "$resultValue = stablehlo.multiply $halfX, $onePlusTanh : $outputType"
-        )
-        
-        operations.forEach { context.emitOperation(it) }
-        
+        val approximate = (node.operation.parameters["approximate"] as? Boolean) ?: true
+
+        val emitter = ContextEmitter(context)
+        val resultValue = GeluLowering.emit(emitter, operands[0], outputType, approximate)
+
         return ConversionResult.Success(
             outputValueName = resultValue,
-            emittedOperations = operations
+            emittedOperations = emitter.lines
         )
     }
-    
+
     /**
      * Convert Swish activation (also known as SiLU).
      * Swish(x) = x * sigmoid(x)
