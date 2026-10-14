@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.58.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.59.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,21 +308,24 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.58.0
+## What's New in 0.59.0
 
-Input front ends and model identity land as SKEEP-006:
+Exact GELU and lowering metadata (#1342):
 
-- **One front-end contract for every input modality** — `skainet-frontend-core` defines
-  `FrontEnd`, `FrontEndSpec` and the text, audio, image and multimodal contracts; a resolver turns a
-  checkpoint view into the front ends a model needs. The text lane ships in `skainet-frontend-text`.
-- **Tokenizers move out of io-core and cover more files** — Metaspace BPE with byte fallback,
-  Viterbi Unigram and WordPiece join byte-level BPE, SentencePiece and Tekken. A golden corpus
-  recorded with the Hugging Face `tokenizers` library guards exact id parity for GPT-2, Qwen2.5,
-  TinyLlama, T5, BERT, Gemma 4 and the two public Laya tokenizers.
-- **Families are identities** — `skainet-model-identity` carries `ModelIdentity`, `CheckpointView`
-  and an immutable `ModelFamilyRegistry`; the old enum-style detection is deprecated.
-- Everything that compiled against 0.57 still compiles: the io-core names are deprecated aliases
-  that forward to the new homes.
+- **`erf` and the exact GELU** — `gelu(approximate = false)` computes `0.5·x·(1 + erf(x/√2))`, the
+  form BERT-class encoders and the Laya decision models were trained with, on the CPU scalar kernel
+  and the JVM Vector API lanes. The default stays the tanh form, byte for byte; the exact backward
+  rule and `erfBackward` come with it.
+- **The form travels as op metadata** — `parameters["approximate"]` sits on the graph node, so the
+  graph executor, the backward rule and the StableHLO export read the same flag instead of each
+  picking a default. StableHLO lowers `erf` to `chlo.erf`.
+- **Fused ops as `stablehlo.composite`** — a `LoweringSpec` per op (`skainet.gelu`, `skainet.erf`)
+  emits a composite with a private decomposition function when a target's `OpGranularityPolicy`
+  keeps the op fused, and the inline decomposition otherwise, both from one builder. An explicit
+  `GeluApproximationLegalizationPass` records an exact→tanh rewrite on the node instead of
+  substituting silently, and `@Lowering` adds a *Lowering* column to the operator matrix.
+- `TensorOps.gelu` gained a parameter: implementors update the override, callers are
+  source-compatible. The 0.58 io-core deprecation aliases stay at WARNING (ERROR in 0.60).
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -347,6 +350,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.59.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — exact GELU and `erf`
+  across the CPU kernels, graph executor and backward rules, the lowering-metadata path with
+  composite emission and the legalization pass, and the release
 
 ### Contributors (0.58.0)
 
@@ -437,7 +446,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.58.0. MIT License},
+  note         = {Version 0.59.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
