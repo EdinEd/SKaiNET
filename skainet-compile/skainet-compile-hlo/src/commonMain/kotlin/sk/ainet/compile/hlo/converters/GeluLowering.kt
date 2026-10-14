@@ -44,6 +44,14 @@ public object GeluLowering {
     /** 1/√2 as the converter prints it. */
     public const val SQRT1_2: String = "0.70710678118654752"
 
+    /** Composite `skainet.gelu` with the `approximate` flag as its attribute (version 1). */
+    public val spec: sk.ainet.compile.hlo.lowering.LoweringSpec = sk.ainet.compile.hlo.lowering.LoweringSpec(
+        op = "gelu",
+        compositeName = "skainet.gelu",
+        attributes = listOf("approximate"),
+        version = 1,
+    ) { e, x, type, params -> emit(e, x, type, (params["approximate"] as? Boolean) ?: true) }
+
     public fun emit(e: HloEmitter, x: String, type: String, approximate: Boolean): String =
         if (approximate) emitTanh(e, x, type) else emitExact(e, x, type)
 

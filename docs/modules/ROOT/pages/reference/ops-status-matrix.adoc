@@ -3,80 +3,80 @@
 
 Generated from `operators.json` version `0.58.0` on 2026-10-14.
 
-Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as "unknown", not "not supported").
+Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). The `Lowering` column lists the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared. Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as "unknown", not "not supported").
 
-[cols="2,1,1,1,1", options="header"]
+[cols="2,1,1,1,1,1", options="header"]
 |===
-| Operator.function | Validated | apple | cpu | wasm 
+| Operator.function | Validated | Lowering | apple | cpu | wasm 
 
-| `TensorOps.add` | ✖ | — | — | — 
-| `TensorOps.subtract` | ✖ | — | — | — 
-| `TensorOps.multiply` | ✖ | — | — | — 
-| `TensorOps.divide` | ✖ | — | — | — 
-| `TensorOps.addScalar` | ✖ | — | — | — 
-| `TensorOps.subScalar` | ✖ | — | — | — 
-| `TensorOps.mulScalar` | ✖ | — | — | — 
-| `TensorOps.divScalar` | ✖ | — | — | — 
-| `TensorOps.rsubScalar` | ✖ | — | — | — 
-| `TensorOps.rdivScalar` | ✖ | — | — | — 
-| `TensorOps.matmul` | ✅ | — | — | — 
-| `TensorOps.matmulWeightTransposed` | ✖ | — | — | — 
-| `TensorOps.relayoutPackedWeightForKernels` | ✖ | — | — | — 
-| `TensorOps.transpose` | ✖ | — | — | — 
-| `TensorOps.permute` | ✖ | — | — | — 
-| `TensorOps.conv1d` | ✖ | — | — | — 
-| `TensorOps.conv2d` | ✖ | — | — | — 
-| `TensorOps.conv3d` | ✖ | — | — | — 
-| `TensorOps.convTranspose1d` | ✖ | — | — | — 
-| `TensorOps.maxPool2d` | ✖ | — | — | — 
-| `TensorOps.avgPool2d` | ✖ | — | — | — 
-| `TensorOps.upsample2d` | ✖ | — | — | — 
-| `TensorOps.reshape` | ✖ | — | — | — 
-| `TensorOps.flatten` | ✖ | — | — | — 
-| `TensorOps.concat` | ✖ | — | — | — 
-| `TensorOps.split` | ✖ | — | — | — 
-| `TensorOps.squeeze` | ✖ | — | — | — 
-| `TensorOps.unsqueeze` | ✖ | — | — | — 
-| `TensorOps.relu` | ✖ | — | — | — 
-| `TensorOps.leakyRelu` | ✖ | — | — | — 
-| `TensorOps.elu` | ✖ | — | — | — 
-| `TensorOps.softmax` | ✖ | — | — | — 
-| `TensorOps.logSoftmax` | ✖ | — | — | — 
-| `TensorOps.sigmoid` | ✖ | — | — | — 
-| `TensorOps.tanh` | ✖ | — | — | — 
-| `TensorOps.silu` | ✖ | — | — | — 
-| `TensorOps.gelu` | ✖ | — | — | — 
-| `TensorOps.sum` | ✖ | — | — | — 
-| `TensorOps.mean` | ✖ | — | — | — 
-| `TensorOps.variance` | ✖ | — | — | — 
-| `TensorOps.argMax` | ⚠ | — | — | — 
-| `TensorOps.sqrt` | ✖ | — | — | — 
-| `TensorOps.pow` | ✖ | — | — | — 
-| `TensorOps.powScalar` | ✖ | — | — | — 
-| `TensorOps.log` | ✖ | — | — | — 
-| `TensorOps.log2` | ✖ | — | — | — 
-| `TensorOps.log10` | ✖ | — | — | — 
-| `TensorOps.abs` | ✖ | — | — | — 
-| `TensorOps.sign` | ✖ | — | — | — 
-| `TensorOps.clamp` | ✖ | — | — | — 
-| `TensorOps.narrow` | ✖ | — | — | — 
-| `TensorOps.pad2d` | ✖ | — | — | — 
-| `TensorOps.unfold` | ✖ | — | — | — 
-| `TensorOps.lt` | ✖ | — | — | — 
-| `TensorOps.ge` | ✖ | — | — | — 
-| `TensorOps.tril` | ✖ | — | — | — 
-| `TensorOps.convert` | ✖ | — | — | — 
-| `TensorOps.gather` | ✖ | — | — | — 
-| `TensorOps.indexSelect` | ✖ | — | — | — 
-| `TensorOps.exp` | ✖ | — | — | — 
-| `TensorOps.expm1` | ✖ | — | — | — 
-| `TensorOps.erf` | ✖ | — | — | — 
-| `TensorOps.sin` | ✖ | — | — | — 
-| `TensorOps.cos` | ✖ | — | — | — 
-| `TensorOps.scaledDotProductAttention` | ✖ | — | — | — 
-| `Similarity.cosineDistance` | ✖ | ✅ | ✅ | ✅ 
+| `TensorOps.add` | ✖ | — | — | — | — 
+| `TensorOps.subtract` | ✖ | — | — | — | — 
+| `TensorOps.multiply` | ✖ | — | — | — | — 
+| `TensorOps.divide` | ✖ | — | — | — | — 
+| `TensorOps.addScalar` | ✖ | — | — | — | — 
+| `TensorOps.subScalar` | ✖ | — | — | — | — 
+| `TensorOps.mulScalar` | ✖ | — | — | — | — 
+| `TensorOps.divScalar` | ✖ | — | — | — | — 
+| `TensorOps.rsubScalar` | ✖ | — | — | — | — 
+| `TensorOps.rdivScalar` | ✖ | — | — | — | — 
+| `TensorOps.matmul` | ✅ | — | — | — | — 
+| `TensorOps.matmulWeightTransposed` | ✖ | — | — | — | — 
+| `TensorOps.relayoutPackedWeightForKernels` | ✖ | — | — | — | — 
+| `TensorOps.transpose` | ✖ | — | — | — | — 
+| `TensorOps.permute` | ✖ | — | — | — | — 
+| `TensorOps.conv1d` | ✖ | — | — | — | — 
+| `TensorOps.conv2d` | ✖ | — | — | — | — 
+| `TensorOps.conv3d` | ✖ | — | — | — | — 
+| `TensorOps.convTranspose1d` | ✖ | — | — | — | — 
+| `TensorOps.maxPool2d` | ✖ | — | — | — | — 
+| `TensorOps.avgPool2d` | ✖ | — | — | — | — 
+| `TensorOps.upsample2d` | ✖ | — | — | — | — 
+| `TensorOps.reshape` | ✖ | — | — | — | — 
+| `TensorOps.flatten` | ✖ | — | — | — | — 
+| `TensorOps.concat` | ✖ | — | — | — | — 
+| `TensorOps.split` | ✖ | — | — | — | — 
+| `TensorOps.squeeze` | ✖ | — | — | — | — 
+| `TensorOps.unsqueeze` | ✖ | — | — | — | — 
+| `TensorOps.relu` | ✖ | — | — | — | — 
+| `TensorOps.leakyRelu` | ✖ | — | — | — | — 
+| `TensorOps.elu` | ✖ | — | — | — | — 
+| `TensorOps.softmax` | ✖ | — | — | — | — 
+| `TensorOps.logSoftmax` | ✖ | — | — | — | — 
+| `TensorOps.sigmoid` | ✖ | — | — | — | — 
+| `TensorOps.tanh` | ✖ | — | — | — | — 
+| `TensorOps.silu` | ✖ | — | — | — | — 
+| `TensorOps.gelu` | ✖ | composite · decompose | — | — | — 
+| `TensorOps.sum` | ✖ | — | — | — | — 
+| `TensorOps.mean` | ✖ | — | — | — | — 
+| `TensorOps.variance` | ✖ | — | — | — | — 
+| `TensorOps.argMax` | ⚠ | — | — | — | — 
+| `TensorOps.sqrt` | ✖ | — | — | — | — 
+| `TensorOps.pow` | ✖ | — | — | — | — 
+| `TensorOps.powScalar` | ✖ | — | — | — | — 
+| `TensorOps.log` | ✖ | — | — | — | — 
+| `TensorOps.log2` | ✖ | — | — | — | — 
+| `TensorOps.log10` | ✖ | — | — | — | — 
+| `TensorOps.abs` | ✖ | — | — | — | — 
+| `TensorOps.sign` | ✖ | — | — | — | — 
+| `TensorOps.clamp` | ✖ | — | — | — | — 
+| `TensorOps.narrow` | ✖ | — | — | — | — 
+| `TensorOps.pad2d` | ✖ | — | — | — | — 
+| `TensorOps.unfold` | ✖ | — | — | — | — 
+| `TensorOps.lt` | ✖ | — | — | — | — 
+| `TensorOps.ge` | ✖ | — | — | — | — 
+| `TensorOps.tril` | ✖ | — | — | — | — 
+| `TensorOps.convert` | ✖ | — | — | — | — 
+| `TensorOps.gather` | ✖ | — | — | — | — 
+| `TensorOps.indexSelect` | ✖ | — | — | — | — 
+| `TensorOps.exp` | ✖ | — | — | — | — 
+| `TensorOps.expm1` | ✖ | — | — | — | — 
+| `TensorOps.erf` | ✖ | composite · decompose | — | — | — 
+| `TensorOps.sin` | ✖ | — | — | — | — 
+| `TensorOps.cos` | ✖ | — | — | — | — 
+| `TensorOps.scaledDotProductAttention` | ✖ | — | — | — | — 
+| `Similarity.cosineDistance` | ✖ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 66* | *1 / 66* | *1 / 66* | *1 / 66* 
+| *Done* | *1 / 66* | *2 / 66* | *1 / 66* | *1 / 66* | *1 / 66* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].

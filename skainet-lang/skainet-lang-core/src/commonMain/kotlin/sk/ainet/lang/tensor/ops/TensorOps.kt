@@ -8,6 +8,7 @@ import sk.ainet.lang.trace.Diff
 import sk.ainet.lang.nn.dsl.GenerateNetworkDsl
 import sk.ainet.lang.nn.dsl.ActivationDsl
 import sk.ainet.lang.ops.DarcValidated
+import sk.ainet.lang.ops.Lowering
 
 @GenerateTracingWrapper
 @GenerateNetworkDsl
@@ -230,6 +231,7 @@ public interface TensorOps {
      */
     @Diff
     @ActivationDsl
+    @Lowering(composite = "skainet.gelu")
     public fun <T : DType, V> gelu(tensor: Tensor<T, V>, approximate: Boolean = true): Tensor<T, V>
 
     // Reduction operations
@@ -369,6 +371,7 @@ public interface TensorOps {
     /** Element-wise Gauss error function `erf(x) = 2/√π · ∫₀ˣ e^(−t²) dt`, odd, saturating at ±1. */
     @Diff
     @ActivationDsl
+    @Lowering(composite = "skainet.erf")
     public fun <T : DType, V> erf(tensor: Tensor<T, V>): Tensor<T, V>
 
     // Trigonometric operations

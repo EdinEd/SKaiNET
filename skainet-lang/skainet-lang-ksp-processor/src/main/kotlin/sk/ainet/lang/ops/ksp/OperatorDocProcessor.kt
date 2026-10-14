@@ -43,6 +43,8 @@ data class FunctionDoc(
     val validatedOn: String = "",
     val validatedCommit: String = "",
     val referencesChecked: Boolean = true,
+    // Lowering forms declared with @Lowering (composite · decompose · native); empty = undeclared.
+    val lowering: String = "",
 )
 
 data class ParameterDoc(
@@ -207,6 +209,7 @@ class OperatorDocProcessor(
                 validatedOn = validation.on,
                 validatedCommit = validation.commit,
                 referencesChecked = validation.referencesChecked,
+                lowering = extractLowering(fn),
             )
         }
 
@@ -295,7 +298,22 @@ class OperatorDocProcessor(
             validatedOn = validation.on,
             validatedCommit = validation.commit,
             referencesChecked = validation.referencesChecked,
+            lowering = extractLowering(function),
         )
+    }
+
+    /**
+     * Render the `@Lowering` annotation as the matrix cell text: the declared forms joined by
+     * ` · ` (`composite`, `decompose`, `native`), or empty when the op declares nothing.
+     */
+    private fun extractLowering(function: KSFunctionDeclaration): String {
+        val annotation = function.annotations.find { it.shortName.asString() == "Lowering" } ?: return ""
+        fun arg(name: String): Any? = annotation.arguments.find { it.name?.asString() == name }?.value
+        val forms = mutableListOf<String>()
+        if ((arg("composite") as? String).orEmpty().isNotEmpty()) forms += "composite"
+        if ((arg("decomposes") as? Boolean) ?: true) forms += "decompose"
+        if ((arg("native") as? Boolean) == true) forms += "native"
+        return forms.joinToString(" · ")
     }
 
     /**
@@ -593,6 +611,9 @@ class OperatorDocProcessor(
                         // Autodiff coverage. Always emitted so the manifest is the single source of
                         // differentiability truth; diffRuleName only when a custom @Diff(ruleName=...) is set.
                         append(",\n          \"isDifferentiable\": ${function.isDifferentiable}")
+                        if (function.lowering.isNotEmpty()) {
+                            append(",\n          \"lowering\": \"${escapeJson(function.lowering)}\"")
+                        }
                         if (function.diffRuleName.isNotEmpty()) {
                             append(",\n          \"diffRuleName\": \"${escapeJson(function.diffRuleName)}\"")
                         }

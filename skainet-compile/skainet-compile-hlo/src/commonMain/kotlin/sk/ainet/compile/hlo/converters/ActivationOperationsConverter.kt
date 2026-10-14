@@ -277,7 +277,9 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         val approximate = (node.operation.parameters["approximate"] as? Boolean) ?: true
 
         val emitter = ContextEmitter(context)
-        val resultValue = GeluLowering.emit(emitter, operands[0], outputType, approximate)
+        val resultValue = GeluLowering.spec.lower(
+            context, emitter, operands[0], outputType, mapOf("approximate" to approximate)
+        )
 
         return ConversionResult.Success(
             outputValueName = resultValue,
