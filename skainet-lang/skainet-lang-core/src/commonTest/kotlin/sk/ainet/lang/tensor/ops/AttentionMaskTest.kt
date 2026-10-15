@@ -56,8 +56,12 @@ class AttentionMaskTest {
         // Row 0: keys < 3 and ki <= absQ (absQ = 1 + qi).
         assertTrue(attended(0, 0, 0) && attended(0, 0, 1) && !attended(0, 0, 2))
         assertTrue(attended(0, 3, 2) && !attended(0, 3, 3))
-        // Row 1: fully padded → every key masked, but finite.
-        for (qi in 0 until 4) for (ki in 0 until 5) assertEquals(-1.0e30f, m[(1 * 4 + qi) * 5 + ki])
+        // Row 1: fully padded → every key masked, but finite. (Threshold, not equality: Kotlin/JS
+        // keeps a Float literal at double precision while a FloatArray element is float32.)
+        for (qi in 0 until 4) for (ki in 0 until 5) {
+            val v = m[(1 * 4 + qi) * 5 + ki]
+            assertTrue(v.isFinite() && v <= -1.0e29f, "row 1 key $ki of query $qi must be masked, got $v")
+        }
         // Row 2: no padding → plain causal with offset 1.
         assertTrue(attended(2, 0, 1) && !attended(2, 0, 2) && attended(2, 3, 4))
         // keyRange agrees with attends, including an empty range.
