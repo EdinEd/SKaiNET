@@ -2,6 +2,7 @@ package sk.ainet.io.gguf
 
 import kotlinx.io.buffered
 import sk.ainet.io.model.*
+import sk.ainet.model.ModelFormat
 import sk.ainet.io.openRandomAccessSource
 
 /**

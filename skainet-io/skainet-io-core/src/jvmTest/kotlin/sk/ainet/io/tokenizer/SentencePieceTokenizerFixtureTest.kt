@@ -3,6 +3,8 @@
 package sk.ainet.io.tokenizer
 
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.frontend.text.Tokenizer
+import sk.ainet.frontend.tokenizer.SentencePieceTokenizer
 import sk.ainet.io.gguf.StreamingGGUFReader
 import java.io.File
 import kotlin.test.Test
