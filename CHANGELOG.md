@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-15
+
+Headline: **key-padding lengths and window metadata for attention (#1343).**
+`scaledDotProductAttention` takes `keyLengths`, `window` and `rightContext`; padding, the
+sliding-window band and `causal` are rules over positions defined once in `AttentionMask` and
+shared by the CPU kernel, the recorded graph and the StableHLO export. The recorded node carries
+the rules as metadata (`maskKind`, `window`, `rightContext`, the lengths as an operand), the
+export lowers them to one `iota`/`compare`/`select` keep mask, and the composite seam of 0.59 is
+n-ary so a target that keeps attention fused receives `stablehlo.composite "skainet.sdpa"` with
+the rules as attributes.
+
+Version note: SKaiNET-transformers follows on this release with padded batches for the BERT and
+Laya encoders. The SKEEP-006 compatibility aliases move to `DeprecationLevel.ERROR` as scheduled
+in 0.59 (see *Deprecated*) and are removed in 0.61.
+
 ### Added
 
 - **Key-padding lengths and window metadata for `scaledDotProductAttention`** (#1343, part 1): `scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths: Tensor<DType, *>? = null, window: Int = 0, rightContext: Int = 0)`. Padding (`keyLengths`, a `[batch]` integer tensor), the sliding-window band (`window`/`rightContext`, the `MultiHeadAttention` formula) and `causal` are *rules over positions* defined once in `AttentionMask` (`keyRange`, `attends`, `additive`, `MASKED = -1e30`), shared by the CPU kernel, the recorded graph and the StableHLO lowering. The CPU kernel computes scores only inside each row's attended key range — bit-identical to the dense `-1e30` mask on the attended keys, finite on a fully padded row — and a padded batch equals the unpadded single passes. The dense additive `mask` stays the generic fallback and is added on top of the rules.
@@ -15,6 +30,10 @@
 - `HloDecomposition` is n-ary: implementations written against the unary 0.59 signature move to `HloDecomposition.unary { e, x, type, params -> … }`; `LoweringSpec.lower` keeps a unary overload.
 - `TensorOps.scaledDotProductAttention` gained `keyLengths`, `window` and `rightContext`: implementors of the interface must update the override (callers are source-compatible through the defaults). The generated `GraphDsl` (`skainet-lang-dag`) now types optional tensor operands (`mask`, `bias`, `keyLengths`) as `GraphValue<*>? = null` instead of mandatory positionals.
 - StableHLO SDPA export: the causal diagonal now carries the `Sk − Sq` offset the CPU kernel uses (a KV-cache decode step attends to its whole cache; `Sq == Sk` emission is unchanged); a dense mask and `causal = true` now apply together, as on the CPU, instead of the mask silently replacing the rule; positional/padding rules on a dynamic key length return a conversion failure instead of invalid `iota` IR (a dense mask still exports on the dynamic path).
+
+### Deprecated
+
+- **The SKEEP-006 compatibility surface moves to `DeprecationLevel.ERROR`** (scheduled in 0.59: ERROR in 0.60, removed in 0.61): the `sk.ainet.io.tokenizer.*` aliases (`Tokenizer`, `QwenByteLevelBpeTokenizer`, `SentencePieceTokenizer`, `SpecialTokenSplitter`, `TekkenTokenizer`, `ByteToUnicode`), `sk.ainet.io.model.ModelFormat`, `sk.ainet.io.weights.NameMap` / `RoleTableNameMap` / `TransformerNameMaps`, and in `skainet-io-gguf` `ModelArchitecture.fromGguf`, `ModelLoaderRegistry`, `LlamaLoaderDescriptor` and `Gemma3nLoaderDescriptor`. Sources that still name them stop compiling; every `@Deprecated` carries its `ReplaceWith` to the new home (`sk.ainet.frontend.text`, `sk.ainet.frontend.tokenizer`, `sk.ainet.model`). `TokenizerFactory` and `UnsupportedTokenizerException` stay real classes in `sk.ainet.io.tokenizer` for Java callers; `TransformerNameMaps.Gguf.forArchitecture` stays at WARNING.
 
 ### Fixed
 
