@@ -6,6 +6,7 @@ import onnx.ModelProto
 import onnx.TensorProto
 import pbandk.decodeFromByteArray
 import sk.ainet.io.model.*
+import sk.ainet.model.ModelFormat
 
 /**
  * ONNX model parser extending BaseModelParser.

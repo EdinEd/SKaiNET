@@ -7,8 +7,8 @@ import sk.ainet.io.model.ModelArchitecture
  *
  * Register with [ModelLoaderRegistry] to enable auto-detection of Gemma GGUF files.
  */
-@Suppress("DEPRECATION")
-@Deprecated("Register families with sk.ainet.model.ModelFamilyRegistry (SKEEP-006). Removed in 0.60.")
+@Suppress("DEPRECATION", "DEPRECATION_ERROR")
+@Deprecated("Register families with sk.ainet.model.ModelFamilyRegistry (SKEEP-006). An error since 0.60, removed in 0.61.", level = DeprecationLevel.ERROR)
 public object Gemma3nLoaderDescriptor : ModelLoaderDescriptor {
     override val architecture: ModelArchitecture = ModelArchitecture.GEMMA
     override val displayName: String = "Gemma 3n"

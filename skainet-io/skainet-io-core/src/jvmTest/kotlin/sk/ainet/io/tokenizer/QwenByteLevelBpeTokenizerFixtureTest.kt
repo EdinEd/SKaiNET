@@ -3,6 +3,8 @@
 package sk.ainet.io.tokenizer
 
 import sk.ainet.io.JvmRandomAccessSource
+import sk.ainet.frontend.text.Tokenizer
+import sk.ainet.frontend.tokenizer.QwenByteLevelBpeTokenizer
 import sk.ainet.io.gguf.GgufModelMetadata
 import sk.ainet.io.gguf.StreamingGGUFReader
 import java.io.File

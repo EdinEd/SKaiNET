@@ -1,7 +1,7 @@
 package sk.ainet.io.gguf
 
 import sk.ainet.io.JvmRandomAccessSource
-import sk.ainet.io.weights.TransformerNameMaps
+import sk.ainet.model.TransformerNameMaps
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
