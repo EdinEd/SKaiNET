@@ -50,7 +50,10 @@ public object GeluLowering {
         compositeName = "skainet.gelu",
         attributes = listOf("approximate"),
         version = 1,
-    ) { e, x, type, params -> emit(e, x, type, (params["approximate"] as? Boolean) ?: true) }
+        decomposition = sk.ainet.compile.hlo.lowering.HloDecomposition.unary { e, x, type, params ->
+            emit(e, x, type, (params["approximate"] as? Boolean) ?: true)
+        },
+    )
 
     public fun emit(e: HloEmitter, x: String, type: String, approximate: Boolean): String =
         if (approximate) emitTanh(e, x, type) else emitExact(e, x, type)

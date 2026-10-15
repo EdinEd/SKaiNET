@@ -22,6 +22,10 @@ import sk.ainet.lang.graph.GraphNode
  * SDPA is a core `TensorOps` op (KSP-generated), so its converter lives here in
  * core alongside dot_general/softmax — the transformer modules just decompose to it.
  *
+ * Emission goes through `SdpaLowering.spec`: a `stablehlo.composite "skainet.sdpa"` with its private
+ * decomposition function when the target's `OpGranularityPolicy` keeps `scaleddotproductattention`
+ * fused, the decomposition inline otherwise (#1343 part 2).
+ *
  * Masking: the node's positional rules (`causal`, `window`/`rightContext`) and the `keyLengths`
  * operand become an `iota`/`compare`/`select` keep mask, and a dense `mask` operand is added on
  * top — the same rules the CPU kernel applies, defined once in `AttentionMask`. The rules need a
@@ -126,8 +130,9 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
             "causal" to causal, "window" to window, "rightContext" to rightContext,
         )
         return try {
+            // Composite `skainet.sdpa` when the target keeps the op fused, else the decomposition inline.
             val emitter = ContextEmitter(context)
-            val out = SdpaLowering.emit(emitter, operands, operandTypes, outputType, lowered)
+            val out = SdpaLowering.spec.lower(context, emitter, operands, operandTypes, outputType, lowered)
             ConversionResult.Success(outputValueName = out, emittedOperations = emitter.lines)
         } catch (e: IllegalArgumentException) {
             ConversionResult.Failure(e.message ?: "SDPA lowering failed", "SDPA lowering failed for ${node.id}")
