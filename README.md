@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.59.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.60.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,24 +308,27 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.59.0
+## What's New in 0.60.0
 
-Exact GELU and lowering metadata (#1342):
+Key-padding lengths and window metadata for attention (#1343):
 
-- **`erf` and the exact GELU** — `gelu(approximate = false)` computes `0.5·x·(1 + erf(x/√2))`, the
-  form BERT-class encoders and the Laya decision models were trained with, on the CPU scalar kernel
-  and the JVM Vector API lanes. The default stays the tanh form, byte for byte; the exact backward
-  rule and `erfBackward` come with it.
-- **The form travels as op metadata** — `parameters["approximate"]` sits on the graph node, so the
-  graph executor, the backward rule and the StableHLO export read the same flag instead of each
-  picking a default. StableHLO lowers `erf` to `chlo.erf`.
-- **Fused ops as `stablehlo.composite`** — a `LoweringSpec` per op (`skainet.gelu`, `skainet.erf`)
-  emits a composite with a private decomposition function when a target's `OpGranularityPolicy`
-  keeps the op fused, and the inline decomposition otherwise, both from one builder. An explicit
-  `GeluApproximationLegalizationPass` records an exact→tanh rewrite on the node instead of
-  substituting silently, and `@Lowering` adds a *Lowering* column to the operator matrix.
-- `TensorOps.gelu` gained a parameter: implementors update the override, callers are
-  source-compatible. The 0.58 io-core deprecation aliases stay at WARNING (ERROR in 0.60).
+- **`scaledDotProductAttention(keyLengths, window, rightContext)`** — padding (a `[batch]`
+  lengths tensor), the sliding-window band and `causal` are rules over positions defined once in
+  `AttentionMask` and shared by the CPU kernel, the recorded graph and the StableHLO export. The
+  CPU kernel computes scores only inside each row's attended key range, so a padded batch equals
+  the unpadded single passes; the dense additive mask stays the generic fallback.
+- **The rules travel as op metadata** — the recorded node carries `maskKind`, `window` and
+  `rightContext` with the lengths as an operand, so a compiled target regenerates the cheapest
+  legal form (`iota`/`compare`/`select` on the export) instead of inheriting a dense
+  `[batch, 1, Sq, Sk]` mask that scales with the batch.
+- **`skainet.sdpa` composite** — the composite seam is n-ary (`HloDecomposition` takes every
+  operand), and `SdpaLowering.spec` emits `stablehlo.composite "skainet.sdpa"` with `scale`,
+  `causal`, `window`, `rightContext` and `maskKind` attributes when a target's
+  `OpGranularityPolicy` keeps attention fused, from the same builder as the inline form.
+- The SKEEP-006 compatibility aliases (`sk.ainet.io.tokenizer.*`, `sk.ainet.io.model.ModelFormat`,
+  `sk.ainet.io.weights.NameMap`, the GGUF `ModelLoaderRegistry`) are errors since this release and
+  are removed in 0.61. Fixed on the way: a batched dense attention mask on the CPU read batch
+  row 0 for every batch.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -350,6 +353,13 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.60.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — key-padding lengths
+  and window metadata for `scaledDotProductAttention` across the CPU kernel, recorder, executor
+  and StableHLO lowering, the n-ary composite seam with the `skainet.sdpa` composite, the
+  SKEEP-006 deprecation step, and the release
 
 ### Contributors (0.59.0)
 
@@ -446,7 +456,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.59.0. MIT License},
+  note         = {Version 0.60.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
