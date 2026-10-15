@@ -347,7 +347,17 @@ func.func private @skainet_gelu_approximate_false_128x768xf32(%arg0: tensor<128x
 }
 ----
 
-The private decomposition functions follow the entry function in the module. A composite is replaceable by its decomposition by definition, so a vendor compiler may pattern-match `skainet.gelu` while `stablehlo-legalize-composite-to-call` (or plain inlining) restores the exact formula everywhere else. Specs today: `GeluLowering.spec` (`skainet.gelu`, attribute `approximate`) and `ErfLowering.spec` (`skainet.erf`).
+The private decomposition functions follow the entry function in the module. A composite is replaceable by its decomposition by definition, so a vendor compiler may pattern-match `skainet.gelu` while `stablehlo-legalize-composite-to-call` (or plain inlining) restores the exact formula everywhere else. Specs today: `GeluLowering.spec` (`skainet.gelu`, attribute `approximate`), `ErfLowering.spec` (`skainet.erf`) and `SdpaLowering.spec` (`skainet.sdpa`, version 1). The attention composite takes every operand of the op — `q, k, v`, the optional dense mask and the optional `keyLengths` — and records the mask rules as attributes, so a vendor compiler whose fused attention kernel takes lengths can match it directly:
+
+[source,mlir]
+----
+%v5 = stablehlo.composite "skainet.sdpa" %arg0, %arg1, %arg2, %arg3
+    {composite_attributes = {scale = 0.25 : f32, causal = true, window = 4 : i32, rightContext = 0 : i32, maskKind = "combined"},
+     decomposition = @skainet_scaleddotproductattention_…, version = 1 : i32}
+    : (tensor<2x4x8x16xf32>, tensor<2x2x8x16xf32>, tensor<2x2x8x16xf32>, tensor<2xi32>) -> tensor<2x4x8x16xf32>
+----
+
+The private decomposition function builds the same `iota`/`compare`/`select` keep mask from `%arg3` that the portable export emits inline, so both rows of the policy table have identical semantics by construction. A decomposition builder sees only operand names, their MLIR types, the result type and the node parameters (`HloDecomposition.emit`), which is why every shape it needs must be readable from the types.
 
 Targets that cannot lower `erf` at all register `GeluApproximationLegalizationPass` through `TargetOptimizers.registerDagPasses`; it rewrites `gelu(approximate = false)` to the tanh form and records `legalizedFrom` / `maxAbsError` on the node, so the substitution shows up in the pass diagnostics instead of happening silently.
 

@@ -9,7 +9,8 @@ public object ErfLowering {
         compositeName = "skainet.erf",
         attributes = emptyList(),
         version = 1,
-    ) { e, x, type, _ -> emit(e, x, type) }
+        decomposition = sk.ainet.compile.hlo.lowering.HloDecomposition.unary { e, x, type, _ -> emit(e, x, type) },
+    )
 
     public fun emit(e: HloEmitter, x: String, type: String): String {
         val resultValue = e.newValue()

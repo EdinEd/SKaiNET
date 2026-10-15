@@ -472,8 +472,10 @@ public final class sk/ainet/compile/hlo/converters/ScalarOperationsConverter : s
 
 public final class sk/ainet/compile/hlo/converters/SdpaLowering {
 	public static final field INSTANCE Lsk/ainet/compile/hlo/converters/SdpaLowering;
+	public static final field OP Ljava/lang/String;
 	public final fun effectiveScale (FI)F
 	public final fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public final fun getSpec ()Lsk/ainet/compile/hlo/lowering/LoweringSpec;
 	public final fun parseTensorType (Ljava/lang/String;)Lkotlin/Pair;
 	public final fun renderType (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
 }
@@ -587,7 +589,12 @@ public final class sk/ainet/compile/hlo/generate/JvmHloGenerator {
 }
 
 public abstract interface class sk/ainet/compile/hlo/lowering/HloDecomposition {
-	public abstract fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public static final field Companion Lsk/ainet/compile/hlo/lowering/HloDecomposition$Companion;
+	public abstract fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+}
+
+public final class sk/ainet/compile/hlo/lowering/HloDecomposition$Companion {
+	public final fun unary (Lkotlin/jvm/functions/Function4;)Lsk/ainet/compile/hlo/lowering/HloDecomposition;
 }
 
 public final class sk/ainet/compile/hlo/lowering/LoweringSpec {
@@ -607,11 +614,13 @@ public final class sk/ainet/compile/hlo/lowering/LoweringSpec {
 	public final fun getVersion ()I
 	public fun hashCode ()I
 	public final fun lower (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public final fun lower (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class sk/ainet/compile/hlo/lowering/LoweringSpecKt {
 	public static final fun emitComposite (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/lowering/LoweringSpec;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public static final fun emitComposite (Lsk/ainet/compile/hlo/ConversionContext;Lsk/ainet/compile/hlo/lowering/LoweringSpec;Lsk/ainet/compile/hlo/converters/ContextEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 }
 
 public final class sk/ainet/compile/hlo/validation/BenchmarkResults {

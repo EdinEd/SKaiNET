@@ -110,6 +110,57 @@ class CompositeEmissionTest {
         assertEquals(normalize(inlineOps), normalize(body), "one builder must produce both forms")
     }
 
+    // ---- #1343 part 2: the n-ary seam, `skainet.sdpa` ----
+
+    private fun sdpaGraph(lengths: Boolean, mask: Boolean): DefaultComputeGraph {
+        val g = DefaultComputeGraph()
+        fun input(id: String, shape: List<Int>, dtype: String = "FP32") =
+            GraphNode(id, InputOperation<DType, Any>(), emptyList(), listOf(TensorSpec(id, shape, dtype))).also { g.addNode(it) }
+        val q = input("q", listOf(2, 4, 8, 16)); val k = input("k", listOf(2, 2, 8, 16)); val v = input("v", listOf(2, 2, 8, 16))
+        val m = if (mask) input("m", listOf(2, 1, 8, 8)) else null
+        val l = if (lengths) input("len", listOf(2), "Int32") else null
+        val operands = listOfNotNull(q, k, v, m, l)
+        val params = sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation.parameters(0f, causal = true, window = 4, rightContext = 0, hasLengths = lengths)
+        val sdpa = GraphNode("sdpa", sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation(params), operands.map { it.outputs[0] }, listOf(TensorSpec("o", listOf(2, 4, 8, 16), "FP32")))
+        g.addNode(sdpa)
+        operands.forEachIndexed { i, n -> g.addEdge(GraphEdge("e$i", n, sdpa, 0, i, n.outputs[0])) }
+        return g
+    }
+
+    @Test
+    fun sdpa_composite_carries_every_operand_and_the_mask_rules_as_attributes() {
+        val module = StableHloConverterFactory.createBasic(granularity = fused("scaleddotproductattention")).convert(sdpaGraph(lengths = true, mask = false), "sdpa_fused")
+        val c = module.content
+        val line = c.lines().single { "stablehlo.composite \"skainet.sdpa\"" in it }.trim()
+        assertTrue(line.contains("stablehlo.composite \"skainet.sdpa\" %arg0, %arg1, %arg2, %arg3 {"), line)
+        assertTrue(line.contains("composite_attributes = {scale = 0.25 : f32, causal = true, window = 4 : i32, rightContext = 0 : i32, maskKind = \"combined\"}"), line)
+        assertTrue(line.endsWith(": (tensor<2x4x8x16xf32>, tensor<2x2x8x16xf32>, tensor<2x2x8x16xf32>, tensor<2xi32>) -> tensor<2x4x8x16xf32>"), line)
+        val decl = Regex("decomposition = @(\\S+), version = 1 : i32").find(line)!!.groupValues[1]
+        assertTrue(c.contains("func.func private @$decl(%arg0: tensor<2x4x8x16xf32>, %arg1: tensor<2x2x8x16xf32>, %arg2: tensor<2x2x8x16xf32>, %arg3: tensor<2xi32>) -> tensor<2x4x8x16xf32> {"), c)
+        assertTrue(c.indexOf("func.func @sdpa_fused") < c.indexOf("func.func private"), "entry function must stay first")
+        assertTrue(c.substring(c.indexOf("func.func private")).contains("stablehlo.broadcast_in_dim %arg3, dims = [0]"), "the body lowers the lengths operand")
+        assertEquals("sdpa_fused", MlirParser().parse(c).getOrThrow().functionName)
+        assertTrue(MlirValidator().validate(c).isEmpty(), MlirValidator().validate(c).toString())
+
+        // Five operands when a dense mask is present as well.
+        val withMask = StableHloConverterFactory.createBasic(granularity = fused("scaleddotproductattention")).convert(sdpaGraph(lengths = true, mask = true), "sdpa_mask").content
+        assertTrue(withMask.contains("stablehlo.composite \"skainet.sdpa\" %arg0, %arg1, %arg2, %arg3, %arg4 {"), withMask)
+        assertTrue(withMask.contains("%arg3: tensor<2x1x8x8xf32>, %arg4: tensor<2xi32>)"), withMask)
+    }
+
+    @Test
+    fun sdpa_composite_body_equals_the_inline_decomposition_modulo_ssa_names() {
+        fun normalize(lines: List<String>) = lines.map { it.trim().replace(Regex("%v\\d+"), "%v") }
+        val inline = StableHloConverterFactory.createBasic().convert(sdpaGraph(lengths = true, mask = true), "a").content
+        val fusedModule = StableHloConverterFactory.createBasic(granularity = fused("scaleddotproductattention")).convert(sdpaGraph(lengths = true, mask = true), "b").content
+        assertFalse(inline.contains("stablehlo.composite"))
+        val inlineOps = inline.lines().filter { it.trim().startsWith("%v") }
+        val body = fusedModule.substring(fusedModule.indexOf("func.func private")).lines().filter { it.trim().startsWith("%v") }
+        assertEquals(normalize(inlineOps), normalize(body), "one builder must produce both forms")
+        // A policy that fuses only gelu leaves SDPA inline.
+        assertFalse(StableHloConverterFactory.createBasic(granularity = fused("gelu")).convert(sdpaGraph(lengths = false, mask = false), "c").content.contains("stablehlo.composite"))
+    }
+
     @Test
     fun text_optimizer_passes_tolerate_a_module_with_a_helper_function() {
         val converter = StableHloConverterFactory.createBasic(granularity = fused("gelu"))

@@ -30,6 +30,25 @@ import sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation
  */
 public object SdpaLowering {
 
+    /** Graph op name as [sk.ainet.compile.target.OpGranularityPolicy.keepFused] receives it. */
+    public const val OP: String = "scaleddotproductattention"
+
+    /**
+     * Composite `skainet.sdpa` (version 1): operands `q, k, v[, mask][, keyLengths]`, attributes
+     * `scale` (resolved, `f32`), `causal`, `window`, `rightContext` and `maskKind`, so a vendor
+     * compiler with a fused attention kernel that takes lengths can match it; everyone else
+     * inlines the decomposition or runs `stablehlo-legalize-composite-to-call`.
+     */
+    public val spec: sk.ainet.compile.hlo.lowering.LoweringSpec = sk.ainet.compile.hlo.lowering.LoweringSpec(
+        op = OP,
+        compositeName = "skainet.sdpa",
+        attributes = listOf("scale", "causal", "window", "rightContext", "maskKind"),
+        version = 1,
+        decomposition = sk.ainet.compile.hlo.lowering.HloDecomposition { e, operands, operandTypes, resultType, params ->
+            emit(e, operands, operandTypes, resultType, params)
+        },
+    )
+
     /** `tensor<1x2x?x8xf32>` → dims `[1, 2, -1, 8]` and element type `f32`; `tensor<f32>` → `[]`. */
     public fun parseTensorType(type: String): Pair<List<Int>, String> {
         require(type.startsWith("tensor<") && type.endsWith(">")) { "not a tensor type: $type" }
