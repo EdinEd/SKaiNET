@@ -3717,7 +3717,10 @@ public open class DefaultCpuOpsBase(
         value: Tensor<T, V>,
         mask: Tensor<T, V>?,
         scale: Float,
-        causal: Boolean
+        causal: Boolean,
+        keyLengths: Tensor<DType, *>?,
+        window: Int,
+        rightContext: Int
     ): Tensor<T, V> {
         // Expected shapes: [batch, heads, seqQ, headDim] for Q, [batch, heads, seqKV, headDim] for K/V
         require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
@@ -3742,12 +3745,30 @@ public open class DefaultCpuOpsBase(
         require(key.shape[2] == value.shape[2]) {
             "SDPA: K seqKV (${key.shape[2]}) does not match V seqKV (${value.shape[2]})"
         }
+        sk.ainet.lang.tensor.ops.AttentionMask.validate(window, rightContext)
 
         val batch = query.shape[0]
         val heads = query.shape[1]
         val seqQ = query.shape[2]
         val headDim = query.shape[3]
         val seqKV = key.shape[2]
+
+        // #1343: key padding and the window band are rules over positions, resolved per query row
+        // through AttentionMask.keyRange. Scores outside the row's range are never computed and
+        // get AttentionMask.MASKED, which is bit-identical to adding the dense -1e30 mask on the
+        // attended keys (the masked exp underflows to exactly 0 either way) and keeps a fully
+        // masked row finite. `causal` folds into the range on this path. Without lengths or a
+        // window the kernel below runs unchanged.
+        val lengths: IntArray? = keyLengths?.let { kl ->
+            require(kl.rank == 1 && kl.shape[0] == batch) { "SDPA: keyLengths must be [batch=$batch], got ${kl.shape}" }
+            val raw = kl.data.copyToFloatArray()
+            IntArray(batch) { b ->
+                val len = raw[b].toInt()
+                require(len in 0..seqKV) { "SDPA: keyLengths[$b] = $len is outside 0..$seqKV" }
+                len
+            }
+        }
+        val structured = lengths != null || window > 0
         // Grouped-query attention (SKEEP-005 phase 2): K/V are read in place through the
         // head-group index instead of being tiled to Q's head count upstream. Same loop
         // order and arithmetic as before, so nKVHeads == nHeads stays bit-identical.
@@ -3764,6 +3785,19 @@ public open class DefaultCpuOpsBase(
         val vBuf = value.data.copyToFloatArray()
         // Hoisted out of the per-head loop: the mask is read-only for the whole call.
         val maskBuf = mask?.data?.copyToFloatArray()
+        // Dense mask broadcast, trailing-aligned like the StableHLO lowering: [b | 1, H | nKV | 1, Sq | 1, Sk | 1].
+        // (The former `i % size` read batch row 0 for every batch, so a [batch, 1, Sq, Sk] mask with batch > 1
+        // was silently wrong; shapes that worked — [1, 1, Sq, Sk], [1, 1, 1, Sk], [Sq, Sk] — index identically here.)
+        val maskDims = mask?.let { m ->
+            require(m.rank in 1..4) { "SDPA: mask must have rank 1..4, got ${m.rank}" }
+            val d = IntArray(4) { 1 }
+            for (i in 0 until m.rank) d[4 - m.rank + i] = m.shape[i]
+            require(d[0] == 1 || d[0] == batch) { "SDPA: mask batch (${d[0]}) must be 1 or $batch" }
+            require(d[1] == 1 || d[1] == heads || d[1] == key.shape[1]) { "SDPA: mask heads (${d[1]}) must be 1, ${key.shape[1]} or $heads" }
+            require(d[2] == 1 || d[2] == seqQ) { "SDPA: mask seqQ (${d[2]}) must be 1 or $seqQ" }
+            require(d[3] == 1 || d[3] == seqKV) { "SDPA: mask seqKV (${d[3]}) must be 1 or $seqKV" }
+            d
+        }
 
         val outBuf = FloatArray(batch * heads * seqQ * headDim)
 
@@ -3784,21 +3818,41 @@ public open class DefaultCpuOpsBase(
                 val b = unit / heads
                 val h = unit % heads
                 val kvH = h / nRep
-                // Compute attention scores: Q @ K^T, then scale
-                for (qi in 0 until seqQ) {
-                    for (ki in 0 until seqKV) {
-                        var dot = 0f
+                if (structured) {
+                    // Scores only inside the row's attended key range; the rest is MASKED.
+                    val length = lengths?.get(b) ?: seqKV
+                    for (qi in 0 until seqQ) {
+                        val range = sk.ainet.lang.tensor.ops.AttentionMask.keyRange(qi, seqQ, seqKV, causal, window, rightContext, length)
+                        val row = qi * seqKV
+                        scores.fill(sk.ainet.lang.tensor.ops.AttentionMask.MASKED, row, row + seqKV)
                         val qOff = ((b * heads + h) * seqQ + qi) * headDim
-                        val kOff = ((b * kvHeads + kvH) * seqKV + ki) * headDim
-                        for (d in 0 until headDim) {
-                            dot += qBuf[qOff + d] * kBuf[kOff + d]
+                        for (ki in range) {
+                            var dot = 0f
+                            val kOff = ((b * kvHeads + kvH) * seqKV + ki) * headDim
+                            for (d in 0 until headDim) {
+                                dot += qBuf[qOff + d] * kBuf[kOff + d]
+                            }
+                            scores[row + ki] = dot * effectiveScale
                         }
-                        scores[qi * seqKV + ki] = dot * effectiveScale
+                    }
+                } else {
+                    // Compute attention scores: Q @ K^T, then scale
+                    for (qi in 0 until seqQ) {
+                        for (ki in 0 until seqKV) {
+                            var dot = 0f
+                            val qOff = ((b * heads + h) * seqQ + qi) * headDim
+                            val kOff = ((b * kvHeads + kvH) * seqKV + ki) * headDim
+                            for (d in 0 until headDim) {
+                                dot += qBuf[qOff + d] * kBuf[kOff + d]
+                            }
+                            scores[qi * seqKV + ki] = dot * effectiveScale
+                        }
                     }
                 }
 
-                // Apply causal mask (set future positions to -inf)
-                if (causal) {
+                // Apply causal mask (set future positions to -inf); folded into the key range above
+                // when the structured path is active.
+                if (causal && !structured) {
                     for (qi in 0 until seqQ) {
                         // For single-token inference with KV cache: qi indexes from the
                         // query's perspective. The valid range of ki is [0, seqKV).
@@ -3811,10 +3865,21 @@ public open class DefaultCpuOpsBase(
                     }
                 }
 
-                // Apply external mask if provided
-                if (maskBuf != null) {
-                    for (i in scores.indices) {
-                        scores[i] += maskBuf[i % maskBuf.size]
+                // Apply external mask if provided (broadcast per maskDims)
+                if (maskBuf != null && maskDims != null) {
+                    val mb = maskDims[0]; val mh = maskDims[1]; val mq = maskDims[2]; val mk = maskDims[3]
+                    val bI = if (mb == 1) 0 else b
+                    val hI = when (mh) { 1 -> 0; heads -> h; else -> kvH }
+                    val base = (bI * mh + hI) * mq
+                    for (qi in 0 until seqQ) {
+                        val rowM = (base + (if (mq == 1) 0 else qi)) * mk
+                        val row = qi * seqKV
+                        if (mk == 1) {
+                            val mv = maskBuf[rowM]
+                            for (ki in 0 until seqKV) scores[row + ki] += mv
+                        } else {
+                            for (ki in 0 until seqKV) scores[row + ki] += maskBuf[rowM + ki]
+                        }
                     }
                 }
 

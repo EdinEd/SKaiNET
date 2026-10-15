@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Key-padding lengths and window metadata for `scaledDotProductAttention`** (#1343, part 1): `scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths: Tensor<DType, *>? = null, window: Int = 0, rightContext: Int = 0)`. Padding (`keyLengths`, a `[batch]` integer tensor), the sliding-window band (`window`/`rightContext`, the `MultiHeadAttention` formula) and `causal` are *rules over positions* defined once in `AttentionMask` (`keyRange`, `attends`, `additive`, `MASKED = -1e30`), shared by the CPU kernel, the recorded graph and the StableHLO lowering. The CPU kernel computes scores only inside each row's attended key range — bit-identical to the dense `-1e30` mask on the attended keys, finite on a fully padded row — and a padded batch equals the unpadded single passes. The dense additive `mask` stays the generic fallback and is added on top of the rules.
+- **Mask rules as op metadata**: `RecordingExecution` and the KSP tracer record `parameters["maskKind" | "window" | "rightContext"]` (`maskKind` = `none | causal | slidingWindow | keyPadding | combined`, `AttentionMask.kindOf`) with `keyLengths` as the last operand after the optional dense mask; `ScaledDotProductAttentionOperation.operandLayout` resolves the layout for `ComputeGraphExecutor` and the converter. DIRECT vs OPTIMIZED parity on a padded batch within 1e-6.
+- **StableHLO lowering of the rules** (`SdpaLowering`, the single emitter-based builder behind `AttentionOperationsConverter`): `causal`, the window band and `keyLengths` become one `i1` keep mask from `stablehlo.iota`/`compare`/`and` and a `select 0 / -1e30` added to the scores, so no `[batch, 1, Sq, Sk]` constant or graph input enters the module; `keyLengths` is a plain `[batch] i32` input. The builder reads every shape from the operand MLIR types, which is what the `skainet.sdpa` composite decomposition function (part 2) needs. `TensorOps.scaledDotProductAttention` carries `@Lowering(composite = "skainet.sdpa")`.
+
+### Changed
+
+- `TensorOps.scaledDotProductAttention` gained `keyLengths`, `window` and `rightContext`: implementors of the interface must update the override (callers are source-compatible through the defaults). The generated `GraphDsl` (`skainet-lang-dag`) now types optional tensor operands (`mask`, `bias`, `keyLengths`) as `GraphValue<*>? = null` instead of mandatory positionals.
+- StableHLO SDPA export: the causal diagonal now carries the `Sk − Sq` offset the CPU kernel uses (a KV-cache decode step attends to its whole cache; `Sq == Sk` emission is unchanged); a dense mask and `causal = true` now apply together, as on the CPU, instead of the mask silently replacing the rule; positional/padding rules on a dynamic key length return a conversion failure instead of invalid `iota` IR (a dense mask still exports on the dynamic path).
+
+### Fixed
+
+- `DefaultCpuOps.scaledDotProductAttention` indexed a dense mask with `i % size`, which read batch row 0 for every batch: a `[batch, 1, Sq, Sk]` mask with `batch > 1` was silently wrong. The mask is now broadcast trailing-aligned (`[b | 1, H | nKV | 1, Sq | 1, Sk | 1]`, the StableHLO rule); the shapes that worked before index identically.
+
 ## [0.59.0] - 2026-10-14
 
 Headline: **exact GELU and lowering metadata (#1342).** `erf` becomes a first-class op and `gelu`

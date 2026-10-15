@@ -326,6 +326,12 @@ class MethodAnalyzer {
                 generateConv2dCall(method)
             }
 
+            // Scaled dot-product attention (#1343): the trace carries `maskKind`, derived from the
+            // rules in force, beside the plain scalar attributes (scale, causal, window, rightContext).
+            method.name == "scaledDotProductAttention" && method.parameters.any { it.name == "keyLengths" } -> {
+                "sdpaMaskKind(keyLengths as Tensor<*, *>?, causal, window)"
+            }
+
             // Shape operations - use shapesAndDTypes
             method.name in listOf("reshape", "flatten", "squeeze", "unsqueeze", "transpose", "concat", "split") -> {
                 val inputs = tensorParams.map { "${it.name} as Tensor<*, *>" }.joinToString(", ")

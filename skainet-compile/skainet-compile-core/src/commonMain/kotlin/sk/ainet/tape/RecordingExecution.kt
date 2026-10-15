@@ -486,15 +486,16 @@ internal class RecordingTensorOpsDecorator(private val base: TensorOps) : Tensor
     ): Tensor<T, V> = base.convTranspose1d(input, weight, bias, stride, padding, outputPadding, dilation, groups)
     override fun <T : DType, V> scaledDotProductAttention(
         query: Tensor<T, V>, key: Tensor<T, V>, value: Tensor<T, V>,
-        mask: Tensor<T, V>?, scale: Float, causal: Boolean
+        mask: Tensor<T, V>?, scale: Float, causal: Boolean,
+        keyLengths: Tensor<DType, *>?, window: Int, rightContext: Int
     ): Tensor<T, V> {
-        val out = base.scaledDotProductAttention(query, key, value, mask, scale, causal)
-        val params = mutableMapOf<String, Any>(
-            "scale" to scale,
-            "causal" to causal
-        )
+        val out = base.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+        // #1343: the mask rules travel as parameters (`maskKind` derived from them) and `keyLengths`
+        // as the last operand, after the optional dense mask — the layout
+        // ScaledDotProductAttentionOperation.operandLayout resolves.
+        val params = ScaledDotProductAttentionOperation.parameters(scale, causal, window, rightContext, keyLengths != null)
         @Suppress("UNCHECKED_CAST")
-        val inputs = listOfNotNull(query, key, value, mask) as List<Tensor<T, V>>
+        val inputs = listOfNotNull(query, key, value, mask, keyLengths) as List<Tensor<T, V>>
         record(ScaledDotProductAttentionOperation(params), inputs, listOf(out))
         return out
     }

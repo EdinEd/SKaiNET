@@ -265,13 +265,20 @@ public class ComputeGraphExecutor(
             "scaled_dot_product_attention", "scaledDotProductAttention", "sdpa" -> {
                 val causal = params["causal"] as? Boolean ?: false
                 val scale = params["scale"] as? Float
+                // #1343: `keyLengths` is the last operand when `maskKind` says so, the dense mask operand 3.
+                val layout = sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation.operandLayout(inputs.size, params)
+                @Suppress("UNCHECKED_CAST")
+                val lengths = layout.lengthsIndex?.let { inputs[it] as Tensor<DType, *> }
                 listOf(ops.scaledDotProductAttention(
                     query = inputs[0],
                     key = inputs[1],
                     value = inputs[2],
-                    mask = inputs.getOrNull(3),
+                    mask = layout.maskIndex?.let { inputs[it] },
                     scale = scale ?: 0f,
-                    causal = causal
+                    causal = causal,
+                    keyLengths = lengths,
+                    window = params["window"] as? Int ?: 0,
+                    rightContext = params["rightContext"] as? Int ?: 0,
                 ))
             }
 

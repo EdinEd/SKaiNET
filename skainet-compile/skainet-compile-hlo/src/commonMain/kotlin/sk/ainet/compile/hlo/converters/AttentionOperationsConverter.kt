@@ -6,15 +6,14 @@ import sk.ainet.compile.hlo.StableHloOperationConverter
 import sk.ainet.lang.tensor.Dim
 import sk.ainet.lang.tensor.hasDynamic
 import sk.ainet.lang.graph.GraphNode
-import kotlin.math.sqrt
 
 /**
- * Converts `scaledDotProductAttention` to the standard StableHLO attention
- * subgraph:
+ * Converts `scaledDotProductAttention` to the standard StableHLO attention subgraph through
+ * [SdpaLowering], the one builder of the formula (#1343):
  *
  *     scores = Q · Kᵀ                      (dot_general, contract head_dim)
  *     scaled = scores * scale              (scale = arg, or 1/sqrt(head_dim))
- *     attn   = softmax(scaled, axis = -1)  (max/sub/exp/sum/div, numerically stable)
+ *     attn   = softmax(scaled + mask)      (max/sub/exp/sum/div, numerically stable)
  *     out    = attn · V                    (dot_general, contract key length)
  *
  * Q/K/V are batched `[.., S, D]`; batching dims are every leading dim except the
@@ -23,10 +22,10 @@ import kotlin.math.sqrt
  * SDPA is a core `TensorOps` op (KSP-generated), so its converter lives here in
  * core alongside dot_general/softmax — the transformer modules just decompose to it.
  *
- * Causal masking: when the `causal` attribute is set, an additive -inf mask
- * (built from iota row/col indices + compare + select) is added to the scaled
- * scores before softmax so each query only attends to keys at or before it.
- * An explicit `mask` operand (operands[3]) takes priority over the iota path.
+ * Masking: the node's positional rules (`causal`, `window`/`rightContext`) and the `keyLengths`
+ * operand become an `iota`/`compare`/`select` keep mask, and a dense `mask` operand is added on
+ * top — the same rules the CPU kernel applies, defined once in `AttentionMask`. The rules need a
+ * static scores shape; a dynamic key length (`?`) is exported with a dense mask only.
  *
  * Grouped-query attention (SKEEP-005 phase 2, "structure at compile time"): when K/V
  * carry fewer heads than Q (`[b, nKV, Sk, hd]` vs `[b, H, Sq, hd]`, `nKV | H`), Q is
@@ -65,16 +64,21 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
         val outSpec = node.outputs.firstOrNull()
         val mapper = context.getTypeMapper()
         val elem = outSpec?.let { mapper.mapDType(it.dtype) } ?: "f32"
-        // Render a shape's dims, mapping a dynamic extent (DYNAMIC_DIM = -1) to `?`.
-        fun dims(shape: List<Int>): String = shape.joinToString("x") { Dim.render(it) }
-        fun typeOf(shape: List<Int>): String = "tensor<${dims(shape)}x$elem>"
+        fun typeOf(shape: List<Int>): String = SdpaLowering.renderType(shape, elem)
 
-        val qType = context.getValueType(operands[0]) ?: typeOf(qShape)
-        val kType = context.getValueType(operands[1]) ?: typeOf(kShape)
-        val vType = context.getValueType(operands[2]) ?: typeOf(vShape)
-
+        // Operand MLIR types: the registered value type, else the node's input spec. The builder reads
+        // every shape it needs from these, as it must inside a composite decomposition function.
+        val operandTypes = operands.mapIndexed { i, operand ->
+            context.getValueType(operand)
+                ?: node.inputs.getOrNull(i)?.let { spec ->
+                    val shape = spec.shape
+                    if (i < 3 && shape != null) typeOf(shape) else mapper.mapTensorType(spec)
+                }
+                ?: when (i) { 0 -> typeOf(qShape); 1 -> typeOf(kShape); 2 -> typeOf(vShape)
+                    else -> return ConversionResult.Failure("SDPA operand $i has no known type", "Missing operand type for ${node.id}") }
+        }
         val headDim = qShape[rank - 1]
-        val keyLen = kShape[rank - 2]
+        val outputType = outSpec?.let { mapper.mapTensorType(it) } ?: typeOf(qShape.dropLast(1) + headDim)
 
         // Grouped-query attention: K/V heads divide Q heads → work on Q as [b, nKV, nRep, Sq, hd].
         val gqa = rank == 4 && kShape.size == 4 && kShape[1] != qShape[1]
@@ -93,215 +97,40 @@ public class AttentionOperationsConverter : StableHloOperationConverter {
                 )
             }
         }
-        val qWork: List<Int> = if (gqa) listOf(qShape[0], kShape[1], qShape[1] / kShape[1], qShape[2], headDim) else qShape
-        val qWorkType = if (gqa) typeOf(qWork) else qType
-        val scoresShape = qWork.dropLast(1) + keyLen   // [.., Sq, Sk]  (GQA: [b, nKV, nRep, Sq, Sk])
-        val scoresType = typeOf(scoresShape)
-        val outputType = outSpec?.let { mapper.mapTensorType(it) } ?: typeOf(qShape.dropLast(1) + headDim)
-        val outWorkType = if (gqa) typeOf(qWork.dropLast(1) + headDim) else outputType
 
-        val scaleParam = (node.operation.parameters["scale"] as? Number)?.toFloat() ?: 0f
-        val scaleVal = if (scaleParam != 0f) scaleParam else (1.0f / sqrt(headDim.toFloat()))
-
-        val hasBatch = rank > 2
-        val batchList = (0 until rank - 2).joinToString(", ")   // K/V batching dims; == Q's ([b, nKV]) under GQA too
-        val batchClause = if (hasBatch) "batching_dims = [$batchList] x [$batchList], " else ""
-        val contractQ = qWork.size - 1            // contract head_dim of Q …
-        val contractK = rank - 1                  // … and K
-        val sdAxis = scoresShape.size - 1         // softmax over key length
-        val reducedShape = scoresShape.dropLast(1)
-        val reducedType = if (reducedShape.isEmpty()) "tensor<$elem>" else typeOf(reducedShape)
-        val bcastDims = (scoresShape.indices).filter { it != sdAxis }.joinToString(", ")
-        val contractAttn = scoresShape.size - 1   // attn key-length axis
-        val contractV = rank - 2                  // V key-length axis
-
-        val causal = (node.operation.parameters["causal"] as? Boolean) ?: false
-        val qAxis = scoresShape.size - 2 // query position in scores [.., Sq, Sk]
-        val scoresI32Type = "tensor<${dims(scoresShape)}xi32>"
-        val scoresI1Type = "tensor<${dims(scoresShape)}xi1>"
-
-        val scaleC = context.nextTempValue()
-        val scaleB = context.nextTempValue()
-        val qScaled = context.nextTempValue()
-        val scores = context.nextTempValue()
-        val maxInit = context.nextTempValue(); val maxV = context.nextTempValue(); val maxB = context.nextTempValue()
-        val shifted = context.nextTempValue(); val expV = context.nextTempValue()
-        val sumInit = context.nextTempValue(); val sumV = context.nextTempValue(); val sumB = context.nextTempValue()
-        val attn = context.nextTempValue()
-        val out = context.nextTempValue()
-
-        val ops = mutableListOf(
-            // Scale is applied to Q *before* the QK dot — scores·s == (q·s)@kᵀ exactly. This keeps the scale
-            // constant at the STATIC query type (`[.., Sq, headDim]`) rather than a splat sized to the scores
-            // shape `[.., Sq, Sk]`, whose Sk (key/cache length) may be dynamic (`?`) in KV-cache decode — a
-            // dynamic-shape splat constant is invalid StableHLO. Also drops a full scores-sized dense constant
-            // from static graphs.
-            "$scaleC = stablehlo.constant dense<$scaleVal> : tensor<$elem>",
-            "$scaleB = stablehlo.broadcast_in_dim $scaleC, dims = [] : (tensor<$elem>) -> $qType",
-            "$qScaled = stablehlo.multiply ${operands[0]}, $scaleB : $qType",
+        val params = node.operation.parameters
+        val layout = sk.ainet.lang.tensor.ops.ScaledDotProductAttentionOperation.operandLayout(operands.size, params)
+        val causal = (params["causal"] as? Boolean) ?: false
+        val window = (params["window"] as? Int) ?: 0
+        val rightContext = (params["rightContext"] as? Int) ?: 0
+        val scoresShape = qShape.dropLast(1) + kShape[rank - 2]
+        if ((causal || window > 0 || layout.lengthsIndex != null) && scoresShape.hasDynamic()) {
+            return ConversionResult.Failure(
+                "SDPA positional/padding rules (causal/window/keyLengths) need a static scores shape, got $scoresShape — pass a dense mask for a dynamic key length",
+                "Structured mask on a dynamic shape for ${node.id}",
+            )
+        }
+        val maskIndex = layout.maskIndex
+        if (maskIndex != null && gqa) {
+            val maskShape = node.inputs.getOrNull(maskIndex)?.shape
+            if (maskShape != null && maskShape.size == 4 && maskShape[1] != 1 && maskShape[1] != kShape[1] && maskShape[1] != qShape[1]) {
+                return ConversionResult.Failure(
+                    "SDPA grouped-query attention mask head dim must be 1, K/V heads (${kShape[1]}) or Q heads (${qShape[1]}), got $maskShape",
+                    "Unsupported GQA mask shape for ${node.id}",
+                )
+            }
+        }
+        val scaleParam = (params["scale"] as? Number)?.toFloat() ?: 0f
+        val lowered = params + mapOf(
+            "scale" to SdpaLowering.effectiveScale(scaleParam, headDim),
+            "causal" to causal, "window" to window, "rightContext" to rightContext,
         )
-        // GQA: expose the head groups as a batching dim of Q — a static, copy-free reshape.
-        val qForDot = if (gqa) {
-            val qg = context.nextTempValue()
-            ops += "$qg = stablehlo.reshape $qScaled : ($qType) -> $qWorkType"
-            qg
-        } else qScaled
-        ops += "$scores = stablehlo.dot_general $qForDot, ${operands[1]}, ${batchClause}contracting_dims = [$contractQ] x [$contractK] : ($qWorkType, $kType) -> $scoresType"
-
-        // When the scores shape is dynamic (the `?` key/cache dim of KV-cache decode), everything broadcast onto
-        // it — the explicit mask and the softmax's reduced max/sum — must use `stablehlo.dynamic_broadcast_in_dim`:
-        // a static `stablehlo.broadcast_in_dim` cannot target a dynamic shape. Its runtime `output_dimensions`
-        // operand is built once, here, from the scores tensor via `get_dimension_size`.
-        // Static graphs keep the original explicit `broadcast_in_dim` path (byte-for-byte unchanged).
-        val dyn = scoresShape.hasDynamic()
-        val shapeType = "tensor<${scoresShape.size}xi32>"
-        val scoresShapeOperand: String = if (!dyn) "" else run {
-            val parts = scoresShape.indices.map { d ->
-                if (Dim.isStatic(scoresShape[d])) {
-                    val c = context.nextTempValue()
-                    ops += "$c = stablehlo.constant dense<${scoresShape[d]}> : tensor<1xi32>"
-                    c
-                } else {
-                    val gd = context.nextTempValue(); val gr = context.nextTempValue()
-                    ops += "$gd = stablehlo.get_dimension_size $scores, dim = $d : ($scoresType) -> tensor<i32>"
-                    ops += "$gr = stablehlo.reshape $gd : (tensor<i32>) -> tensor<1xi32>"
-                    gr
-                }
-            }
-            val sh = context.nextTempValue()
-            ops += "$sh = stablehlo.concatenate ${parts.joinToString(", ")}, dim = 0 : (${parts.joinToString(", ") { "tensor<1xi32>" }}) -> $shapeType"
-            sh
+        return try {
+            val emitter = ContextEmitter(context)
+            val out = SdpaLowering.emit(emitter, operands, operandTypes, outputType, lowered)
+            ConversionResult.Success(outputValueName = out, emittedOperations = emitter.lines)
+        } catch (e: IllegalArgumentException) {
+            ConversionResult.Failure(e.message ?: "SDPA lowering failed", "SDPA lowering failed for ${node.id}")
         }
-
-        // Explicit additive mask (operands[3]) — e.g. a sliding-window+causal
-        // mask the caller built and passed with causal=false. It already
-        // encodes causality/window, so it takes priority over the built-in
-        // iota causal path. Brought to the scores shape and added. Without this
-        // the masked layers run UNMASKED (attend to future tokens) — correct
-        // only at position 0.
-        //
-        // Shape rules: trailing-aligned broadcast. Under GQA a rank-4 mask [b, M, Sq, Sk] keeps its batch on
-        // scores dim 0 and skips the nRep axis (dim 2); M may be 1 (head-shared) or nKV (one row per group).
-        // A per-head mask (M = H) is first VIEWED as [b, nKV, nRep, Sq, Sk] in Q's own h = kv * nRep + r order
-        // (reshape, or dynamic_reshape when a dim is dynamic) — broadcasting H onto nKV is invalid IR.
-        var softmaxIn = scores   // scores are already scaled (scale folded into Q above)
-        val maskOperand = operands.getOrNull(3)
-        if (maskOperand != null) {
-            var maskShape: List<Int> = node.inputs.getOrNull(3)?.shape ?: scoresShape
-            var maskVal = maskOperand
-            var maskType = context.getValueType(maskOperand) ?: typeOf(maskShape)
-            var maskDims: List<Int> = if (gqa && maskShape.size == 4) listOf(0, 1, 3, 4) else {
-                val offset = scoresShape.size - maskShape.size
-                maskShape.indices.map { it + offset }
-            }
-            if (gqa && maskShape.size == 4 && maskShape[1] != 1 && maskShape[1] != kShape[1]) {
-                val nKV = kShape[1]; val nH = qShape[1]
-                if (maskShape[1] != nH) {
-                    return ConversionResult.Failure(
-                        "SDPA grouped-query attention mask head dim must be 1, K/V heads ($nKV) or Q heads ($nH), got $maskShape",
-                        "Unsupported GQA mask shape for ${node.id}",
-                    )
-                }
-                val split = listOf(maskShape[0], nKV, nH / nKV, maskShape[2], maskShape[3])
-                val splitType = typeOf(split)
-                val r = context.nextTempValue()
-                if (!maskShape.hasDynamic()) {
-                    ops += "$r = stablehlo.reshape $maskVal : ($maskType) -> $splitType"
-                } else {
-                    // split dim -> source mask dim (the two group dims are static by construction)
-                    val source = listOf(0, -1, -1, 2, 3)
-                    val parts = split.indices.map { d ->
-                        if (Dim.isStatic(split[d])) {
-                            val c = context.nextTempValue()
-                            ops += "$c = stablehlo.constant dense<${split[d]}> : tensor<1xi32>"
-                            c
-                        } else {
-                            val gd = context.nextTempValue(); val gr = context.nextTempValue()
-                            ops += "$gd = stablehlo.get_dimension_size $maskVal, dim = ${source[d]} : ($maskType) -> tensor<i32>"
-                            ops += "$gr = stablehlo.reshape $gd : (tensor<i32>) -> tensor<1xi32>"
-                            gr
-                        }
-                    }
-                    val sh = context.nextTempValue()
-                    ops += "$sh = stablehlo.concatenate ${parts.joinToString(", ")}, dim = 0 : (${parts.joinToString(", ") { "tensor<1xi32>" }}) -> tensor<5xi32>"
-                    ops += "$r = stablehlo.dynamic_reshape $maskVal, $sh : ($maskType, tensor<5xi32>) -> $splitType"
-                }
-                maskVal = r; maskShape = split; maskType = splitType; maskDims = split.indices.toList()
-            }
-            val maskBc = if (maskShape == scoresShape) {
-                maskVal
-            } else if (!dyn) {
-                val mb = context.nextTempValue()
-                ops += "$mb = stablehlo.broadcast_in_dim $maskVal, dims = [${maskDims.joinToString(", ")}] : ($maskType) -> $scoresType"
-                mb
-            } else {
-                // Dynamic target: dynamic_broadcast_in_dim, stating which operand dims expand. Without the
-                // hints a dynamic operand dim mapped onto a dynamic result dim is ambiguous (1 -> N or N -> N),
-                // and backends such as IREE refuse to lower it. A dynamic mask dim must match the scores dim
-                // it maps to (the key length), so it is non-expanding. Generic op syntax: the hint attributes
-                // are not part of every StableHLO version's pretty form.
-                val expanding = mutableListOf<Int>(); val nonExpanding = mutableListOf<Int>()
-                maskShape.indices.forEach { i ->
-                    val o = maskShape[i]; val t = scoresShape[maskDims[i]]
-                    when {
-                        !Dim.isStatic(o) -> nonExpanding += i
-                        Dim.isStatic(t) && o == t -> nonExpanding += i
-                        Dim.isStatic(t) && o == 1 -> expanding += i
-                        !Dim.isStatic(t) && o != 1 -> nonExpanding += i
-                    }
-                }
-                fun arr(xs: List<Int>) = if (xs.isEmpty()) "array<i64>" else "array<i64: ${xs.joinToString(", ")}>"
-                val mb = context.nextTempValue()
-                ops += "$mb = \"stablehlo.dynamic_broadcast_in_dim\"($maskVal, $scoresShapeOperand) <{broadcast_dimensions = ${arr(maskDims)}, " +
-                    "known_expanding_dimensions = ${arr(expanding)}, known_nonexpanding_dimensions = ${arr(nonExpanding)}}> : " +
-                    "($maskType, $shapeType) -> $scoresType"
-                mb
-            }
-            val masked = context.nextTempValue()
-            ops += "$masked = stablehlo.add $scores, $maskBc : $scoresType"
-            softmaxIn = masked
-        } else if (causal) {
-            val iotaQ = context.nextTempValue(); val iotaK = context.nextTempValue()
-            val keep = context.nextTempValue(); val zeros = context.nextTempValue()
-            val ninf = context.nextTempValue(); val maskAdd = context.nextTempValue()
-            val masked = context.nextTempValue()
-            ops += "$iotaQ = stablehlo.iota dim = $qAxis : $scoresI32Type"
-            ops += "$iotaK = stablehlo.iota dim = $sdAxis : $scoresI32Type"
-            ops += "$keep = stablehlo.compare GE, $iotaQ, $iotaK : ($scoresI32Type, $scoresI32Type) -> $scoresI1Type"
-            ops += "$zeros = stablehlo.constant dense<0.0> : $scoresType"
-            // Masked-fill with a large finite negative (not -inf): matches
-            // MultiHeadAttention.buildSlidingCausalMask (-1e30) and avoids a -inf splat in the
-            // masked-fill select, which can trip downstream greedy constant-folding.
-            ops += "$ninf = stablehlo.constant dense<-1.000000e+30> : $scoresType"
-            ops += "$maskAdd = stablehlo.select $keep, $zeros, $ninf : $scoresI1Type, $scoresType"
-            ops += "$masked = stablehlo.add $scores, $maskAdd : $scoresType"
-            softmaxIn = masked
-        }
-
-        fun broadcastBack(src: String, dst: String) {
-            if (dyn) {
-                ops += "$dst = stablehlo.dynamic_broadcast_in_dim $src, $scoresShapeOperand, dims = [$bcastDims] : ($reducedType, $shapeType) -> $scoresType"
-            } else {
-                ops += "$dst = stablehlo.broadcast_in_dim $src, dims = [$bcastDims] : ($reducedType) -> $scoresType"
-            }
-        }
-        ops += "$maxInit = stablehlo.constant dense<${mapper.negInfBits(elem)}> : tensor<$elem>"
-        ops += "$maxV = stablehlo.reduce($softmaxIn init: $maxInit) applies stablehlo.maximum across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
-        broadcastBack(maxV, maxB)
-        ops += "$shifted = stablehlo.subtract $softmaxIn, $maxB : $scoresType"
-        ops += "$expV = stablehlo.exponential $shifted : $scoresType"
-        ops += "$sumInit = stablehlo.constant dense<0.0> : tensor<$elem>"
-        ops += "$sumV = stablehlo.reduce($expV init: $sumInit) applies stablehlo.add across dimensions = [$sdAxis] : ($scoresType, tensor<$elem>) -> $reducedType"
-        broadcastBack(sumV, sumB)
-        ops += "$attn = stablehlo.divide $expV, $sumB : $scoresType"
-        if (gqa) {
-            val outG = context.nextTempValue()
-            ops += "$outG = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outWorkType"
-            ops += "$out = stablehlo.reshape $outG : ($outWorkType) -> $outputType"
-        } else {
-            ops += "$out = stablehlo.dot_general $attn, ${operands[2]}, ${batchClause}contracting_dims = [$contractAttn] x [$contractV] : ($scoresType, $vType) -> $outputType"
-        }
-        ops.forEach { context.emitOperation(it) }
-        return ConversionResult.Success(outputValueName = out, emittedOperations = ops)
     }
 }

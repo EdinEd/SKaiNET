@@ -20,6 +20,9 @@ object OpAttributeFactory {
         )
     }
     
+    fun sdpaMaskKind(keyLengths: Any?, causal: Boolean, window: Int): Map<String, Any?> =
+        mapOf("maskKind" to if (keyLengths != null) "keyPadding" else if (causal) "causal" else "none")
+
     fun conv2d(
         input: Any, 
         weight: Any, 

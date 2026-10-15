@@ -1014,10 +1014,43 @@ public class UnsqueezeOperation<T : DType, V>(
 /**
  * Scaled dot-product attention operation for tape recording.
  * Output shape = query shape: [batch, nHeads, seqLen, headDim]
+ *
+ * Operands are `query, key, value` followed by the optional dense `mask` and the optional
+ * `keyLengths` (#1343), in that order and only when present; the parameters carry `scale`,
+ * `causal`, `window`, `rightContext` and `maskKind` ([AttentionMask.kindOf]). [operandLayout]
+ * resolves which trailing operand is which, so every consumer reads the same rule.
  */
 public class ScaledDotProductAttentionOperation(
     parameters: Map<String, Any> = emptyMap()
 ) : BaseOperation("scaledDotProductAttention", "nn", parameters) {
+
+    /** Index of the dense mask operand and of the `keyLengths` operand, each `null` when absent. */
+    public data class OperandLayout(val maskIndex: Int?, val lengthsIndex: Int?)
+
+    public companion object {
+        /**
+         * Resolve the trailing operands of an SDPA node with [inputCount] operands: `keyLengths`
+         * is the last operand when `parameters["maskKind"]` says the node carries lengths
+         * ([AttentionMask.hasLengths]); the dense mask is operand 3 when one more operand remains.
+         * Nodes recorded before `maskKind` existed have no lengths operand.
+         */
+        public fun operandLayout(inputCount: Int, parameters: Map<String, Any?>): OperandLayout {
+            val hasLengths = AttentionMask.hasLengths(parameters["maskKind"] as? String)
+            val lengthsIndex = if (hasLengths && inputCount >= 4) inputCount - 1 else null
+            val tensorCount = if (lengthsIndex != null) inputCount - 1 else inputCount
+            val maskIndex = if (tensorCount >= 4) 3 else null
+            return OperandLayout(maskIndex, lengthsIndex)
+        }
+
+        /** The parameters an SDPA call records, with `maskKind` derived from the rules in force. */
+        public fun parameters(scale: Float, causal: Boolean, window: Int, rightContext: Int, hasLengths: Boolean): Map<String, Any> = mapOf(
+            "scale" to scale,
+            "causal" to causal,
+            "window" to window,
+            "rightContext" to rightContext,
+            "maskKind" to AttentionMask.kindOf(causal, window, hasLengths),
+        )
+    }
 
     override fun <T : sk.ainet.lang.types.DType, V> execute(
         inputs: List<sk.ainet.lang.tensor.Tensor<T, V>>
