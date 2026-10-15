@@ -566,7 +566,10 @@ public class VoidTensorOps : TensorOps {
         value: Tensor<T, V>,
         mask: Tensor<T, V>?,
         scale: Float,
-        causal: Boolean
+        causal: Boolean,
+        keyLengths: Tensor<DType, *>?,
+        window: Int,
+        rightContext: Int
     ): Tensor<T, V> {
         // Output shape matches query shape: [batch, nHeads, seqLen, headDim]
         val resultData = dataFactory.zeros<T, V>(query.shape, query.dtype)

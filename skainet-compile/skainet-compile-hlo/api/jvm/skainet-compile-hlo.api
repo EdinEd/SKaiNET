@@ -470,6 +470,14 @@ public final class sk/ainet/compile/hlo/converters/ScalarOperationsConverter : s
 	public fun getSupportedOperations ()Ljava/util/Set;
 }
 
+public final class sk/ainet/compile/hlo/converters/SdpaLowering {
+	public static final field INSTANCE Lsk/ainet/compile/hlo/converters/SdpaLowering;
+	public final fun effectiveScale (FI)F
+	public final fun emit (Lsk/ainet/compile/hlo/converters/HloEmitter;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
+	public final fun parseTensorType (Ljava/lang/String;)Lkotlin/Pair;
+	public final fun renderType (Ljava/util/List;Ljava/lang/String;)Ljava/lang/String;
+}
+
 public final class sk/ainet/compile/hlo/converters/ShapeOperationsConverter : sk/ainet/compile/hlo/StableHloOperationConverter {
 	public fun <init> ()V
 	public fun convert (Lsk/ainet/lang/graph/GraphNode;Ljava/util/List;Lsk/ainet/compile/hlo/ConversionContext;)Lsk/ainet/compile/hlo/ConversionResult;

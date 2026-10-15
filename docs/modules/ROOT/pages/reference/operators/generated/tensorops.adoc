@@ -1353,7 +1353,7 @@ fun cos(tensor:Tensor): Tensor
 
 [source,kotlin]
 ----
-fun scaledDotProductAttention(query:Tensor, key:Tensor, value:Tensor, mask:Tensor, scale:Float, causal:Boolean): Tensor
+fun scaledDotProductAttention(query:Tensor, key:Tensor, value:Tensor, mask:Tensor, scale:Float, causal:Boolean, keyLengths:Tensor, window:Int, rightContext:Int): Tensor
 ----
 
 === Parameters
@@ -1365,11 +1365,17 @@ fun scaledDotProductAttention(query:Tensor, key:Tensor, value:Tensor, mask:Tenso
 * `value: Tensor`
   [batch, nKVHeads, kvLen, headDim]
 * `mask: Tensor`
-  optional additive mask [batch, 1, seqLen, kvLen] (e.g. causal)
+  optional additive mask broadcastable to [batch, 1, seqLen, kvLen]
 * `scale: Float`
-  scaling factor, defaults to 1/sqrt(headDim)
+  scaling factor, `0` selects 1/sqrt(headDim)
 * `causal: Boolean`
-  if true, apply causal masking (ignore [mask] parameter)
+  if true, query `q` attends to keys `k <= kvLen - seqLen + q` only
+* `keyLengths: Tensor`
+  optional `[batch]` integer tensor: row `b` attends to keys `< keyLengths[b]`
+* `window: Int`
+  sliding-window size in keys, `0` for none: query `q` attends to keys `>= kvLen - seqLen + q - window + 1`
+* `rightContext: Int`
+  bounded lookahead of the window band in keys (needs `window > 0`): query `q` attends to keys `<= kvLen - seqLen + q + rightContext`
 
 === Return Type
 

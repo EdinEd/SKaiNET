@@ -394,21 +394,40 @@ public interface TensorOps {
      * attends to K/V head `h / (nHeads / nKVHeads)` — the same mapping the transformer modules
      * use — so K/V are never tiled to the query head count (SKEEP-005 phase 2).
      *
+     * Masks are *rules over positions*, defined once in [AttentionMask] and shared by the CPU
+     * kernel, the recorded graph and the StableHLO lowering (#1343): [causal], a sliding
+     * [window] with [rightContext] lookahead, and key padding given as per-row [keyLengths].
+     * Several rules intersect; a masked score gets [AttentionMask.MASKED] (`-1e30`, finite).
+     * The rules are recorded as `parameters["causal" | "window" | "rightContext" | "maskKind"]`
+     * and [keyLengths] as the last operand, so a compiled target can lower them to a fused kernel
+     * that takes lengths or to an `iota`/`compare`/`select` decomposition instead of inheriting a
+     * `[batch, 1, seqLen, kvLen]` constant. The dense additive [mask] remains the generic
+     * fallback and is added on top of the rules.
+     *
      * @param query  [batch, nHeads, seqLen, headDim]
      * @param key    [batch, nKVHeads, kvLen, headDim]
      * @param value  [batch, nKVHeads, kvLen, headDim]
-     * @param mask   optional additive mask [batch, 1, seqLen, kvLen] (e.g. causal)
-     * @param scale  scaling factor, defaults to 1/sqrt(headDim)
-     * @param causal if true, apply causal masking (ignore [mask] parameter)
+     * @param mask   optional additive mask broadcastable to [batch, 1, seqLen, kvLen]
+     * @param scale  scaling factor, `0` selects 1/sqrt(headDim)
+     * @param causal if true, query `q` attends to keys `k <= kvLen - seqLen + q` only
+     * @param keyLengths optional `[batch]` integer tensor: row `b` attends to keys `< keyLengths[b]`
+     * @param window sliding-window size in keys, `0` for none: query `q` attends to keys
+     *               `>= kvLen - seqLen + q - window + 1`
+     * @param rightContext bounded lookahead of the window band in keys (needs `window > 0`):
+     *               query `q` attends to keys `<= kvLen - seqLen + q + rightContext`
      * @return       [batch, nHeads, seqLen, headDim]
      */
     @Diff
+    @Lowering(composite = "skainet.sdpa")
     public fun <T : DType, V> scaledDotProductAttention(
         query: Tensor<T, V>,
         key: Tensor<T, V>,
         value: Tensor<T, V>,
         mask: Tensor<T, V>? = null,
         scale: Float = 0f,
-        causal: Boolean = false
+        causal: Boolean = false,
+        keyLengths: Tensor<DType, *>? = null,
+        window: Int = 0,
+        rightContext: Int = 0
     ): Tensor<T, V>
 }

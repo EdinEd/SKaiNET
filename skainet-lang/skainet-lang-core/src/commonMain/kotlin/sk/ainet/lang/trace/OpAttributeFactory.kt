@@ -18,6 +18,14 @@ public object OpAttributeFactory {
         input: Tensor<*, *>, result: Tensor<*, *>
     ): Map<String, Any?> = shapesAndDTypes(listOf(input), listOf(result))
 
+    /**
+     * `maskKind` of a `scaledDotProductAttention` call (#1343): which positional / padding rules the
+     * call applies, derived from its arguments so the trace carries it beside `causal`, `window`,
+     * `rightContext` and `scale`. See [sk.ainet.lang.tensor.ops.AttentionMask.kindOf].
+     */
+    public fun sdpaMaskKind(keyLengths: Tensor<*, *>?, causal: Boolean, window: Int): Map<String, Any?> =
+        mapOf("maskKind" to sk.ainet.lang.tensor.ops.AttentionMask.kindOf(causal, window, keyLengths != null))
+
     /** Conv2d op attributes: shapes/dtypes + stride/padding/dilation/groups and bias flag. */
     public fun conv2d(
         input: Tensor<*, *>,

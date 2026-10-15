@@ -73,7 +73,10 @@ class GraphDslGenerator(
             
             val dslParams = method.parameters.map { param ->
                 val dslType = if (param.isTensor) {
-                    if (param.type.endsWith("?")) "GraphValue<*>?" else "GraphValue<*>"
+                    // An optional tensor parameter of TensorOps always defaults to null (mask, bias,
+                    // keyLengths); KSP's rendered type may have lost the `?`, so treat it as nullable
+                    // and give the DSL the same `= null` default instead of a mandatory positional.
+                    if (param.type.endsWith("?") || param.isOptional) "GraphValue<*>?" else "GraphValue<*>"
                 } else if (param.type.contains("Tensor<")) {
                    if (param.type.startsWith("kotlin.collections.List<") || param.type.startsWith("List<")) "List<GraphValue<*>>" else "GraphValue<*>"
                 } else {
@@ -100,6 +103,7 @@ class GraphDslGenerator(
                         else if (param.name == "dim") " = -1"
                         else if (param.name == "startDim") " = 0"
                         else if (param.name == "endDim") " = -1"
+                        else if (param.name == "window" || param.name == "rightContext") " = 0"
                         else ""
                     } else if (param.type == "sk.ainet.lang.tensor.ops.UpsampleMode") {
                         " = UpsampleMode.Nearest"
