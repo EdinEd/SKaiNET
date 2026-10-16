@@ -96,6 +96,7 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
     /**
      * Convert softmax activation using real reductions and broadcast_in_dim.
      * softmax(x) = exp(x - max(x)) / sum(exp(x - max(x)))
+     * log_softmax(x) = (x - max(x)) - log(sum(exp(x - max(x))))   (parameter `log = true`)
      *
      * The max and sum terms are lowered to stablehlo.custom_call @reduce_max
      * and @reduce_sum — matching ReductionOperationsConverter's style — then
@@ -124,8 +125,12 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
         val inputShape = node.inputs.firstOrNull()?.shape ?: outputSpec?.shape ?: emptyList()
         val rank = inputShape.size
 
-        // Normalize axis against rank. Default to the last dimension.
-        val rawAxis = node.operation.parameters["axis"] as? Int ?: -1
+        // Normalize axis against rank. Default to the last dimension. The tape records the axis as `dim`
+        // (TensorOps.softmax / logSoftmax); `axis` is accepted for hand-built graphs.
+        val params = node.operation.parameters
+        val rawAxis = (params["dim"] ?: params["axis"]) as? Int ?: -1
+        // logSoftmax is recorded as softmax with `log = true`: x - max - log(sum(exp(x - max))).
+        val log = params["log"] == true
         val axis = when {
             rank == 0 -> 0
             rawAxis < 0 -> rank + rawAxis
@@ -215,7 +220,13 @@ public class ActivationOperationsConverter : StableHloOperationConverter {
             } else {
                 add("$sumBroadcast = stablehlo.broadcast_in_dim $sumValue, dims = [$broadcastDims] : ($reducedType) -> $outputType")
             }
-            add("$resultValue = stablehlo.divide $expValue, $sumBroadcast : $outputType")
+            if (log) {
+                val logSum = context.nextTempValue()
+                add("$logSum = stablehlo.log $sumBroadcast : $outputType")
+                add("$resultValue = stablehlo.subtract $shiftedValue, $logSum : $outputType")
+            } else {
+                add("$resultValue = stablehlo.divide $expValue, $sumBroadcast : $outputType")
+            }
         }
 
         operations.forEach { context.emitOperation(it) }
