@@ -30,8 +30,8 @@ own side files and decorated by its model family.
 |===
 
 `skainet-io-core` keeps `sk.ainet.io.tokenizer.*`, `sk.ainet.io.model.ModelFormat` and
-`sk.ainet.io.weights.NameMap` as deprecated aliases (WARNING in 0.58 and 0.59, ERROR since 0.60,
-removed in 0.61), and `TokenizerFactory` as a forwarding object for Java callers.
+`sk.ainet.io.weights.NameMap` as deprecated aliases for two releases (WARNING in 0.58 and 0.59, ERROR
+in 0.60, removed in 0.61), and keeps `TokenizerFactory` as a forwarding object for Java callers.
 
 == Resolving a checkpoint's tokenizer
 
