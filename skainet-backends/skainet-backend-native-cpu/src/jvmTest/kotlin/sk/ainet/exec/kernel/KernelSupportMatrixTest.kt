@@ -61,6 +61,13 @@ class KernelSupportMatrixTest {
         // manual via installNativeKernels() — no ServiceLoader on K/N.
         Tier("native-cinterop", 100, setOf("Native·linux", "Native·apple"),
             setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
+        // wasm-simd128: WasmKernelProvider (skainet-backend-wasm-simd, wasmJsMain) — the same C
+        // kernels compiled by Emscripten into a SIMD128 sidecar module (SKEEP-007 Tier 1), with
+        // pthreads on cross-origin-isolated pages and under Node. Installed by WasmSimd.install();
+        // without it the JS/WASM column is the scalar floor. The row-major `_rm` kernels are also
+        // served (WasmSimdKernelPack), heap-resident in the sidecar rather than mapped.
+        Tier("wasm-simd128", 50, setOf("JS/WASM"),
+            setOf("Float32", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
     )
 
     /**

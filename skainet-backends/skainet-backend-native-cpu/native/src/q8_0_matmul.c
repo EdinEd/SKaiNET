@@ -89,6 +89,26 @@ static inline float skainet_q8_0_block_term(
         accv = vfmaq_f32(accv, vld1q_f32(input_block + k + 12), cf3);
     }
     block_sum = skainet_neon_hadd_f32(accv);
+#elif defined(__wasm_simd128__)
+    /* wasm SIMD128 body (SKEEP-007 §T1): the NEON structure with 128-bit lanes —
+     * 16 int8 codes widen to i16x8 halves, then to i32x4 quarters, convert to
+     * f32x4 and multiply-add against the activation lanes. */
+    v128_t accv = wasm_f32x4_splat(0.0f);
+    for (int32_t k = 0; k < Q80_BLOCK_SIZE; k += 16) {
+        const v128_t c8 = wasm_v128_load(codes + k);
+        const v128_t lo16 = wasm_i16x8_extend_low_i8x16(c8);
+        const v128_t hi16 = wasm_i16x8_extend_high_i8x16(c8);
+        const v128_t cf0 = wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(lo16));
+        const v128_t cf1 = wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(lo16));
+        const v128_t cf2 = wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(hi16));
+        const v128_t cf3 = wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(hi16));
+        accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + k),      cf0));
+        accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + k + 4),  cf1));
+        accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + k + 8),  cf2));
+        accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + k + 12), cf3));
+    }
+    block_sum = wasm_f32x4_extract_lane(accv, 0) + wasm_f32x4_extract_lane(accv, 1)
+              + wasm_f32x4_extract_lane(accv, 2) + wasm_f32x4_extract_lane(accv, 3);
 #else
     for (int32_t k = 0; k < Q80_BLOCK_SIZE; ++k) {
         block_sum += input_block[k] * (float) codes[k];

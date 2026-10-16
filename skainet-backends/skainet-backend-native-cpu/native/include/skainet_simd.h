@@ -34,6 +34,15 @@
 #  include <arm_neon.h>
 #  define SKAINET_HAVE_NEON 1
 #endif
+/* WebAssembly SIMD128 (SKEEP-007 Tier 1): the browser sidecar is built with
+ * `emcc -msimd128`, which defines __wasm_simd128__. Kernels that have an explicit
+ * SIMD128 body select it with `#elif defined(__wasm_simd128__)` between their NEON
+ * and portable branches; the rest rely on clang's auto-vectoriser over the
+ * portable body. */
+#if defined(__wasm_simd128__)
+#  include <wasm_simd128.h>
+#  define SKAINET_HAVE_WASM_SIMD128 1
+#endif
 
 #if defined(__ARM_FEATURE_DOTPROD)
 #  define SKAINET_HAVE_DOTPROD 1

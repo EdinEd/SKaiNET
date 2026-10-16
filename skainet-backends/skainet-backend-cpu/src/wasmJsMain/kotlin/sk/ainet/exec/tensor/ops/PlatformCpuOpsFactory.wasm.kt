@@ -9,7 +9,20 @@ internal actual fun platformDefaultCpuOpsFactory(): (TensorDataFactory, sk.ainet
     // Non-JVM has no ServiceLoader; register the scalar packed-quant kernels
     // (Q4_K/Q6_K/Q5_1/Q5_0/Q8_0/Q4_0) so DefaultCpuOpsBase can dispatch them.
     KernelRegistry.register(ScalarKernelProvider)
-    return { factory, schedule -> DefaultCpuOps(factory, schedule) }
+    // A browser kernel pack (SKEEP-007 Tier 1, `skainet-backend-wasm-simd`) cannot be discovered
+    // here — there is no ServiceLoader on wasm and this module must not depend on it — so it
+    // installs its ops subclass through [WasmCpuOpsOverride] and every context built afterwards
+    // picks it up. Nothing installed means the common scalar ops, as before.
+    return { factory, schedule -> WasmCpuOpsOverride.factory?.invoke(factory, schedule) ?: DefaultCpuOps(factory, schedule) }
+}
+
+/**
+ * The one hook a wasm kernel pack has into context construction (SKEEP-007 §T1): set [factory] to
+ * have `DirectCpuExecutionContext` build that `TensorOps` instead of the scalar [DefaultCpuOps].
+ * The pack sets it from its `install()`; tests clear it with `null`.
+ */
+public object WasmCpuOpsOverride {
+    public var factory: ((TensorDataFactory, sk.ainet.context.schedule.Schedule) -> TensorOps)? = null
 }
 
 

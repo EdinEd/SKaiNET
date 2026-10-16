@@ -24,6 +24,8 @@ kotlin {
             implementation(project(":skainet-lang:skainet-lang-core"))
             implementation(project(":skainet-backends:skainet-backend-api"))
             implementation(project(":skainet-backends:skainet-backend-cpu"))
+            implementation(project(":skainet-backends:skainet-backend-wasm-simd"))
+            implementation(libs.kotlinx.coroutines)
         }
     }
 }
