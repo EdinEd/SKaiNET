@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+Headline: **the browser lane stops falling to the reference kernel (SKEEP-007, Tier 0).**
+
+### Added
+
+- **SKEEP-007 "The browser lane"** (`docs/modules/skeep/pages/007-browser-lane.adoc`): the design record for making inference in a browser usable and quick — common-code fixes now, a SIMD128 sidecar kernel pack with pthreads and quantize-at-load for SafeTensors as the next pull requests, WebGPU as a later proposal.
+- **`ByteArrayRandomAccessSource`** (`skainet-io-core`, `sk.ainet.io`): the engine's in-memory `RandomAccessSource`, single array or equal-sized chunks for files above the 2 GB array limit. Every web sample had written its own.
+- **`NarrowFloatDenseTensorData` is a `RowDequantSource`**: FP16 and BF16 tables serve rows on demand, so a 16-bit token-embedding table loaded `KEEP_NATIVE` is read row by row by `ops.gather` instead of being widened to FP32 at load.
+- **`skainet-backends/benchmarks/wasm-bench`**: a Kotlin/Wasm executable that times the matmul shapes of the shipped models and prints `[SKAINET_PERF_WASM]` lines — the baseline for the following tiers.
+
+### Changed
+
+- **`matmulWeightTransposed` on a canonical packed weight** (every GGUF weight) now prefers, in order: an exact kernel for the row-major view, the one-time cached relayout into kernel feed order that the scalar packed kernels on every target read, and only then the decoding reference kernel. On JS, wasm and Kotlin/Native without the cinterop pack this replaces a ~1000× slower per-element decode on every call; the JVM overrides the path and is unaffected.
+- **`matmulWeightTransposed` on a dense heap FP32 `[out, in]` weight** computes the product straight from the weight's rows (4 × 4 tiles, one sequential accumulator per output, bit-identical to the transpose-then-`matmul` result) on tiers without a vectorised `[k, n]` kernel, instead of making and caching a transposed copy of every weight. `DefaultCpuOpsBase.preferDirectWeightTransposed()` is the hook; the JVM and Apple ops keep their cached transpose.
+- **`JsBlobRandomAccessSource`** no longer logs every read to the console. (The byte-by-byte `ArrayBuffer` conversion stays: Kotlin/Wasm 2.4 has no typed-array adapter; SKEEP-007 Tier 1 replaces it with the sidecar's linear-memory bridge.)
+
 ## [0.60.0] - 2026-10-15
 
 Headline: **key-padding lengths and window metadata for attention (#1343).**

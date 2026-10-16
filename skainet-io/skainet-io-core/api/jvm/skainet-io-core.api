@@ -7,6 +7,17 @@ public final class sk/ainet/io/ByteArrayMemoryChunk : sk/ainet/io/MemoryChunk {
 	public fun slice (JJ)Lsk/ainet/io/MemoryChunk;
 }
 
+public final class sk/ainet/io/ByteArrayRandomAccessSource : sk/ainet/io/RandomAccessSource {
+	public fun <init> (Ljava/util/List;)V
+	public fun <init> ([B)V
+	public fun close ()V
+	public fun getFilePath ()Ljava/lang/String;
+	public fun getSize ()J
+	public fun readAt (JI)[B
+	public fun readAt (J[BII)I
+	public fun readByteAt (J)B
+}
+
 public final class sk/ainet/io/FallbackMappedMemoryChunk : sk/ainet/io/MappedMemoryChunk {
 	public static final field Companion Lsk/ainet/io/FallbackMappedMemoryChunk$Companion;
 	public fun <init> (Ljava/lang/String;J[BIJ)V

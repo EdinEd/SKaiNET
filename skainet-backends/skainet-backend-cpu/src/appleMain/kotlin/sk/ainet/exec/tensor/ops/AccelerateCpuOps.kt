@@ -42,6 +42,9 @@ public class AccelerateCpuOps(
         if (schedule === this.schedule) this else AccelerateCpuOps(dataFactory, schedule)
 
 
+    /** Accelerate's `[k, n]` GEMM beats a scalar row-dot, so keep the cached transpose (SKEEP-007 §T0.2). */
+    override fun preferDirectWeightTransposed(): Boolean = false
+
     // ── matmul ──────────────────────────────────────────────────────────
 
     override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {

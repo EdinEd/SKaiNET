@@ -1,0 +1,256 @@
+= SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
+:description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
+
+Status: Draft — Tier 0 in progress +
+Implementation: Tier 0 (this proposal's PR); Tier 1 `skainet-backend-wasm-simd`, Tier 2 quantize-at-load and the consumer work in SKaiNET-transformers follow as separate pull requests, see <<_rollout_plan>>. +
+Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
+Created: 2026-10-16 +
+Origin: the SemanticEmojiFilter example ships its 23M-parameter embedding filter to the web but keeps the 322M-parameter Laya verifier on desktop and Android, because a decision in scalar Kotlin/Wasm is estimated at 10–30 s and the FP32 weights at about 2.5 GB resident. Nothing in the repository measures the wasm lane today.
+
+== Summary
+
+Every SKaiNET browser build runs the same path: scalar Kotlin loops compiled by Kotlin/Wasm, one
+thread, GC `FloatArray`/`ByteArray` tensors. Three defects compound on that path, and a fourth
+makes the compute itself slow:
+
+* A canonical (row-major) block-quantized weight — every weight loaded from a GGUF file — reaches
+  `KernelDispatch` on a target without a row-major kernel pack and lands on the decoding reference
+  kernel, which the dispatcher itself warns is about a thousand times slower. The scalar packed
+  kernels every target carries are keyed on kernel feed order and were never reached.
+* A dense FP32 `[out, in]` weight is transposed into a cached heap copy before every first use,
+  which doubles the resident weight memory of a dense encoder.
+* A 16-bit token table is widened to FP32 at load (for a 256k × 768 vocabulary, 786 MB instead of
+  393 MB) although the embedding lookup already knows how to read rows from a `RowDequantSource`.
+* Kotlin/Wasm exposes neither SIMD types nor shared-memory threads, so no Kotlin kernel can be
+  faster than a scalar loop on one core.
+
+The proposal fixes the three defects in common code (Tier 0, this change), adds a browser kernel
+pack built from the engine's existing C kernel sources as a SIMD128 sidecar module with Emscripten
+pthreads (Tier 1), and teaches the SafeTensors loader the `EncodingRequest.RequantizeTo` form the
+planner already prices, with a common-code Q8_0 quantizer (Tier 2). WebGPU is recorded as a later
+proposal behind the same kernel-pack seam.
+
+== Motivation
+
+=== Who pays today
+
+[cols="2,3,3",options="header"]
+|===
+| Sample | Browser build today | After this proposal
+
+| KernelRace (SmolLM2-135M Q8_0)
+| loads the model as dense FP32 ("in-memory FP32 fallback")
+| packed Q8_0 served by the SIMD128 pack
+
+| KllamaDemo (Qwen3-0.6B Q4_0)
+| dequantizes to FP32 at load, "perceptibly slow"
+| packed Q4_0, same kernels
+
+| SemanticEmojiFilter (LEAF 23M, Laya 322M)
+| LEAF only; Laya is desktop and Android
+| Laya as an opt-in verifier in the browser
+
+| TinyTransformer, MNIST, Sinus, GloVe, TDALab
+| scalar dense matmul
+| dense FP32 kernel from the same pack
+|===
+
+=== Where the time goes
+
+One Laya decision at 80–150 tokens is 10–19 G multiply-adds, 96 % of them in four dense
+`matmulWeightTransposed` calls per layer (`Wqkv`, `Wi`, `mlp.Wo`, `Wo`). The scalar `[k, n]` loop
+streams the whole weight once per activation row: about 75 GB of memory traffic per decision at
+150 tokens. For comparison, the same kernel class written with wasm SIMD128 intrinsics runs a
+Llama-3.2-1B Q8_0 forward at roughly 270 GFLOPS on seven threads (llama.cpp #11453, measured in
+wllama), which puts a Laya decision at well under a second.
+
+=== Why the engine, not the sample
+
+The kernel-pack seam (`ViewKernelPack`, `KernelDispatch`, `KernelProvider`) is how the JVM and
+Android got their packed kernels; a browser pack behind the same seam reaches every web build
+without application changes. Quantize-at-load is likewise a loader concern: today only GGUF files
+can be served packed, so every Hugging Face checkpoint — SafeTensors, F16 or BF16 — is dense FP32
+on every target.
+
+== Goals
+
+* A canonical packed weight never reaches the decoding reference kernel when a scalar packed kernel
+  exists for its format (Tier 0).
+* A dense FP32 `[out, in]` weight is multiplied in place on tiers without a vectorised `[k, n]`
+  kernel; no transpose copy is made or cached there (Tier 0).
+* 16-bit dense tables are `RowDequantSource`s (Tier 0).
+* The engine ships an in-memory `RandomAccessSource` and a wasm benchmark that prints GFLOPS for
+  the matmul shapes of the shipped models (Tier 0).
+* A SIMD128 kernel pack for wasmJs, built from `skainet-backend-native-cpu/native/src`, with a
+  multithreaded artifact for cross-origin-isolated pages and a single-threaded fallback (Tier 1).
+* `SafeTensorsParametersLoader` honours `WeightForm`, including `RequantizeTo(Q8_0)`; a common-code
+  Q8_0 quantizer; `skainet-cli quantize` for offline conversion (Tier 2).
+* No behaviour change on the JVM and Apple tiers: their kernel keys and golden tests are untouched.
+
+== Non-Goals
+
+* WebGPU. It is the right second pack behind the same seam, but it needs its own proposal (WGSL
+  kernels, device selection, Firefox desktop still off by default).
+* A streaming or asynchronous `RandomAccessSource`; SKEEP-003 keeps that open item.
+* K-quant encoders (Q4_K, Q5_K, Q6_K) at load; Q8_0 and the existing Q4_0 cover the first consumers.
+* Kotlin-side multithreading. Kotlin/Wasm has no shared-memory threads; parallelism lives inside the
+  sidecar.
+
+== Proposed Design
+
+=== Tier 0 — common code
+
+`DefaultCpuOpsBase.matmulWeightTransposed` orders the packed-weight paths by preference: an exact
+kernel for the canonical view (the JVM FFM, Android JNI and browser packs), then the one-time
+cached relayout into kernel feed order that the scalar packed kernels read (`prepackedWeights` was
+declared for this and never used in common code), then the decoding reference kernel through views.
+The dense branch computes `x · Wᵀ` straight from the weight's rows with a 4 × 4 tile and one
+sequential accumulator per output, bit-identical to the transpose-then-`matmul` result. The JVM and
+Apple ops override `preferDirectWeightTransposed()` to keep their cached transpose, because their
+`[k, n]` kernels are vectorised.
+
+`NarrowFloatDenseTensorData` (and so `Fp16DenseTensorData`, `Bf16DenseTensorData`) implements
+`RowDequantSource`; `ops.gather` and the transformers `Embedding` layer already branch on it.
+
+`skainet-io-core` gains `ByteArrayRandomAccessSource` (single array or equal-sized chunks for files
+above the 2 GB array limit). `JsBlobRandomAccessSource` no longer logs to the console on every read;
+its byte-by-byte `ArrayBuffer` conversion stays until Tier 1 (Kotlin/Wasm 2.4 has no typed-array
+adapter), where the sidecar's linear memory becomes the landing buffer for downloads.
+
+`skainet-backends/benchmarks/wasm-bench` is a Kotlin/Wasm executable that times the matmul shapes
+of Laya, LEAF and SmolLM2 and prints `[SKAINET_PERF_WASM]` lines; it is the baseline every later
+tier is measured against.
+
+=== Tier 1 — `skainet-backend-wasm-simd`
+
+A wasmJs-only module. Its native build compiles the existing kernel sources
+(`skainet-backend-native-cpu/native/src/*.c`, shared, not copied) with Emscripten to
+`skainet_kernels_{mt,st}.{wasm,mjs}`; `skainet_simd.h` gains `__wasm_simd128__` bodies for the
+row-major Q8_0/Q4_0/Q4_K/Q5_K/Q6_K dot products (int8 lanes widened to int16, `i32x4.dot_i16x8`
+accumulation — the technique of llama.cpp #11453, our code) and f32x4 bodies for the dense FP32,
+FP16 and BF16 kernels. `skainet_row_threads.c` learns the Emscripten pool size and degrades to
+the calling thread when the page is not cross-origin isolated. The artifacts ship as module
+resources and are reproducible from the pinned emsdk in CI.
+
+On the Kotlin side a `WasmRowMajorMatmulKernel : ViewKernel` registers under the same keys as
+`FfmRowMajorMatmulKernel` (dense contiguous FP32 activation × `Format(FP32, encoding)` weight,
+`BLOCKED_ROW_MAJOR`, heap bytes), uploads a weight into sidecar memory once and copies activations
+per call; a `WasmKernelProvider` serves the dense kernels; `WasmCpuOps : DefaultCpuOpsBase`
+overrides `matmul`, `matmulWeightTransposed`, `gelu` and `softmax` while the sidecar is ready and
+falls back to the Tier 0 paths otherwise. Resident activations in sidecar memory (a
+`Storage.WasmLinear` kind) and a banded attention kernel follow once the copy overhead is measured.
+
+=== Tier 2 — quantize-at-load
+
+`lang-core` gains `Q8_0Quantizer` (ggml-faithful, 32-element blocks, row-major) beside the existing
+`Q4_0Quantizer`, and a `Requantizers` registry from `TensorEncoding` to quantizer.
+`SafeTensorsParametersLoader` and the sharded loader take `weightForm`/`weightFormFor`; the
+materializer gains a `RequantizeTo` branch producing `XBlockTensorData(shape, bytes, ROW_MAJOR)` and
+honours `WeightShapeOrientation` and `KERNEL_FEED`. The GGUF loader's `RequantizeTo` gate relaxes
+from "BITNET_PLANES only" to "any encoding with a registered quantizer". `PlannerProfile` gains
+`quantizeDenseTo` so a browser profile can resolve dense sources to `RequantizeTo(Q8_0)`.
+`skainet-cli quantize` writes a GGUF with the source tensor names kept, for downloads that should
+not carry F16.
+
+== Requirements
+
+=== Functional
+
+. A canonical Q8_0/Q4_0/Q4_K/Q5_K/Q6_K/Q5_0/Q5_1 weight multiplied through `matmulWeightTransposed`
+  on a target without a row-major pack uses the scalar packed kernel after one relayout per weight.
+. `matmulWeightTransposed` on a heap FP32 `[out, in]` weight returns the same bits as
+  `matmul(x, transpose(w))` on every tier.
+. `Fp16DenseTensorData.dequantRow(r)` equals `get(r, c)` for every column.
+. `ByteArrayRandomAccessSource` serves any window across chunk boundaries.
+. (Tier 1) Kernel parity against the scalar kernels within 1e-5 relative; multithreaded and
+  single-threaded artifacts agree.
+. (Tier 2) `RequantizeTo(Q8_0)` through the SafeTensors loader round-trips through the Q8_0 decoder
+  within the format's quantization error; the in-memory and CLI paths produce identical bytes.
+
+=== Non-Functional
+
+* No change to kernel keys, golden tests or published API on the JVM and Apple tiers.
+* Each tier is measured with `wasm-bench` before and after; the numbers go into this page.
+* Acceptance for the whole proposal: a Laya decision under 1 s in the browser on a 4-core laptop
+  with the multithreaded sidecar and at most 2 s single-threaded; peak tab memory under 1 GB with
+  Q8_0 weights; KernelRace web decode at least 5× today's tokens per second.
+
+== Compatibility and Migration
+
+Tier 0 is additive. The only observable change is numeric order on packed weights on non-JVM
+targets, where the scalar feed-order kernel replaces the per-element reference decode; the
+tolerance-based parity tests cover it, and the JVM is unaffected because it overrides the path.
+Tier 1 is a new module that must be installed explicitly on wasm (no `ServiceLoader`); without it
+every path falls back to Tier 0. Tier 2 widens loader signatures with defaulted parameters and is
+marked breaking only for implementors of `ParametersLoader`.
+
+== Rollout Plan
+
+. PR 0 (this page, Tier 0): dispatch order, direct dense path, narrow-float rows, in-memory source,
+  Blob bulk copy, `wasm-bench`.
+. PR 1 (Tier 2, engine): `Q8_0Quantizer`, `Requantizers`, SafeTensors and GGUF `RequantizeTo`,
+  `PlannerProfile.quantizeDenseTo`, `skainet-cli quantize`.
+. PR 2 (Tier 1): the sidecar build, `skainet-backend-wasm-simd`, `WasmCpuOps`, parity and bench.
+. PR 3 (Tier 1 follow-up): resident activations, banded attention, pthread tuning — scoped by PR 2's
+  measurements.
+. Engine release; then SKaiNET-transformers: a common-code `LayaModelLoader` over a
+  `RandomAccessSource`, a packed-aware `LayaWeightPreparation.splitRows`, a decision-quality gate
+  for the quantized lane; then the SemanticEmojiFilter web verifier.
+
+== Measurements
+
+`wasm-bench` on Node (Kotlin/Wasm production binary, 12-core laptop, one thread), Tier 0 code,
+2026-10-16 — the baseline the following tiers are measured against. `m` is the token count of one
+Laya decision, one LEAF query, or one decode step:
+
+[cols="2,1,1,1,1,1",options="header"]
+|===
+| Case | m × n × k | dense FP32 ms | dense GFLOPS | Q8_0 (scalar) ms | Q8_0 GFLOPS
+
+| laya.Wqkv | 150 × 2304 × 768 | 635 | 0.84 | 1420 | 0.37
+| laya.Wi | 150 × 2304 × 768 | 430 | 1.24 | 1223 | 0.43
+| laya.mlpWo | 150 × 768 × 1152 | 158 | 1.68 | 599 | 0.44
+| laya.Wo | 150 × 768 × 768 | 114 | 1.55 | 330 | 0.54
+| leaf.ffn | 20 × 1536 × 384 | 21 | 1.13 | 61 | 0.38
+| leaf.proj | 20 × 384 × 384 | 3.0 | 1.96 | 9.6 | 0.61
+| smollm2.gemv | 1 × 1536 × 576 | 5.0 | 0.36 | 5.1 | 0.35
+| qwen06b.gemv | 1 × 3072 × 1024 | 22 | 0.28 | 9.9 | 0.63
+|===
+
+Read across one Laya layer (Wqkv + Wi + mlpWo + Wo) this is about 1.34 s dense, so roughly 29 s for
+the 22-layer encoder at 150 tokens, matching the estimate in <<_origin>>. The scalar Q8_0 kernels
+are 2–3× slower than dense FP32 at this size: they decode per block in Kotlin, which is the gap the
+SIMD128 sidecar (Tier 1) closes, and why quantize-at-load (Tier 2) is a memory measure first and a
+speed measure only together with Tier 1.
+
+== Acceptance Criteria
+
+* `wasm-bench` numbers recorded in <<_measurements>> for Tier 0 (done), Tier 1 and Tier 2.
+* `kernel-support-matrix.adoc` shows the browser pack's formats and the drift test passes.
+* The sample measurements in <<_who_pays_today>> are updated from a real browser run.
+
+== Risks
+
+* Copy overhead across the Kotlin/Wasm ↔ sidecar boundary (about 440 MB of activation copies per
+  Laya decision at 150 tokens if nothing stays resident) — measured in PR 2 before PR 3 decides.
+* Emscripten in CI and reproducible `.wasm` artifacts; pthreads need cross-origin isolation, which
+  GitHub Pages cannot set in headers (the examples site already uses a service-worker shim).
+* Quantization changes Laya's decisions; the consumer gate is decision agreement, not FP32 parity.
+* wasm32 caps linear memory at 4 GB across the Kotlin heap and the sidecar: Q8_0 Laya fits, dense
+  FP32 does not, so Tier 2 is a prerequisite for that model rather than an option.
+
+== Open Questions
+
+* Whether the dense FP32 fast path in `matmul` (the `[k, n]` loop) should also route through
+  `KernelDispatch` first, so a registered dense kernel wins without an ops override. Deferred to
+  PR 2, where the first such kernel appears.
+* Whether `TensorOps` should grow a fused `layerNorm`; the cost on the encoder is allocation rather
+  than arithmetic, and `ForwardScope` may already answer it.
+
+== References
+
+* `docs/modules/ROOT/pages/explanation/kernel-selection.adoc`, `eager-execution.adoc`,
+  `reference/kernel-support-matrix.adoc`
+* SKEEP-003 (unified tensor storage; synchronous `RandomAccessSource` on JS/Wasm), SKEEP-005 (schedules
+  on single-threaded runtimes), issues #288, #973, #1094, #1096, #1109, #1124, #1150, #1275
+* llama.cpp pull request 11453 ("ggml : x2 speed for WASM by optimizing SIMD")

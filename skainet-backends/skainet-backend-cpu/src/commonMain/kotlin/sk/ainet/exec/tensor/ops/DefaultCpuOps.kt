@@ -1049,17 +1049,112 @@ public open class DefaultCpuOpsBase(
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeight(weight.data)) {
+            // Dense weight. A heap FP32 `[out, in]` matrix is already the layout a row-dot wants —
+            // every output is one contiguous dot product — so a tier without a vectorised `[k, n]`
+            // kernel computes the product in place (SKEEP-007 §T0.2) instead of paying a scattered
+            // transpose copy per weight and caching it (~0.5 GB for a 22-layer encoder). The JVM
+            // and Apple tiers keep the cached transpose: their `[k, n]` kernels are the fast path.
+            if (preferDirectWeightTransposed()) {
+                matmulDenseWeightTransposedDirect(x, weight)?.let { return it }
+            }
             return matmul(x, transposedDenseWeight(weight) ?: transpose(weight))
         }
-        // Decode the weight where it lies (#1124). The relayout below produces bytes for kernels
-        // that address `packedData` in feed order themselves; this implementation has no such
-        // kernel, so relayouting for it was pure harm — the result is a tensor whose shape says
-        // [in, out] while its blocks still run along the original input dimension, which no block
-        // order can describe, and decoding it read the wrong blocks and returned plausible garbage.
-        // `KernelDispatch.matmul` already wants the weight output-major, which is exactly the shape
-        // this weight has, so the canonical view goes straight in with nothing rearranged.
+        // Packed weight (SKEEP-007 §T0.1), in order of preference:
+        //  1. a kernel registered for the canonical row-major view — the JVM FFM, Android JNI and
+        //     browser packs read that order natively (#1124: decode the weight where it lies);
+        //  2. the one-time, cached relayout into kernel feed order, which the scalar packed kernels
+        //     every target carries can read — this is what [prepackedWeights] was declared for;
+        //  3. the decoding reference kernel through views — correct for any encoding, ~1000× slower,
+        //     and the last resort rather than the default.
+        // Before this ordering a canonical GGUF weight on a target without a row-major pack (every
+        // non-JVM target) took path 3 on every call.
+        if (hasExactKernelForCanonical(x, weight)) {
+            matmulWeightTransposedViaViews(x, weight)?.let { return it }
+        }
+        // Relayout only when a feed-order kernel will consume the relaid bytes: the relabelled
+        // `[in, out]` tensor is meaningless to anything that decodes it by shape (#1124), so with an
+        // empty registry the canonical view goes to the decoding reference kernel instead.
+        if (feedOrderKernelAvailable(weight.data)) {
+            rewrapFeedOrderWeight(weight)?.let { return matmul(x, it) }
+            cachedKernelOrderWeight(weight)?.let { return matmul(x, it) }
+        }
         matmulWeightTransposedViaViews(x, weight)?.let { return it }
-        return matmul(x, transposePackedWeight(weight) ?: return matmulGeneric(x, transpose(weight)))
+        return matmulGeneric(x, transpose(weight))
+    }
+
+    /** `true` when [KernelRegistry] supplies a feed-order kernel for this packed format (what `chooseQuantizedMatmulHeap` dispatches to). */
+    private fun feedOrderKernelAvailable(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean = when (data) {
+        is Q5_1TensorData -> q5_1Kernel != null
+        is Q5_0TensorData -> q5_0Kernel != null
+        is Q4_KTensorData -> q4kKernel != null
+        is Q5_KTensorData -> q5kKernel != null
+        is Q6_KTensorData -> q6kKernel != null
+        is Q8_0TensorData -> q8_0Kernel != null
+        is Q4_0TensorData -> q4_0Kernel != null
+        else -> false
+    }
+
+    /**
+     * Whether a dense `[out, in]` FP32 weight is multiplied in place by [matmulDenseWeightTransposedDirect]
+     * (`true`, the common default) or transposed once and handed to `matmul` (the JVM and Apple
+     * tiers, whose `[k, n]` kernels are vectorised). SKEEP-007 §T0.2.
+     */
+    protected open fun preferDirectWeightTransposed(): Boolean = true
+
+    /** `true` when [KernelDispatch] holds an exact kernel for [x] × the canonical view of [weight]. */
+    private fun hasExactKernelForCanonical(x: Tensor<*, *>, weight: Tensor<*, *>): Boolean {
+        if (!sk.ainet.backend.api.kernel.DispatchMode.useRegistry()) return false
+        if (x.dtype != FP32::class) return false
+        val xView = x.data.view ?: return false
+        val wView = weight.data.view ?: return false
+        val xNorm = try {
+            sk.ainet.backend.api.kernel.KernelDispatch.normalizeActivation(xView).first
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        sk.ainet.backend.api.kernel.KernelDispatch.ensureInstalled()
+        return sk.ainet.backend.api.kernel.KernelDispatch.find(
+            sk.ainet.backend.api.kernel.KernelKey.matmul(xNorm, wView),
+        ) != null
+    }
+
+    /**
+     * The feed-order relayout of a canonical packed [weight], computed once and cached by the
+     * identity of its bytes ([prepackedWeights]); `null` for an encoding without a relayout.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> cachedKernelOrderWeight(weight: Tensor<T, V>): Tensor<T, V>? {
+        val packed = weight.data as? sk.ainet.lang.tensor.storage.PackedBlockStorage ?: return null
+        val source = packed.packedData
+        prepackedWeights.firstOrNull { it.first === source }?.let { return it.second as Tensor<T, V> }
+        val relayouted = transposePackedWeight(weight) ?: return null
+        if (prepackedWeights.size >= PREPACK_CACHE_LIMIT) prepackedWeights.removeAt(0)
+        prepackedWeights.add(Pair(source, relayouted as Tensor<*, *>))
+        return relayouted
+    }
+
+    /**
+     * `x · Wᵀ` for a heap FP32 `[out, in]` weight computed straight from the weight's own rows
+     * (SKEEP-007 §T0.2): every output is a contiguous dot product, four weight rows and four
+     * activation rows per tile so the weight is streamed once per four activation rows instead of
+     * once per row. Each output accumulates its products in ascending `p` in one accumulator, so the
+     * result is bit-identical to the transpose-then-`matmul` path it replaces. `null` when either
+     * operand is not heap FP32.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> matmulDenseWeightTransposedDirect(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
+        if (x.dtype != FP32::class || weight.dtype != FP32::class || x.rank < 1) return null
+        val wWin = floatWindowOf(weight) ?: return null
+        val xWin = floatWindowOf(x) ?: return null
+        val n = weight.shape[0]
+        val k = weight.shape[1]
+        if (x.shape.dimensions.last() != k) return null
+        val m = if (k == 0) 0 else x.shape.volume / k
+        val out = FloatArray(m * n)
+        KernelProfile.timeFp32 { denseRowDotTiled(xWin.arr, xWin.off, wWin.arr, wWin.off, out, m, n, k) }
+        val outShape = if (x.rank == 1) Shape(n) else Shape(*(x.shape.dimensions.copyOf(x.rank - 1) + n))
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, out) as sk.ainet.lang.tensor.data.TensorData<T, V>
+        return newTensor(outData, x.dtype, x, weight)
     }
 
     /**
@@ -3934,4 +4029,80 @@ public class DefaultCpuOps(
 
     override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): TensorOps =
         if (schedule === this.schedule) this else DefaultCpuOps(dataFactory, schedule)
+}
+
+/**
+ * `out[i, j] = Σ_p a[i, p] · w[j, p]` over row-major `a` (`m × k`) and `w` (`n × k`), 4 × 4 tiles with
+ * one sequential accumulator per output (SKEEP-007 §T0.2). Pure common code: the scalar baseline on
+ * every target, and the reference the browser SIMD pack is checked against.
+ */
+internal fun denseRowDotTiled(
+    a: FloatArray, aOff: Int,
+    w: FloatArray, wOff: Int,
+    out: FloatArray,
+    m: Int, n: Int, k: Int,
+) {
+    var i = 0
+    while (i + 4 <= m) {
+        val a0 = aOff + i * k; val a1 = a0 + k; val a2 = a1 + k; val a3 = a2 + k
+        val o0 = i * n; val o1 = o0 + n; val o2 = o1 + n; val o3 = o2 + n
+        var j = 0
+        while (j + 4 <= n) {
+            val w0 = wOff + j * k; val w1 = w0 + k; val w2 = w1 + k; val w3 = w2 + k
+            var s00 = 0f; var s01 = 0f; var s02 = 0f; var s03 = 0f
+            var s10 = 0f; var s11 = 0f; var s12 = 0f; var s13 = 0f
+            var s20 = 0f; var s21 = 0f; var s22 = 0f; var s23 = 0f
+            var s30 = 0f; var s31 = 0f; var s32 = 0f; var s33 = 0f
+            for (p in 0 until k) {
+                val b0 = w[w0 + p]; val b1 = w[w1 + p]; val b2 = w[w2 + p]; val b3 = w[w3 + p]
+                val x0 = a[a0 + p]
+                s00 += x0 * b0; s01 += x0 * b1; s02 += x0 * b2; s03 += x0 * b3
+                val x1 = a[a1 + p]
+                s10 += x1 * b0; s11 += x1 * b1; s12 += x1 * b2; s13 += x1 * b3
+                val x2 = a[a2 + p]
+                s20 += x2 * b0; s21 += x2 * b1; s22 += x2 * b2; s23 += x2 * b3
+                val x3 = a[a3 + p]
+                s30 += x3 * b0; s31 += x3 * b1; s32 += x3 * b2; s33 += x3 * b3
+            }
+            out[o0 + j] = s00; out[o0 + j + 1] = s01; out[o0 + j + 2] = s02; out[o0 + j + 3] = s03
+            out[o1 + j] = s10; out[o1 + j + 1] = s11; out[o1 + j + 2] = s12; out[o1 + j + 3] = s13
+            out[o2 + j] = s20; out[o2 + j + 1] = s21; out[o2 + j + 2] = s22; out[o2 + j + 3] = s23
+            out[o3 + j] = s30; out[o3 + j + 1] = s31; out[o3 + j + 2] = s32; out[o3 + j + 3] = s33
+            j += 4
+        }
+        while (j < n) {
+            val wj = wOff + j * k
+            var s0 = 0f; var s1 = 0f; var s2 = 0f; var s3 = 0f
+            for (p in 0 until k) {
+                val b = w[wj + p]
+                s0 += a[a0 + p] * b; s1 += a[a1 + p] * b; s2 += a[a2 + p] * b; s3 += a[a3 + p] * b
+            }
+            out[o0 + j] = s0; out[o1 + j] = s1; out[o2 + j] = s2; out[o3 + j] = s3
+            j++
+        }
+        i += 4
+    }
+    while (i < m) {
+        val ai = aOff + i * k
+        val oi = i * n
+        var j = 0
+        while (j + 4 <= n) {
+            val w0 = wOff + j * k; val w1 = w0 + k; val w2 = w1 + k; val w3 = w2 + k
+            var s0 = 0f; var s1 = 0f; var s2 = 0f; var s3 = 0f
+            for (p in 0 until k) {
+                val x = a[ai + p]
+                s0 += x * w[w0 + p]; s1 += x * w[w1 + p]; s2 += x * w[w2 + p]; s3 += x * w[w3 + p]
+            }
+            out[oi + j] = s0; out[oi + j + 1] = s1; out[oi + j + 2] = s2; out[oi + j + 3] = s3
+            j += 4
+        }
+        while (j < n) {
+            val wj = wOff + j * k
+            var s = 0f
+            for (p in 0 until k) s += a[ai + p] * w[wj + p]
+            out[oi + j] = s
+            j++
+        }
+        i++
+    }
 }
