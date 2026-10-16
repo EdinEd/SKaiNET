@@ -193,6 +193,9 @@ internal class DefaultCpuOpsJvm(
      * tensor nothing could decode correctly (#1124). Here the kernels do exist, so the relayout
      * pays: once per weight, cached by the identity of its bytes.
      */
+    /** The JVM keeps the cached transpose: its vectorised `[k, n]` kernels are the fast path (SKEEP-007 §T0.2). */
+    override fun preferDirectWeightTransposed(): Boolean = false
+
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) {

@@ -9,9 +9,6 @@ import org.khronos.webgl.get
 import org.w3c.files.Blob
 import kotlin.js.Promise
 
-@JsFun("(msg) => console.log(msg)")
-private external fun consoleLog(msg: String)
-
 /**
  * WASM JS implementation of [RandomAccessSource] using Blob API.
  *
@@ -136,22 +133,12 @@ public class JsBlobRandomAccessSource private constructor(
          */
         public suspend fun open(blob: Blob, preloadSize: Int = DEFAULT_PRELOAD_SIZE): JsBlobRandomAccessSource {
             val blobSize = getBlobSize(blob)
-            consoleLog("[JsBlobRAS] blobSize=$blobSize, preloadSize=$preloadSize")
             val actualPreloadSize = minOf(preloadSize, blobSize)
-            consoleLog("[JsBlobRAS] actualPreloadSize=$actualPreloadSize")
             val slice = sliceBlob(blob, 0, actualPreloadSize)
             val sliceSize = getBlobSize(slice)
-            consoleLog("[JsBlobRAS] sliceSize=$sliceSize")
             val arrayBuffer = blobArrayBuffer(slice).await<ArrayBuffer>()
             val bufferByteLength = getArrayBufferByteLength(arrayBuffer)
-            consoleLog("[JsBlobRAS] arrayBuffer.byteLength=$bufferByteLength")
             val bytes = arrayBufferToByteArray(arrayBuffer)
-            consoleLog("[JsBlobRAS] bytes.size=${bytes.size}")
-            // Log first 8 bytes as hex for ONNX magic check
-            if (bytes.size >= 8) {
-                val hex = bytes.take(8).joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
-                consoleLog("[JsBlobRAS] first 8 bytes: $hex")
-            }
             return JsBlobRandomAccessSource(blob, bytes, blobSize.toLong())
         }
 
@@ -159,16 +146,12 @@ public class JsBlobRandomAccessSource private constructor(
          * Convert JavaScript ArrayBuffer to Kotlin ByteArray using Int8Array.
          */
         private fun arrayBufferToByteArray(buffer: ArrayBuffer): ByteArray {
+            // One interop call per byte: Kotlin/Wasm 2.4 ships no `Int8Array` → `ByteArray` adapter
+            // and arrays cannot cross the boundary directly. For a 50 MB preload that is 50 million
+            // calls before the first header byte is parsed; SKEEP-007 Tier 1 replaces this with the
+            // sidecar's linear-memory bridge. Until then the loop stays, without the per-read logging.
             val int8Array = Int8Array(buffer)
-            val length = int8Array.length
-            consoleLog("[JsBlobRAS] converting $length bytes via Int8Array")
-            val bytes = ByteArray(length) { i -> int8Array[i] }
-            // Debug: log first 16 bytes
-            if (length >= 16) {
-                val first16 = (0 until 16).map { int8Array[it].toInt() and 0xFF }
-                consoleLog("[JsBlobRAS] first 16 raw values: $first16")
-            }
-            return bytes
+            return ByteArray(int8Array.length) { i -> int8Array[i] }
         }
     }
 }

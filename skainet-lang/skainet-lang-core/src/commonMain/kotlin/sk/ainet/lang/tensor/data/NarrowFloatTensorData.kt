@@ -53,11 +53,36 @@ public open class NarrowFloatDenseTensorData(
     initialShape: Shape,
     private val data: ByteArray,
     override val codec: NarrowFloatCodec,
-) : NarrowFloatTensorData {
+) : NarrowFloatTensorData, RowDequantSource {
 
     override val shape: Shape = Shape(initialShape.dimensions.copyOf())
     private val strides: IntArray = shape.computeStrides()
     override val packedData: ByteArray get() = data
+
+    /**
+     * One decoded row of a rank-2 table (SKEEP-007 §T0.3).
+     *
+     * This is what lets a token-embedding table stay in its on-disk 16-bit form: the embedding
+     * lookup (`ops.gather`, and the transformers `Embedding` layer) checks for [RowDequantSource]
+     * and decodes only the rows a step touches, instead of widening the whole table to FP32 at
+     * load — for a 256k × 768 table that is 393 MB resident instead of 786 MB, on every target,
+     * and in a browser the difference between fitting and not.
+     */
+    override fun dequantRow(rowIdx: Int): FloatArray {
+        require(shape.rank == 2) { "dequantRow needs a rank-2 table, got rank ${shape.rank}" }
+        val rows = shape[0]
+        val cols = shape[1]
+        require(rowIdx in 0 until rows) { "row $rowIdx out of range [0, $rows)" }
+        val out = FloatArray(cols)
+        var byteIdx = rowIdx * cols * NarrowFloatTensorData.BYTES_PER_ELEMENT
+        for (c in 0 until cols) {
+            val lo = data[byteIdx].toInt() and 0xFF
+            val hi = data[byteIdx + 1].toInt() and 0xFF
+            out[c] = codec.decode((hi shl 8) or lo)
+            byteIdx += NarrowFloatTensorData.BYTES_PER_ELEMENT
+        }
+        return out
+    }
 
     /** Physically two bytes per element whatever the declared dtype witness. */
     override val encoding: TensorEncoding get() = TensorEncoding.Dense(NarrowFloatTensorData.BYTES_PER_ELEMENT)

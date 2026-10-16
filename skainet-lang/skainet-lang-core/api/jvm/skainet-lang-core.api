@@ -5154,10 +5154,11 @@ public final class sk/ainet/lang/tensor/data/MmapTensorSource$Companion {
 	public static synthetic fun fromChannel$default (Lsk/ainet/lang/tensor/data/MmapTensorSource$Companion;Ljava/nio/channels/FileChannel;JJILjava/lang/Object;)Lsk/ainet/lang/tensor/data/MmapTensorSource;
 }
 
-public class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatTensorData {
+public class sk/ainet/lang/tensor/data/NarrowFloatDenseTensorData : sk/ainet/lang/tensor/data/NarrowFloatTensorData, sk/ainet/lang/tensor/data/RowDequantSource {
 	public static final field Companion Lsk/ainet/lang/tensor/data/NarrowFloatDenseTensorData$Companion;
 	public fun <init> (Lsk/ainet/lang/tensor/Shape;[BLsk/ainet/lang/types/NarrowFloatCodec;)V
 	public fun copyToFloatArray ()[F
+	public fun dequantRow (I)[F
 	public fun get ([I)Ljava/lang/Float;
 	public synthetic fun get ([I)Ljava/lang/Object;
 	public fun getCodec ()Lsk/ainet/lang/types/NarrowFloatCodec;

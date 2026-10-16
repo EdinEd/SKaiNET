@@ -8,3 +8,4 @@
 ** xref:skeep:004-virtual-tensor-layout.adoc[SKEEP-004: Virtual tensor layout]
 ** xref:skeep:005-schedules-structured-concurrency.adoc[SKEEP-005: Schedules — structured concurrency]
 ** xref:skeep:006-input-frontends-and-model-identity.adoc[SKEEP-006: Input front ends and model identity]
+** xref:skeep:007-browser-lane.adoc[SKEEP-007: The browser lane]
