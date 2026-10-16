@@ -17,6 +17,8 @@ dependencies {
     implementation(project(":skainet-io:skainet-io-onnx"))
     implementation(project(":skainet-io:skainet-io-image"))
     implementation(project(":skainet-io:skainet-io-gguf"))
+    implementation(project(":skainet-io:skainet-io-safetensors"))
+    implementation(libs.kotlinx.io.core)
     implementation(project(":skainet-backends:skainet-backend-cpu"))
     implementation(project(":skainet-models:skainet-model-yolo"))
     implementation(libs.pbandk.runtime)
@@ -33,4 +35,14 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// SKEEP-007 §T2: SafeTensors → quantized GGUF, offline.
+//   ./gradlew :skainet-apps:skainet-tensor-tools:quantize --args="--in model.safetensors --out model.q8_0.gguf --keep tok_embeddings"
+tasks.register<JavaExec>("quantize") {
+    group = "application"
+    description = "Quantize a SafeTensors checkpoint's weight matrices into a GGUF (Q8_0 or Q4_0)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("sk.ainet.apps.tool.quantize.QuantizeCliKt")
+    jvmArgs("--add-modules=jdk.incubator.vector")
 }

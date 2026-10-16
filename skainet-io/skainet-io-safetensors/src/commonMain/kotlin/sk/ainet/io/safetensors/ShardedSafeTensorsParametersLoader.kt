@@ -2,6 +2,7 @@ package sk.ainet.io.safetensors
 
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.ParametersLoader
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
@@ -60,7 +61,20 @@ public class ShardedSafeTensorsParametersLoader(
     private val fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
     private val allowPartial: Boolean = false,
     private val tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
+    private val weightForm: WeightForm? = null,
+    private val weightFormFor: ((String) -> WeightForm?)? = null,
 ) : ParametersLoader {
+
+    init {
+        weightForm?.let { SafeTensorsWeightForms.validate(it, "weightForm") }
+    }
+
+    /** The form [tensorName] loads under: [weightFormFor] first, then the uniform [weightForm]. */
+    private fun formFor(tensorName: String): WeightForm? {
+        val perTensor = weightFormFor?.invoke(tensorName) ?: return weightForm
+        SafeTensorsWeightForms.validate(perTensor, "weightFormFor('$tensorName')")
+        return perTensor
+    }
 
     override suspend fun <T : DType, V> load(
         ctx: ExecutionContext,
@@ -90,6 +104,7 @@ public class ShardedSafeTensorsParametersLoader(
                     bytes = bytes,
                     bf16Policy = bf16Policy,
                     fp16Policy = fp16Policy,
+                    form = formFor(tensorInfo.name),
                 )
 
                 onTensorLoaded(tensorInfo.name, tensor)

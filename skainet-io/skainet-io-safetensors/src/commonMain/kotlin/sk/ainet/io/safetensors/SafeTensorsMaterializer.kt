@@ -4,7 +4,18 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.io.model.DataType
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.memory.BlockOrder
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.blockSpec
+import sk.ainet.lang.memory.plan.EncodingRequest
+import sk.ainet.lang.memory.plan.WeightByteOrder
+import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
+import sk.ainet.lang.tensor.data.Q4_0BlockTensorData
+import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
+import sk.ainet.lang.tensor.data.Requantizers
+import sk.ainet.lang.tensor.storage.PackedBlockStorage
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.lang.tensor.data.Fp16DenseTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.types.BF16
@@ -46,6 +57,76 @@ internal object SafeTensorsMaterializer {
      */
     @Suppress("UNCHECKED_CAST")
     fun <T : DType, V> materialize(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        name: String,
+        dataType: DataType,
+        rawDtype: String,
+        shape: Shape,
+        bytes: ByteArray,
+        bf16Policy: Bf16LoadPolicy,
+        fp16Policy: NarrowFloatLoadPolicy,
+        form: WeightForm? = null,
+    ): Tensor<T, V> {
+        requantized<T, V>(ctx, dtype, name, dataType, shape, bytes, form)?.let { return it }
+        return materializeDense(ctx, dtype, name, dataType, rawDtype, shape, bytes, bf16Policy, fp16Policy)
+    }
+
+    /**
+     * The `EncodingRequest.RequantizeTo` branch (SKEEP-007 §T2): a float **matrix** (rank 2, last
+     * dimension a multiple of the block size) is decoded to FP32 and handed to [Requantizers] for the
+     * requested encoding, then relaid into kernel feed order when the form asks for it. Anything the
+     * request cannot apply to — integer tensors, vectors, a matrix whose row length does not block —
+     * returns `null` and loads as it would without the form, so biases, norms and index tables stay
+     * dense under a uniform `RequantizeTo(Q8_0)`. `WeightShapeOrientation` is moot for SafeTensors:
+     * a `Linear` weight is already `[out, in]`. `WeightResidency.MAPPED` cannot be honoured for
+     * freshly quantized bytes and silently means heap, as the GGUF loader documents.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> requantized(
+        ctx: ExecutionContext,
+        dtype: KClass<T>,
+        name: String,
+        dataType: DataType,
+        shape: Shape,
+        bytes: ByteArray,
+        form: WeightForm?,
+    ): Tensor<T, V>? {
+        val target = (form?.encoding as? EncodingRequest.RequantizeTo)?.encoding ?: return null
+        if (shape.rank != 2) return null
+        val blockSize = target.blockSpec?.blockSize ?: return null
+        if (shape[1] % blockSize != 0) return null
+        val floats = when (dataType) {
+            DataType.FLOAT32 -> bytesToFloatArray(bytes)
+            DataType.FLOAT16 -> dequantF16(bytes)
+            DataType.BFLOAT16 -> dequantBF16(bytes)
+            else -> return null
+        }
+        require(dtype == FP32::class) {
+            "SafeTensors tensor '$name': RequantizeTo(${target.name}) weights are logically FP32; requested ${dtype.simpleName}"
+        }
+        var data = Requantizers.quantize(target, floats, shape)
+        if (form.order == WeightByteOrder.KERNEL_FEED) data = feedOrdered(data)
+        return ctx.fromData(data as TensorData<T, V>, dtype)
+    }
+
+    /** Relayout freshly quantized row-major blocks into kernel feed order, for the formats that have one. */
+    private fun feedOrdered(data: TensorData<*, *>): TensorData<*, *> {
+        val packed = data as? PackedBlockStorage ?: return data
+        if (packed.blockOrder != BlockOrder.ROW_MAJOR) return data
+        val shape = packed.shape
+        if (shape.rank != 2 || shape[1] % packed.blockSize != 0) return data
+        val prepacked = packed.packedView.prepack(BlockOrder.INPUT_BLOCK_MAJOR)
+        val bytes = (prepacked.storage as? Storage.Heap)?.bytes ?: return data
+        return when (packed.encoding) {
+            TensorEncoding.Q8_0 -> Q8_0BlockTensorData(shape, bytes, BlockOrder.INPUT_BLOCK_MAJOR)
+            TensorEncoding.Q4_0 -> Q4_0BlockTensorData(shape, bytes, BlockOrder.INPUT_BLOCK_MAJOR)
+            else -> data
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> materializeDense(
         ctx: ExecutionContext,
         dtype: KClass<T>,
         name: String,

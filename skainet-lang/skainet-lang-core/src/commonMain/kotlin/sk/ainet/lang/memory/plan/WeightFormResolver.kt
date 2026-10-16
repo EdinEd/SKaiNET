@@ -63,6 +63,18 @@ public object WeightFormResolver {
         val residency = if (profile.weightsMapped) WeightResidency.MAPPED else WeightResidency.HEAP
 
         if (stored == null || stored is TensorEncoding.Dense) {
+            // A dense source has no packed form to keep — unless the profile asks for one and a
+            // kernel can feed it (SKEEP-007 §T2). Per-row scales need the row to be the output
+            // dimension, so the shape axis is pinned to OUT_IN here, the one place this resolver
+            // decides it. The quantization pays once, at load; a profile that asks for it on a
+            // target with no kernel for the encoding keeps the dense bytes instead.
+            val target = profile.quantizeDenseTo
+            if (target != null && capabilities.canFeedMatmul(target)) {
+                val order =
+                    if (capabilities.wantsKernelFeedOrder(target) && canProduceKernelFeedOrder) WeightByteOrder.KERNEL_FEED
+                    else WeightByteOrder.AS_STORED
+                return WeightForm(EncodingRequest.RequantizeTo(target), order, WeightShapeOrientation.OUT_IN, residency)
+            }
             return WeightForm(EncodingRequest.KeepAsStored, WeightByteOrder.AS_STORED, residency = residency)
         }
 

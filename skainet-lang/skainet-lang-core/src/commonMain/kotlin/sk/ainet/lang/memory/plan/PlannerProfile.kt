@@ -32,6 +32,13 @@ public data class PlannerProfile(
     val dequantWarnFraction: Double = 0.05,
     val strict: Boolean = false,
     val weightsMapped: Boolean = false,
+    /**
+     * Quantize **dense** sources (FP32/F16/BF16 checkpoints — every SafeTensors file) to this
+     * encoding at load, when a kernel on the target can feed it (SKEEP-007 §T2). `null`, the
+     * default, keeps dense weights as stored. A browser or phone profile sets `Q8_0` so a Hugging
+     * Face checkpoint is held in a quarter of its FP32 bytes and served by the packed kernels.
+     */
+    val quantizeDenseTo: sk.ainet.lang.tensor.storage.TensorEncoding? = null,
 ) {
     init {
         require(reserveBytes >= 0) { "reserveBytes must be >= 0" }

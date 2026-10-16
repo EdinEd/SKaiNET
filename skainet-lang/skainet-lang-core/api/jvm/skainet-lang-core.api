@@ -1916,11 +1916,12 @@ public final class sk/ainet/lang/memory/plan/PlannerProfile {
 	public static final field Companion Lsk/ainet/lang/memory/plan/PlannerProfile$Companion;
 	public static final field MOBILE_RAM_CEILING J
 	public static final field OFF_HEAP_THRESHOLD J
-	public fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZ)V
-	public synthetic fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZLsk/ainet/lang/tensor/storage/TensorEncoding;)V
+	public synthetic fun <init> (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZLsk/ainet/lang/tensor/storage/TensorEncoding;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun budget (J)Lsk/ainet/lang/memory/plan/Budget;
 	public final fun checkDequant (Ljava/lang/Double;)Lsk/ainet/lang/memory/plan/DequantVerdict;
 	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun component2 ()J
 	public final fun component3 ()I
 	public final fun component4 ()Lsk/ainet/lang/memory/plan/KvCacheMode;
@@ -1929,8 +1930,8 @@ public final class sk/ainet/lang/memory/plan/PlannerProfile {
 	public final fun component7 ()D
 	public final fun component8 ()Z
 	public final fun component9 ()Z
-	public final fun copy (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZ)Lsk/ainet/lang/memory/plan/PlannerProfile;
-	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlannerProfile;Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun copy (Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZLsk/ainet/lang/tensor/storage/TensorEncoding;)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public static synthetic fun copy$default (Lsk/ainet/lang/memory/plan/PlannerProfile;Ljava/lang/String;JILsk/ainet/lang/memory/plan/KvCacheMode;DJDZZLsk/ainet/lang/tensor/storage/TensorEncoding;ILjava/lang/Object;)Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun domainFor (J)Lsk/ainet/lang/tensor/storage/MemoryDomain;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getDequantWarnFraction ()D
@@ -1939,6 +1940,7 @@ public final class sk/ainet/lang/memory/plan/PlannerProfile {
 	public final fun getName ()Ljava/lang/String;
 	public final fun getOffHeapThresholdBytes ()J
 	public final fun getPrefillChunk ()I
+	public final fun getQuantizeDenseTo ()Lsk/ainet/lang/tensor/storage/TensorEncoding;
 	public final fun getReserveBytes ()J
 	public final fun getStrict ()Z
 	public final fun getWeightsMapped ()Z
@@ -5673,6 +5675,12 @@ public final class sk/ainet/lang/tensor/data/Q8_0BlockTensorData$Companion {
 	public final fun fromRawBytes (Lsk/ainet/lang/tensor/Shape;[B)Lsk/ainet/lang/tensor/data/Q8_0BlockTensorData;
 }
 
+public final class sk/ainet/lang/tensor/data/Q8_0Quantizer {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/data/Q8_0Quantizer;
+	public final fun quantize ([FLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/Q8_0BlockTensorData;
+	public final fun quantizeToBytes ([F)[B
+}
+
 public abstract interface class sk/ainet/lang/tensor/data/Q8_0TensorData : sk/ainet/lang/tensor/data/TensorData {
 	public static final field BLOCK_SIZE I
 	public static final field BYTES_PER_BLOCK I
@@ -5696,6 +5704,13 @@ public final class sk/ainet/lang/tensor/data/Q8_0TensorData$DefaultImpls {
 
 public final class sk/ainet/lang/tensor/data/Q8_0TensorDataKt {
 	public static final fun toFloatArray (Lsk/ainet/lang/tensor/data/Q8_0TensorData;)[F
+}
+
+public final class sk/ainet/lang/tensor/data/Requantizers {
+	public static final field INSTANCE Lsk/ainet/lang/tensor/data/Requantizers;
+	public final fun getSupported ()Ljava/util/List;
+	public final fun quantize (Lsk/ainet/lang/tensor/storage/TensorEncoding;[FLsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/data/TensorData;
+	public final fun supports (Lsk/ainet/lang/tensor/storage/TensorEncoding;)Z
 }
 
 public abstract interface class sk/ainet/lang/tensor/data/RowDequantSource {
