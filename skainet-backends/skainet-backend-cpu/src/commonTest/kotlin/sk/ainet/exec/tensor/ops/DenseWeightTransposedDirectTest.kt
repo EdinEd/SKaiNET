@@ -5,6 +5,7 @@ import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.matmulWeightTransposed
 import sk.ainet.lang.types.FP32
 import kotlin.test.Test
+import kotlin.test.assertTrue
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
@@ -71,11 +72,17 @@ class DenseWeightTransposedDirectTest {
             val viaPrimitive = ctx.ops.matmulWeightTransposed(x, w)
             val viaTranspose = ctx.ops.matmul(x, ctx.ops.transpose(w))
             assertEquals(viaTranspose.shape, viaPrimitive.shape, "shape for x=$shape")
-            assertContentEquals(
-                viaTranspose.data.copyToFloatArray(),
-                viaPrimitive.data.copyToFloatArray(),
-                "values for x=$shape",
-            )
+            // Same products in the same order: bit-identical where Float is Float (JVM, Native,
+            // Wasm). Kotlin/JS accumulates a Float local in double precision while the transpose
+            // path rounds through a Float32Array per step, so this comparison is tolerance-based —
+            // the tiled-vs-definition tests above pin the bits where bits are stable.
+            val expected = viaTranspose.data.copyToFloatArray()
+            val actual = viaPrimitive.data.copyToFloatArray()
+            assertEquals(expected.size, actual.size, "size for x=$shape")
+            for (i in expected.indices) {
+                val tol = kotlin.math.abs(expected[i]) * 1e-5f + 1e-6f
+                assertTrue(kotlin.math.abs(expected[i] - actual[i]) <= tol, "x=$shape [$i]: ${actual[i]} vs ${expected[i]}")
+            }
         }
     }
 }
