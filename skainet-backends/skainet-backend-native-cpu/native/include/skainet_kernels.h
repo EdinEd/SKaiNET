@@ -486,6 +486,23 @@ SKAINET_API void skainet_ternary_lmhead_stage1(
     int32_t input_dim, int32_t output_dim,
     float* output, int32_t output_offset);
 
+/*
+ * Dense `x · Wᵀ` for a row-major `[out, in]` FP32 weight (SKEEP-007):
+ *
+ *   out[out_offset + i*n + o] = Σ_p in[in_offset + i*k + p] * w[w_offset + o*k + p]
+ *
+ * for i in [0, m), o in [0, n). No transposed copy of the weight is made; every
+ * output is one contiguous dot product over the weight's own row, accumulated
+ * in ascending p — bit-identical to transpose-then-GEMM. Threads over output
+ * rows like the packed kernels. m, n, k <= 0 are no-ops (k == 0 zeroes out).
+ */
+SKAINET_API void skainet_fp32_matmul_wt(
+    const float* in, int32_t in_offset,
+    const float* w, int32_t w_offset,
+    float* out, int32_t out_offset,
+    int32_t m, int32_t n, int32_t k
+);
+
 #ifdef __cplusplus
 }
 #endif

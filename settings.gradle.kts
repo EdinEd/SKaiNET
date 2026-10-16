@@ -42,6 +42,7 @@ include("skainet-backends:skainet-backend-api")
 include("skainet-backends:skainet-backend-cpu")
 include("skainet-backends:skainet-backend-native-cpu")
 include("skainet-backends:skainet-backend-jni-cpu")
+include("skainet-backends:skainet-backend-wasm-simd")
 
 // ====== BENCHMARKS
 include("skainet-backends:benchmarks:jvm-cpu-jmh")

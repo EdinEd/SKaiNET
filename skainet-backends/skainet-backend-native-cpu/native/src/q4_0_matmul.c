@@ -117,6 +117,37 @@ static inline float q4_0_block_term(
             accv = vfmaq_f32(accv, vld1q_f32(input_block + 28),
                              vcvtq_f32_s32(vmovl_s16(vget_high_s16(hi16b))));
             block_sum = skainet_neon_hadd_f32(accv);
+#elif defined(__wasm_simd128__)
+            /* wasm SIMD128 body (SKEEP-007 §T1): the NEON structure on 128-bit lanes.
+             * Low nibbles are elements 0..15, high nibbles 16..31; re-centre by 8 as
+             * int8, widen i8 → i16 → i32, convert to f32 and multiply-add. */
+            const v128_t packed = wasm_v128_load(codes);
+            const v128_t eight = wasm_i8x16_splat(8);
+            const v128_t lo8 = wasm_i8x16_sub(wasm_v128_and(packed, wasm_i8x16_splat(0x0F)), eight);
+            const v128_t hi8 = wasm_i8x16_sub(wasm_u8x16_shr(packed, 4), eight);
+            const v128_t lo16a = wasm_i16x8_extend_low_i8x16(lo8);   /* elems 0..7   */
+            const v128_t lo16b = wasm_i16x8_extend_high_i8x16(lo8);  /* elems 8..15  */
+            const v128_t hi16a = wasm_i16x8_extend_low_i8x16(hi8);   /* elems 16..23 */
+            const v128_t hi16b = wasm_i16x8_extend_high_i8x16(hi8);  /* elems 24..31 */
+            v128_t accv = wasm_f32x4_splat(0.0f);
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 0),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(lo16a))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 4),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(lo16a))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 8),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(lo16b))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 12),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(lo16b))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 16),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(hi16a))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 20),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(hi16a))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 24),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_low_i16x8(hi16b))));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 28),
+                             wasm_f32x4_convert_i32x4(wasm_i32x4_extend_high_i16x8(hi16b))));
+            block_sum = wasm_f32x4_extract_lane(accv, 0) + wasm_f32x4_extract_lane(accv, 1)
+                      + wasm_f32x4_extract_lane(accv, 2) + wasm_f32x4_extract_lane(accv, 3);
 #else
             for (int32_t k = 0; k < 16; ++k) {
                 int32_t lo = (int32_t)(codes[k] & 0x0F) - 8;

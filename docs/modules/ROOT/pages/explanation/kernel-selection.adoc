@@ -90,8 +90,8 @@ platform support is absent (a missing native library, no vector unit).
 | `ServiceLoader`, same caveat
 
 | Kotlin/Native, wasm, JS
-| manual — e.g. `installNativeKernels()`
-| manual — call the pack's `install()` yourself
+| manual — e.g. `installNativeKernels()`; on wasmJs `WasmSimd.install()` (SKEEP-007)
+| manual — call the pack's `install()` yourself; `WasmSimd.install()` registers the browser pack and its provider
 |===
 
 Without a row-major pack, a canonical packed weight is relaid **once per weight** into kernel feed

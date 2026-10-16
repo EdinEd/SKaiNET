@@ -1,6 +1,8 @@
 package sk.ainet.bench.wasm
 
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.exec.wasm.WasmKernels
+import sk.ainet.exec.wasm.WasmSimd
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
@@ -75,17 +77,37 @@ private fun timeMedianMs(reps: Int, block: () -> Unit): Double {
     return samples[reps / 2]
 }
 
-private fun report(case: Case, form: String, ms: Double) {
+private fun report(tier: String, case: Case, form: String, ms: Double) {
     val flops = 2.0 * case.m * case.n * case.k
     val gflops = flops / (ms / 1000.0) / 1e9
     val msText = ((ms * 100).roundToInt() / 100.0).toString()
     val gfText = ((gflops * 100).roundToInt() / 100.0).toString()
-    println("[SKAINET_PERF_WASM] ${case.name} m=${case.m} n=${case.n} k=${case.k} form=$form ms=$msText gflops=$gfText")
+    println("[SKAINET_PERF_WASM] tier=$tier ${case.name} m=${case.m} n=${case.n} k=${case.k} form=$form ms=$msText gflops=$gfText")
 }
 
-fun main() {
+/**
+ * Three passes: the scalar lane, then the SIMD128 sidecar single-threaded, then with pthreads when
+ * the runtime allows them (Node, or a cross-origin-isolated page). Each line carries `tier=`.
+ */
+suspend fun main() {
+    runPass("scalar")
+    WasmSimd.install(threads = false)
+    runPass(WasmKernels.mode)
+    WasmSimd.uninstall()
+    try {
+        WasmSimd.install(threads = true)
+        runPass(WasmKernels.mode)
+    } catch (e: Throwable) {
+        println("[SKAINET_PERF_WASM] tier=simd128-mt skipped: ${e.message}")
+    } finally {
+        WasmSimd.uninstall()
+    }
+    println("[SKAINET_PERF_WASM] done")
+}
+
+private fun runPass(tier: String) {
     val ctx = DirectCpuExecutionContext()
-    println("[SKAINET_PERF_WASM] backend=${ctx.ops::class.simpleName} cases=${cases.size}")
+    println("[SKAINET_PERF_WASM] tier=$tier backend=${ctx.ops::class.simpleName} cases=${cases.size}")
     for (case in cases) {
         val x = ctx.fromFloatArray<FP32, Float>(Shape(case.m, case.k), FP32::class, pseudo(case.m * case.k, 3))
         val dense = ctx.fromFloatArray<FP32, Float>(Shape(case.n, case.k), FP32::class, pseudo(case.n * case.k, 7))
@@ -94,8 +116,7 @@ fun main() {
         ctx.ops.matmulWeightTransposed(x, dense)
         ctx.ops.matmulWeightTransposed(x, packed)
         val reps = if (case.m == 1) 50 else 5
-        report(case, "dense", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, dense) })
-        report(case, "q8_0", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, packed) })
+        report(tier, case, "dense", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, dense) })
+        report(tier, case, "q8_0", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, packed) })
     }
-    println("[SKAINET_PERF_WASM] done")
 }

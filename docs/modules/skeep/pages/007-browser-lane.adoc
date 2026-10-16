@@ -1,8 +1,8 @@
 = SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
 :description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
 
-Status: Draft — Tier 0 and Tier 2 in review +
-Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352]; Tier 2 quantize-at-load (the pull request stacked on it); Tier 1 `skainet-backend-wasm-simd` and the consumer work in SKaiNET-transformers follow, see <<_rollout_plan>>. +
+Status: Draft — Tiers 0, 2 and 1 in review +
+Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352]; Tier 2 quantize-at-load https://github.com/SKaiNET-developers/SKaiNET/pull/1353[#1353]; Tier 1 `skainet-backend-wasm-simd` (the pull request stacked on #1353); the consumer work in SKaiNET-transformers follows, see <<_rollout_plan>>. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
 Created: 2026-10-16 +
 Origin: the SemanticEmojiFilter example ships its 23M-parameter embedding filter to the web but keeps the 322M-parameter Laya verifier on desktop and Android, because a decision in scalar Kotlin/Wasm is estimated at 10–30 s and the FP32 weights at about 2.5 GB resident. Nothing in the repository measures the wasm lane today.
@@ -223,9 +223,35 @@ are 2–3× slower than dense FP32 at this size: they decode per block in Kotlin
 SIMD128 sidecar (Tier 1) closes, and why quantize-at-load (Tier 2) is a memory measure first and a
 speed measure only together with Tier 1.
 
+=== Tier 1 on Node (same machine, same shapes, Tier 1 code, 2026-10-16)
+
+The scalar column is the same run's scalar pass (a quieter machine than the Tier 0 run above);
+`st` is the SIMD128 sidecar single-threaded, `mt` the pthreads build with four workers.
+
+[cols="2,1,1,1,1,1,1",options="header"]
+|===
+| Case | scalar dense | st dense | mt dense | scalar Q8_0 | st Q8_0 | mt Q8_0
+
+| laya.Wqkv (150×2304×768) | 2.5 GF (212 ms) | 7.6 GF (70 ms) | 23.6 GF (22.5 ms) | 0.72 GF (740 ms) | 8.5 GF (63 ms) | 26.7 GF (19.9 ms)
+| laya.Wi (150×2304×768) | 2.5 | 7.2 | 25.1 | 0.72 | 8.2 | 26.8
+| laya.mlpWo (150×768×1152) | 2.5 | 7.9 | 23.3 | 0.71 | 8.5 | 28.1
+| laya.Wo (150×768×768) | 2.5 | 7.7 | 23.8 | 0.71 | 7.7 | 27.2
+| leaf.ffn (20×1536×384) | 2.7 | 6.6 | 12.6 | 0.72 | 8.3 | 28.3
+| leaf.proj (20×384×384) | 2.6 | 6.4 | 6.2 | 0.71 | 8.1 | 8.0
+| smollm2.gemv (1×1536×576) | 0.60 | 0.99 | 0.98 | 0.73 | 8.4 | 16.5
+| qwen06b.gemv (1×3072×1024) | 0.61 | 0.91 | 0.94 | 0.72 | 8.5 | 27.4
+|===
+
+Read across one Laya layer on Q8_0: about 56 ms with pthreads, so roughly **1.2 s for the 22-layer
+encoder at 150 tokens** — against 29 s scalar in the Tier 0 run, within the acceptance band of this
+proposal before the resident-activation step. The single-token dense rows (gemv, 1 GFLOPS) showed the
+cost of re-uploading a dense weight per call; with dense weights resident like the packed ones the
+same rows measure 8.6 GF (st) and 23.6 GF (mt) for smollm2.gemv and 6.6 / 23.0 GF for qwen06b.gemv. Small shapes (leaf.proj) are bound by the per-call
+copies and the thread hand-off, which is what resident activations address next.
+
 == Acceptance Criteria
 
-* `wasm-bench` numbers recorded in <<_measurements>> for Tier 0 (done), Tier 1 and Tier 2.
+* `wasm-bench` numbers recorded in <<_measurements>> for Tier 0 (done) and Tier 1 (done); Tier 2 adds memory, not speed, and is measured with the Laya consumer.
 * `kernel-support-matrix.adoc` shows the browser pack's formats and the drift test passes.
 * The sample measurements in <<_who_pays_today>> are updated from a real browser run.
 
