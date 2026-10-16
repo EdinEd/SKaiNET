@@ -186,11 +186,21 @@ class TransposedWeightViewTest {
         assertFalse(t.data is TransposedWeightTensorData<*, *>, "a dense transpose is a real transpose, not a marker")
 
         val x = activation(inDim)
-        assertContentEquals(
-            x.matmulWeightTransposed(dense).data.copyToFloatArray(),
-            x.matmul(t).data.copyToFloatArray(),
-            "dense: the two spellings already agreed and must keep agreeing",
-        )
+        // The two spellings compute the same products in the same order; they are bit-identical
+        // wherever Float arithmetic is Float (JVM, Native, Wasm). On Kotlin/JS a Float local is a
+        // double, and the direct row-dot (SKEEP-007 §T0.2) keeps its accumulator in a local while
+        // the transpose-then-matmul path rounds through a Float32Array on every step — so JS
+        // differs in the last bits, as the golden tests already acknowledge for that target.
+        val viaPrimitive = x.matmulWeightTransposed(dense).data.copyToFloatArray()
+        val viaTranspose = x.matmul(t).data.copyToFloatArray()
+        assertEquals(viaTranspose.size, viaPrimitive.size)
+        for (i in viaTranspose.indices) {
+            val tol = kotlin.math.abs(viaTranspose[i]) * 1e-5f + 1e-6f
+            assertTrue(
+                kotlin.math.abs(viaTranspose[i] - viaPrimitive[i]) <= tol,
+                "dense[$i]: ${viaPrimitive[i]} vs ${viaTranspose[i]} — the two spellings must keep agreeing",
+            )
+        }
     }
 
     @Test
