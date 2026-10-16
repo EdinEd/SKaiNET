@@ -1,8 +1,8 @@
 = SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
 :description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
 
-Status: Draft — Tier 0 in progress +
-Implementation: Tier 0 (this proposal's PR); Tier 1 `skainet-backend-wasm-simd`, Tier 2 quantize-at-load and the consumer work in SKaiNET-transformers follow as separate pull requests, see <<_rollout_plan>>. +
+Status: Draft — Tier 0 and Tier 2 in review +
+Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352]; Tier 2 quantize-at-load (the pull request stacked on it); Tier 1 `skainet-backend-wasm-simd` and the consumer work in SKaiNET-transformers follow, see <<_rollout_plan>>. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
 Created: 2026-10-16 +
 Origin: the SemanticEmojiFilter example ships its 23M-parameter embedding filter to the web but keeps the 322M-parameter Laya verifier on desktop and Android, because a decision in scalar Kotlin/Wasm is estimated at 10–30 s and the FP32 weights at about 2.5 GB resident. Nothing in the repository measures the wasm lane today.
@@ -84,7 +84,7 @@ on every target.
 * A SIMD128 kernel pack for wasmJs, built from `skainet-backend-native-cpu/native/src`, with a
   multithreaded artifact for cross-origin-isolated pages and a single-threaded fallback (Tier 1).
 * `SafeTensorsParametersLoader` honours `WeightForm`, including `RequantizeTo(Q8_0)`; a common-code
-  Q8_0 quantizer; `skainet-cli quantize` for offline conversion (Tier 2).
+  Q8_0 quantizer; `skainet-quantize` for offline conversion (Tier 2).
 * No behaviour change on the JVM and Apple tiers: their kernel keys and golden tests are untouched.
 
 == Non-Goals
@@ -149,8 +149,8 @@ materializer gains a `RequantizeTo` branch producing `XBlockTensorData(shape, by
 honours `WeightShapeOrientation` and `KERNEL_FEED`. The GGUF loader's `RequantizeTo` gate relaxes
 from "BITNET_PLANES only" to "any encoding with a registered quantizer". `PlannerProfile` gains
 `quantizeDenseTo` so a browser profile can resolve dense sources to `RequantizeTo(Q8_0)`.
-`skainet-cli quantize` writes a GGUF with the source tensor names kept, for downloads that should
-not carry F16.
+`skainet-quantize` (in `skainet-tensor-tools`) writes a GGUF with the source tensor names kept, for
+downloads that should not carry F16.
 
 == Requirements
 
@@ -189,7 +189,7 @@ marked breaking only for implementors of `ParametersLoader`.
 . PR 0 (this page, Tier 0): dispatch order, direct dense path, narrow-float rows, in-memory source,
   Blob bulk copy, `wasm-bench`.
 . PR 1 (Tier 2, engine): `Q8_0Quantizer`, `Requantizers`, SafeTensors and GGUF `RequantizeTo`,
-  `PlannerProfile.quantizeDenseTo`, `skainet-cli quantize`.
+  `PlannerProfile.quantizeDenseTo`, the `skainet-quantize` tool in `skainet-tensor-tools`.
 . PR 2 (Tier 1): the sidecar build, `skainet-backend-wasm-simd`, `WasmCpuOps`, parity and bench.
 . PR 3 (Tier 1 follow-up): resident activations, banded attention, pthread tuning — scoped by PR 2's
   measurements.

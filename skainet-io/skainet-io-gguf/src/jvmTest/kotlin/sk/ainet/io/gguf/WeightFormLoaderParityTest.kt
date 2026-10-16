@@ -91,7 +91,8 @@ class WeightFormLoaderParityTest {
             StreamingGgufParametersLoader(
                 sourceProvider = { JvmRandomAccessSource.open(file()) },
                 weightForm = WeightForm(
-                    encoding = EncodingRequest.RequantizeTo(sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0),
+                    // Q8_0 and Q4_0 have quantizers since SKEEP-007 §T2; the K-quants still do not.
+                    encoding = EncodingRequest.RequantizeTo(sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K),
                 ),
             )
         }

@@ -146,10 +146,8 @@ public class StreamingGgufParametersLoader(
     /** The dense FP32 size of [elements] — what every widening in this loader converts to. */
     private fun denseFp32Bytes(elements: Long): Long = elements * 4
 
-    /** Whether [form] asks for the one requantization this loader has (#1150). */
-    private fun planesRequested(form: WeightForm): Boolean =
-        (form.encoding as? EncodingRequest.RequantizeTo)?.encoding ==
-            sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES
+    /** Whether [form] asks for a requantization (#1150 for planes; every registered encoding since SKEEP-007 §T2). */
+    private fun requantizeRequested(form: WeightForm): Boolean = form.encoding is EncodingRequest.RequantizeTo
 
     /**
      * Requantize [values] (row-major `[out, in]` — validateForm pinned the orientation) into a
@@ -158,7 +156,8 @@ public class StreamingGgufParametersLoader(
      * a conversion someone should be able to see.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun <T : DType, V> planesTensor(
+    private fun <T : DType, V> requantizedTensor(
+        form: WeightForm,
         ctx: ExecutionContext,
         dtype: KClass<T>,
         shape: Shape,
@@ -167,22 +166,46 @@ public class StreamingGgufParametersLoader(
         bytesBefore: Long,
         fromFormat: Format,
     ): Tensor<T, V> {
+        val target = (form.encoding as EncodingRequest.RequantizeTo).encoding
         require(shape.rank == 2) {
-            "tensor '$tensorName': RequantizeTo(BITNET_PLANES) needs a 2-D weight, got rank ${shape.rank}"
+            "tensor '$tensorName': RequantizeTo(${target.name}) needs a 2-D weight, got rank ${shape.rank}"
         }
         require(dtype == FP32::class) {
-            "tensor '$tensorName': BITNET_PLANES weights are logically FP32; requested $dtype"
+            "tensor '$tensorName': ${target.name} weights are logically FP32; requested $dtype"
         }
-        val data = sk.ainet.lang.tensor.data.BitNetPlanesTensorData.fromFloats(shape, values)
+        var data = sk.ainet.lang.tensor.data.Requantizers.quantize(target, values, shape)
+        // Freshly quantized blocks are row-major; honour KERNEL_FEED for the formats that define it.
+        if (form.order == WeightByteOrder.KERNEL_FEED) {
+            val packed = data as? sk.ainet.lang.tensor.storage.PackedBlockStorage
+            if (packed != null && packed.blockOrder == sk.ainet.lang.memory.BlockOrder.ROW_MAJOR) {
+                data = feedOrderedByEncoding(packed)
+            }
+        }
+        val packedBytes = (data as? sk.ainet.lang.tensor.storage.PackedBlockStorage)?.packedData?.size?.toLong() ?: -1L
         traceConversion(
-            kind = "requantize-planes",
+            kind = "requantize-${target.name.lowercase()}",
             tensorName = tensorName,
             from = fromFormat,
-            to = Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES),
+            to = Format(FP32, target),
             bytesBefore = bytesBefore,
-            bytesAfter = data.packedData.size.toLong(),
+            bytesAfter = packedBytes,
         )
         return ctx.fromData(data as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
+    }
+
+    /** [feedOrdered] keyed by the encoding of freshly quantized storage rather than the file's tensor type. */
+    private fun feedOrderedByEncoding(packed: sk.ainet.lang.tensor.storage.PackedBlockStorage): sk.ainet.lang.tensor.data.TensorData<*, *> {
+        val asData = packed as sk.ainet.lang.tensor.data.TensorData<*, *>
+        val shape = packed.shape
+        if (shape.rank != 2 || shape[1] % packed.blockSize != 0) return asData
+        val prepacked = packed.packedView.prepack(sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR, sink = traceSink)
+        val bytes = (prepacked.storage as? sk.ainet.lang.memory.Storage.Heap)?.bytes ?: return asData
+        val order = sk.ainet.lang.memory.BlockOrder.INPUT_BLOCK_MAJOR
+        return when (packed.encoding) {
+            sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0 -> Q8_0BlockTensorData(shape, bytes, order)
+            sk.ainet.lang.tensor.storage.TensorEncoding.Q4_0 -> Q4_0BlockTensorData(shape, bytes, order)
+            else -> asData
+        }
     }
 
     /** The uniform form: [weightForm] if given, else the historical as-stored-on-heap default. */
@@ -210,15 +233,17 @@ public class StreamingGgufParametersLoader(
         }
         val requested = form.encoding
         if (requested is EncodingRequest.RequantizeTo) {
-            // #1150: the one requantizer this loader has. Everything else still fails eagerly.
-            require(requested.encoding == sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_PLANES) {
+            // One quantizer per target encoding (#1150 planes; SKEEP-007 §T2 registry). Anything
+            // without one still fails eagerly, before the first tensor is read.
+            require(sk.ainet.lang.tensor.data.Requantizers.supports(requested.encoding)) {
                 "$where: EncodingRequest.RequantizeTo(${requested.encoding.name}) is not supported " +
                     "by this loader: re-quantizing a weight the file does not already carry needs a " +
-                    "quantizer per target encoding, and only BITNET_PLANES exists here (#1150)."
+                    "quantizer per target encoding, and quantize-at-load has " +
+                    "${sk.ainet.lang.tensor.data.Requantizers.supported.joinToString { it.name }}."
             }
             require(form.shape == WeightShapeOrientation.OUT_IN) {
-                "$where: RequantizeTo(BITNET_PLANES) needs WeightShapeOrientation.OUT_IN — the " +
-                    "format's scales are per output row, which has no answer while the tensor is " +
+                "$where: RequantizeTo(${requested.encoding.name}) needs WeightShapeOrientation.OUT_IN — the " +
+                    "format's scales run along output rows, which has no answer while the tensor is " +
                     "still labelled in the file's `ne` order."
             }
         }
@@ -303,7 +328,7 @@ public class StreamingGgufParametersLoader(
                         dtype == FP32::class &&
                         tensorForm.order != WeightByteOrder.KERNEL_FEED &&
                         tensorForm.encoding !is EncodingRequest.DequantizeTo &&
-                        !planesRequested(tensorForm)
+                        !requantizeRequested(tensorForm)
                     ) {
                         val enc = when (tensorInfo.tensorType) {
                             GGMLQuantizationType.Q4_K -> sk.ainet.lang.tensor.storage.TensorEncoding.Q4_K
@@ -348,9 +373,9 @@ public class StreamingGgufParametersLoader(
                         when (dtype) {
                             // The freshly decoded array is loader-owned — wrap it zero-copy
                             // instead of paying the factory's defensive copy (#782).
-                            FP32::class -> if (planesRequested(tensorForm)) {
-                                planesTensor(
-                                    ctx, dtype, shape, tensorInfo.name, bytesToFloatArray(rawBytes),
+                            FP32::class -> if (requantizeRequested(tensorForm)) {
+                                requantizedTensor(
+                                    tensorForm, ctx, dtype, shape, tensorInfo.name, bytesToFloatArray(rawBytes),
                                     rawBytes.size.toLong(), Format.dense(FP32),
                                 )
                             } else {
@@ -377,9 +402,9 @@ public class StreamingGgufParametersLoader(
                             ctx.fromData<T, V>(packed as sk.ainet.lang.tensor.data.TensorData<T, V>, dtype)
                         } else {
                             // Loader-owned widened array — zero-copy wrap (#782).
-                            if (planesRequested(tensorForm)) {
-                                planesTensor(
-                                    ctx, dtype, shape, tensorInfo.name, dequantF16(rawBytes),
+                            if (requantizeRequested(tensorForm)) {
+                                requantizedTensor(
+                                    tensorForm, ctx, dtype, shape, tensorInfo.name, dequantF16(rawBytes),
                                     rawBytes.size.toLong(), Format.dense(FP16),
                                 )
                             } else {
@@ -466,10 +491,10 @@ public class StreamingGgufParametersLoader(
         rawBytes: ByteArray,
         tensorForm: WeightForm,
     ): Tensor<T, V> {
-        if (planesRequested(tensorForm) && dtype == FP32::class) {
+        if (requantizeRequested(tensorForm) && dtype == FP32::class) {
             val dest = DequantOps.dequantFromBytes(rawBytes, tensorInfo.tensorType, tensorInfo.nElements.toInt())
-            return planesTensor(
-                ctx, dtype, shape, tensorInfo.name, dest,
+            return requantizedTensor(
+                tensorForm, ctx, dtype, shape, tensorInfo.name, dest,
                 rawBytes.size.toLong(), ggufFormat(tensorInfo.tensorType, rawBytes.size.toLong()),
             )
         }
@@ -572,9 +597,9 @@ public class StreamingGgufParametersLoader(
             bytesBefore = rawBytes.size.toLong(),
             bytesAfter = packedBytes.size.toLong(),
         )
-        if (planesRequested(tensorForm)) {
-            return planesTensor(
-                ctx, dtype, shape, tensorInfo.name,
+        if (requantizeRequested(tensorForm)) {
+            return requantizedTensor(
+                tensorForm, ctx, dtype, shape, tensorInfo.name,
                 sk.ainet.lang.memory.TernaryCodec.decodeBitNet(packedBytes, tensorInfo.nElements.toInt()),
                 rawBytes.size.toLong(),
                 Format(FP32, sk.ainet.lang.tensor.storage.TensorEncoding.BITNET_B1_58),
