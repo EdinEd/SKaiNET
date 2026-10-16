@@ -127,7 +127,8 @@ public object TextFrontEnds : FrontEndProvider {
      * `tokenizer_config.json` (FE-R-03). Dispatch: `BPE` with a byte-level pre-tokenizer → byte-level
      * BPE; `BPE` with Metaspace / byte fallback → [MetaspaceBpeTokenizer]; `Unigram` →
      * [UnigramTokenizer]; `WordPiece` → [WordPieceTokenizer]. Added tokens are matched atomically
-     * for every algorithm (#1324).
+     * for every algorithm (#1324). The evidence → implementation table and the compatibility
+     * notes are on the *Input front ends* reference page (`docs/modules/ROOT/pages/reference/input-frontends.adoc`).
      */
     @JvmStatic
     @JvmOverloads

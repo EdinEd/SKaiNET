@@ -1,7 +1,8 @@
 = SKEEP-006: Input front ends and model identity
 :description: SKaiNET proposal for one resolvable input front-end contract (tokenizers first, audio and image features next) keyed on a string-based model identity with an immutable family registry, so that every model type SKaiNET runs gets its preprocessing from the engine instead of re-deriving it downstream.
 
-Status: Draft +
+Status: Implemented +
+Implementation: https://github.com/SKaiNET-developers/SKaiNET/pull/1332[#1332] (text lane, identity, resolver; engine 0.58.0), https://github.com/SKaiNET-developers/SKaiNET-transformers/pull/485[SKaiNET-transformers #485] (consumer, 0.58.0); the io-core compatibility aliases moved to `DeprecationLevel.ERROR` in 0.60.0 (https://github.com/SKaiNET-developers/SKaiNET/pull/1350[#1350]) and leave in 0.61. The audio (F4, F6) and image (F5) front ends are follow-up proposals. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (the first consumer, and the repository whose parallel tokenizer stack this proposal retires); SKaiNET-cartridge maintainers (the facade binds front ends to cartridge ports) +
 Created: 2026-10-11 +
 Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1331[#1331] (implementation lanes: https://github.com/SKaiNET-developers/SKaiNET/issues/1321[#1321], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/471[SKaiNET-transformers #471], https://github.com/SKaiNET-developers/SKaiNET-transformers/issues/330[SKaiNET-transformers #330]) +
