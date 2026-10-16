@@ -1,8 +1,8 @@
 = SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
 :description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
 
-Status: Draft — Tiers 0, 2 and 1 in review +
-Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352]; Tier 2 quantize-at-load https://github.com/SKaiNET-developers/SKaiNET/pull/1353[#1353]; Tier 1 `skainet-backend-wasm-simd` (the pull request stacked on #1353); the consumer work in SKaiNET-transformers follows, see <<_rollout_plan>>. +
+Status: Implemented (Tiers 0, 1 and 2 in engine 0.61.0); the resident-activation step, the SKaiNET-transformers consumer and the WebGPU proposal remain open +
+Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352], Tier 2 quantize-at-load https://github.com/SKaiNET-developers/SKaiNET/pull/1353[#1353], Tier 1 `skainet-backend-wasm-simd` https://github.com/SKaiNET-developers/SKaiNET/pull/1354[#1354] — engine 0.61.0; the consumer work in SKaiNET-transformers follows, see <<_rollout_plan>>. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
 Created: 2026-10-16 +
 Origin: the SemanticEmojiFilter example ships its 23M-parameter embedding filter to the web but keeps the 322M-parameter Laya verifier on desktop and Android, because a decision in scalar Kotlin/Wasm is estimated at 10–30 s and the FP32 weights at about 2.5 GB resident. Nothing in the repository measures the wasm lane today.

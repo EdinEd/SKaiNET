@@ -1,6 +1,6 @@
 = AI-NET Operators Reference
 
-Generated from version `0.60.0` on 2026-10-15
+Generated from version `0.61.0` on 2026-10-16
 
 == Operators by Modality
 

@@ -1,17 +1,10 @@
-@file:Suppress("DEPRECATION", "DEPRECATION_ERROR")
 
 package sk.ainet.io.weights
 
 import sk.ainet.lang.tensor.TensorId
 
 /** Moved to `skainet-model-identity` (SKEEP-006); alias an error since 0.60, removed in 0.61. */
-@Deprecated("Moved to sk.ainet.model.NameMap (SKEEP-006); the alias is an error since 0.60 and is removed in 0.61.", ReplaceWith("NameMap", "sk.ainet.model.NameMap"), level = DeprecationLevel.ERROR)
-public typealias NameMap = sk.ainet.model.NameMap
-
 /** Moved to `skainet-model-identity` (SKEEP-006); alias an error since 0.60, removed in 0.61. */
-@Deprecated("Moved to sk.ainet.model.RoleTableNameMap (SKEEP-006); the alias is an error since 0.60 and is removed in 0.61.", ReplaceWith("RoleTableNameMap", "sk.ainet.model.RoleTableNameMap"), level = DeprecationLevel.ERROR)
-public typealias RoleTableNameMap = sk.ainet.model.RoleTableNameMap
-
 /**
  * This map as a legacy [WeightNameResolver]: `(modulePath, paramName)` in the slash form
  * (`model/layers[3]/attn`, `q_proj.weight`) → checkpoint name. An extension since SKEEP-006

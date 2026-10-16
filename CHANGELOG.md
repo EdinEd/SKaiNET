@@ -2,7 +2,25 @@
 
 ## [Unreleased]
 
-Headline: **the browser lane stops falling to the reference kernel (SKEEP-007, Tier 0).**
+## [0.61.0] - 2026-10-16
+
+Headline: **the browser lane (SKEEP-007): packed SIMD128 kernels, quantize-at-load, and no more
+reference-kernel fallbacks on wasm.** Every SKaiNET browser build used to run scalar Kotlin on one
+thread and sent canonical GGUF weights to the per-element decoding reference kernel. This release
+reorders the packed-weight paths so the scalar packed kernels serve every target (Tier 0), ships the
+engine's own C kernels as a SIMD128 sidecar for wasmJs with pthreads on cross-origin-isolated pages
+(Tier 1, `skainet-backend-wasm-simd`), and teaches the SafeTensors and GGUF loaders to quantize dense
+weights at load (Tier 2), so Hugging Face checkpoints can be served packed on every target. Measured
+on Node: Laya's Q8_0 matmuls move from 0.72 GFLOPS to 27 GFLOPS with four threads, one 22-layer
+decision from about 29 s to about 1.2 s.
+
+Version note: the SKEEP-006 compatibility aliases scheduled for removal in 0.61 are removed (see
+*Removed*). SKaiNET-transformers follows with the Laya consumer of quantize-at-load and the browser
+pack.
+
+### Removed
+
+- **The SKEEP-006 compatibility surface**, an error since 0.60 as scheduled: the `sk.ainet.io.tokenizer.*` aliases (`Tokenizer`, `QwenByteLevelBpeTokenizer`, `SentencePieceTokenizer`, `SpecialTokenSplitter`, `TekkenTokenizer`, `ByteToUnicode`), `sk.ainet.io.model.ModelFormat`, `sk.ainet.io.weights.NameMap` / `RoleTableNameMap` / `TransformerNameMaps`, and in `skainet-io-gguf` the `sk.ainet.io.gguf.registry` package (`ModelArchitecture.fromGguf`, `ModelLoaderRegistry`, `ModelLoaderDescriptor`, `LlamaLoaderDescriptor`, `Gemma3nLoaderDescriptor`). The homes are `sk.ainet.frontend.text`, `sk.ainet.frontend.tokenizer` and `sk.ainet.model`; `TokenizerFactory` and `UnsupportedTokenizerException` stay in `sk.ainet.io.tokenizer` for Java callers, and `sk.ainet.io.weights.asWeightNameResolver` stays.
 
 ### Added
 
