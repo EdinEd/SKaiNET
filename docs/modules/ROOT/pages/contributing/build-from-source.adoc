@@ -57,7 +57,7 @@ The plugin is applied to 21 library modules:
 |skainet-backends |`skainet-backend-cpu`
 |skainet-data |`skainet-data-api`, `skainet-data-transform`, `skainet-data-simple`, `skainet-data-media`
 |skainet-io |`skainet-io-core`, `skainet-io-gguf`, `skainet-io-image`, `skainet-io-onnx`, `skainet-io-safetensors`
-|Other |`skainet-pipeline`, `skainet-model-yolo`
+|Other |`skainet-pipeline`
 |===
 
 *Excluded:* `skainet-bom` (no source), `skainet-apps/++*++`, `skainet-test/++*++`, benchmarks, and `skainet-lang-ksp-processor` (internal).

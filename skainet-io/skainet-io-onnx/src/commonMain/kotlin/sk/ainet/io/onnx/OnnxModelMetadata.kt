@@ -8,7 +8,7 @@ import onnx.StringStringEntryProto
  *
  * This class extracts common metadata fields from ONNX ModelProto's
  * metadataProps in a structured, type-safe manner. Supports various
- * model types including object detectors (YOLO), classifiers, etc.
+ * model types including object detectors, classifiers, etc.
  *
  * Usage:
  * ```kotlin
@@ -122,7 +122,7 @@ public data class OnnxModelMetadata(
         /**
          * Parse class names from ONNX metadata.
          *
-         * YOLO/ultralytics format stores names as a Python dict string:
+         * Some exporters store names as a Python dict string:
          * `{0: 'person', 1: 'bicycle', 2: 'car', ...}`
          *
          * Also checks for plain comma-separated format:
@@ -132,7 +132,7 @@ public data class OnnxModelMetadata(
          * @return Map of classId to className, or null if not found
          */
         public fun parseClassNames(metadata: Map<String, String>): Map<Int, String>? {
-            // Try "names" key (ultralytics/YOLO format)
+            // Try "names" key (Python-dict style)
             val namesValue = metadata["names"]
                 ?: metadata["class_names"]
                 ?: metadata["classes"]

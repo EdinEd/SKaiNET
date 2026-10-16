@@ -23,7 +23,7 @@ public object ClassNames {
     /**
      * COCO 2017 dataset class names (80 classes).
      *
-     * Used by: YOLOv3, YOLOv4, YOLOv5, YOLOv8, Faster R-CNN, Mask R-CNN, etc.
+     * Used by most detectors and segmenters trained on COCO.
      */
     public fun coco(): List<String> = COCO_80
 

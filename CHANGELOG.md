@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+Headline: **model-specific detector code leaves core; the reusable detection pieces stay.**
+
+### Added
+
+- **`Letterbox`** (`skainet-data-media`, `sk.ainet.data.media`): aspect-preserving fit into a square canvas without a platform image. `Letterbox.fit(width, height, targetSize)` computes the scale and offsets, `fillNchw(rgb888, padValue = 114)` letterboxes packed RGB888 bytes into a planar `[3, size, size]` float array in `[0, 1]` (bilinear), `toSource(box)` maps a canvas box back to source pixels, clamped.
+- **`BoundingBox`, `ScoredBox`, `nonMaxSuppression`** (`skainet-data-media`): pixel boxes with `iou`, `fromCenter`, and greedy, class-aware-by-default NMS with `maxDetections`.
+
+### Fixed
+
+- **StableHLO `softmax` over a non-last axis** (`skainet-compile-hlo`): the converter read the axis from `parameters["axis"]`, the tape records it as `dim`, so every exported `softmax(t, dim)` reduced over the last axis. It now reads `dim` (`axis` still accepted).
+- **StableHLO `logSoftmax`**: recorded as `softmax` with `log = true`, it was exported as a plain softmax; it now lowers to `x - max - log(sum(exp(x - max)))`.
+
+### Removed
+
+- **`skainet-model-yolo`**: the YOLOv8 graph, config and decoder move to their cartridge blueprint (`detection-yolov8-iree` in SKaiNET-cartridge-blueprints), which owns the model end to end. The 0.58.0–0.60.0 artifacts stay on Maven Central. Its letterbox metadata and NMS are replaced by `Letterbox` and `nonMaxSuppression` above.
+- **`yolo.class_names`, `yolo.names`, `yolo.num_classes`, `yolo.input_size`** are no longer read by `GgufModelMetadata`; the `general.*` and `model.*` keys are.
+
+### Deprecated
+
+- **`ModelArchitecture.YOLO`**: nothing in core maps to it any more; removed in the next minor release.
+
 ## [0.62.0] - 2026-10-21
 
 Headline: **JVM ↔ Kotlin/Wasm parity for compute and IO.** In 0.61 the SIMD128 sidecar served the

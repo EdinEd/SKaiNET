@@ -17,7 +17,7 @@ package sk.ainet.io.gguf
  * ```
  */
 public data class GgufModelMetadata(
-    /** Model architecture identifier (e.g., "llama", "yolov3-tiny", "bert") */
+    /** Model architecture identifier (e.g., "llama", "gemma3", "bert") */
     val architecture: String?,
 
     /** Model name/description */
@@ -119,19 +119,15 @@ public data class GgufModelMetadata(
                 version = fields.getString("general.version"),
                 url = fields.getString("general.url"),
                 classNames = fields.getStringList(
-                    "yolo.class_names",
-                    "yolo.names",
                     "general.class_names",
                     "general.names",
                     "model.class_names"
                 ),
                 numClasses = fields.getInt(
-                    "yolo.num_classes",
                     "general.num_classes",
                     "model.num_classes"
                 ),
                 inputSize = fields.getInt(
-                    "yolo.input_size",
                     "general.input_size",
                     "model.input_size"
                 ),

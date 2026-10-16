@@ -20,7 +20,6 @@ dependencies {
     implementation(project(":skainet-io:skainet-io-safetensors"))
     implementation(libs.kotlinx.io.core)
     implementation(project(":skainet-backends:skainet-backend-cpu"))
-    implementation(project(":skainet-models:skainet-model-yolo"))
     implementation(libs.pbandk.runtime)
 
     testImplementation(kotlin("test"))

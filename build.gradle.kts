@@ -226,7 +226,6 @@ dependencies {
 
     // Other
     dokka(project(":skainet-pipeline"))
-    dokka(project(":skainet-models:skainet-model-yolo"))
 }
 
 // Copy the Dokka-generated HTML aggregate into the Antora site

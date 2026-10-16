@@ -191,7 +191,7 @@ public object WeightMapper {
 
     /**
      * Extract the most specific "model.X.Y.Z" pattern from a DSL module path.
-     * E.g., "Yolo8/model.22.cv2.0/model.22.cv2.0.0/Conv2d-0" -> "model.22.cv2.0.0"
+     * E.g., "Net/model.22.cv2.0/model.22.cv2.0.0/Conv2d-0" -> "model.22.cv2.0.0"
      *
      * @param path The full DSL module path
      * @return The extracted layer name in normalized format, or null if not found
