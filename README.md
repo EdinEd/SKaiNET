@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.60.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.61.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,27 +308,26 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.60.0
+## What's New in 0.61.0
 
-Key-padding lengths and window metadata for attention (#1343):
+The browser lane (SKEEP-007): packed SIMD128 kernels, quantize-at-load, no reference-kernel
+fallbacks on wasm.
 
-- **`scaledDotProductAttention(keyLengths, window, rightContext)`** — padding (a `[batch]`
-  lengths tensor), the sliding-window band and `causal` are rules over positions defined once in
-  `AttentionMask` and shared by the CPU kernel, the recorded graph and the StableHLO export. The
-  CPU kernel computes scores only inside each row's attended key range, so a padded batch equals
-  the unpadded single passes; the dense additive mask stays the generic fallback.
-- **The rules travel as op metadata** — the recorded node carries `maskKind`, `window` and
-  `rightContext` with the lengths as an operand, so a compiled target regenerates the cheapest
-  legal form (`iota`/`compare`/`select` on the export) instead of inheriting a dense
-  `[batch, 1, Sq, Sk]` mask that scales with the batch.
-- **`skainet.sdpa` composite** — the composite seam is n-ary (`HloDecomposition` takes every
-  operand), and `SdpaLowering.spec` emits `stablehlo.composite "skainet.sdpa"` with `scale`,
-  `causal`, `window`, `rightContext` and `maskKind` attributes when a target's
-  `OpGranularityPolicy` keeps attention fused, from the same builder as the inline form.
-- The SKEEP-006 compatibility aliases (`sk.ainet.io.tokenizer.*`, `sk.ainet.io.model.ModelFormat`,
-  `sk.ainet.io.weights.NameMap`, the GGUF `ModelLoaderRegistry`) are errors since this release and
-  are removed in 0.61. Fixed on the way: a batched dense attention mask on the CPU read batch
-  row 0 for every batch.
+- **`skainet-backend-wasm-simd`** — the engine's own C kernels compiled by Emscripten into a
+  SIMD128 sidecar for wasmJs, with pthreads on cross-origin-isolated pages and under Node. One call,
+  `WasmSimd.install()`, registers the kernel pack and the provider and makes every context built
+  afterwards use them. Measured on Node: Laya's Q8_0 matmuls from 0.72 GFLOPS (scalar) to 8.5
+  single-threaded and 27 with four threads — a 22-layer decision from about 29 s to about 1.2 s.
+- **Quantize at load** — `WeightForm(RequantizeTo(Q8_0))` on the SafeTensors loaders (and every
+  encoding with a quantizer on the GGUF loader) turns dense F32/F16/BF16 weight matrices into packed
+  Q8_0 or Q4_0 at load; `PlannerProfile.quantizeDenseTo` lets a browser or phone profile ask for it;
+  `skainet-quantize` converts offline. Hugging Face checkpoints can be served packed on every target.
+- **The scalar lane is no longer the reference lane** — a canonical packed weight on a target without
+  a row-major kernel pack is relaid once into kernel feed order and served by the scalar packed
+  kernels; dense `[out, in]` weights are multiplied in place without a transpose copy; 16-bit
+  token tables are read row by row. `ByteArrayRandomAccessSource` is the engine's in-memory source.
+- The SKEEP-006 compatibility aliases, errors since 0.60, are removed as scheduled; `TokenizerFactory`
+  stays in `sk.ainet.io.tokenizer` for Java callers.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -353,6 +352,13 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.61.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — SKEEP-007: the Tier 0
+  dispatch-order and dense-path fixes, quantize-at-load for the SafeTensors and GGUF loaders with the
+  Q8_0 quantizer and `skainet-quantize`, the `skainet-backend-wasm-simd` sidecar kernel pack, the
+  scheduled SKEEP-006 removal, and the release
 
 ### Contributors (0.60.0)
 
@@ -456,7 +462,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.60.0. MIT License},
+  note         = {Version 0.61.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
