@@ -103,10 +103,11 @@ class NativeTernaryF32GemvKernelTest {
 
     @Test
     fun threaded_regime_matches_single_row_calls_exactly() {
-        // outputDim 2048 crosses the vendored THREAD_THRESHOLD (512): the C
-        // side fans out over 4 pthreads. Per-row math is independent of the
-        // partitioning, so the threaded result must equal 2048 single-row
-        // calls bit-for-bit.
+        // outputDim 2048 crosses the row-pool threshold (512): the adapter
+        // fans the rows out over the shared pool in < 512-row slices of the
+        // vendored kernel (2048 is not a slice multiple, so a partial slice is
+        // exercised too). Per-row math is independent of the partitioning, so
+        // the threaded result must equal 2048 single-row calls bit-for-bit.
         val inputDim = 256
         val outputDim = 2048
         val rowBytes = inputDim / 4

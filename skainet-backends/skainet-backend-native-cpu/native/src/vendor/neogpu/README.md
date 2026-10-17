@@ -46,8 +46,11 @@ Exports three symbols; SKaiNET wraps the first two via
 
 - `build_lut()` uses a non-atomic init guard → the adapter warms it up under
   `pthread_once` before any concurrent use.
-- pthreads: threading is NeoGPU's own (4 threads once `N >= 512` for the proj;
-  the lm_head always threads). No MSVC build — the adapter compiles a portable
+- pthreads: NeoGPU creates and joins its own 4 threads per call (`N >= 512`
+  for the proj; the lm_head always threads). The adapter bypasses that for the
+  proj: it runs on SKaiNET's persistent row pool in slices of < 512 rows, so
+  each slice stays inline (SKaiNET#1357). The lm_head still uses NeoGPU's own
+  threading (no inline entry point). No MSVC build — the adapter compiles a portable
   scalar fallback there instead (`SKAINET_HAVE_NEOGPU_TERNARY` unset).
 - Byte code 3 decodes to +2.0 (matches `TernaryCodec.decodeBitNet`); loaders
   must reject code 3 at import, the kernel never validates.

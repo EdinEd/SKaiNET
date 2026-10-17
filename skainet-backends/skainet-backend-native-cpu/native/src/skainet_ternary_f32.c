@@ -2,7 +2,7 @@
  * Adapter over the vendored NeoGPU ternary LUT kernel
  * (src/vendor/neogpu/hs_ml_ternary_neon.c, MIT, vendored verbatim — see the
  * vendor README). Exposes the two useful symbols under the skainet_kernels
- * ABI and closes the vendored file's non-atomic LUT-init guard with a
+ * ABI, threads the projection on the shared row pool, and closes the vendored file's non-atomic LUT-init guard with a
  * pthread_once warm-up, so first use is race-free under any threading.
  *
  * The vendored file needs pthreads and GNU/Clang builtins, so it is only in
@@ -19,6 +19,8 @@
 #ifdef SKAINET_HAVE_NEOGPU_TERNARY
 
 #include <pthread.h>
+
+#include "skainet_row_threads.h"
 
 /* The vendored file ships no header; these mirror its public definitions. */
 extern void hs_ml_ternary_f32_proj(float *out, const float *in,
@@ -40,6 +42,31 @@ static void skainet_ternary_lut_warmup(void) {
     hs_ml_ternary_f32_proj(&out, in, w, 1u, 4u);
 }
 
+/* Row-pool threading for the projection (SKaiNET#1357). Called as is, the vendored
+ * proj spawns and joins 4 pthreads per call once N >= 512 — ~210 calls per BitNet
+ * 2B4T decode step, each paying thread-creation and wake-up latency (the exact
+ * create/join pattern skainet_row_threads.c measured at 994 ms/step vs pooled, #1195).
+ * Instead the adapter drives the vendored kernel from the persistent row pool and
+ * hands it row slices below its THREAD_THRESHOLD, so every slice runs inline on the
+ * pool thread. Per-row results do not depend on the slicing — bit-identical. */
+#define SKAINET_NEOGPU_INLINE_ROWS 511
+
+typedef struct {
+    float* out;
+    const float* in;
+    const uint8_t* w;
+    uint32_t row_bytes;
+    uint32_t k;
+} skainet_ternary_proj_job;
+
+static void skainet_ternary_proj_rows(void* ctx, int32_t o_start, int32_t o_end) {
+    const skainet_ternary_proj_job* j = (const skainet_ternary_proj_job*)ctx;
+    for (int32_t o = o_start; o < o_end; o += SKAINET_NEOGPU_INLINE_ROWS) {
+        int32_t n = o_end - o < SKAINET_NEOGPU_INLINE_ROWS ? o_end - o : SKAINET_NEOGPU_INLINE_ROWS;
+        hs_ml_ternary_f32_proj(j->out + o, j->in, j->w + (size_t)o * j->row_bytes, (uint32_t)n, j->k);
+    }
+}
+
 void skainet_ternary_f32_gemv(
     const float* input, int32_t input_offset,
     const uint8_t* weight, int32_t weight_byte_offset,
@@ -49,12 +76,14 @@ void skainet_ternary_f32_gemv(
     if (output_dim <= 0) return;
     pthread_once(&skainet_ternary_lut_once, skainet_ternary_lut_warmup);
     /* input_dim == 0 falls through: the vendored kernel writes 0.0f per row. */
-    hs_ml_ternary_f32_proj(
+    skainet_ternary_proj_job job = {
         output + output_offset,
         input + input_offset,
         weight + weight_byte_offset,
-        (uint32_t)output_dim,
-        (uint32_t)input_dim);
+        (uint32_t)(input_dim / 4),
+        (uint32_t)input_dim,
+    };
+    skainet_run_rows(skainet_ternary_proj_rows, &job, output_dim);
 }
 
 void skainet_ternary_lmhead_stage1(
