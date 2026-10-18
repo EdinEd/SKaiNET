@@ -52,28 +52,32 @@ mindmap
 
 == Kernel × provider (matmul, FP32 activations)
 
-[cols="2,1,1,1,1,1",options="header"]
+[cols="2,1,1,1,1,1,1",options="header"]
 |===
-| Weight format | Scalar (all targets) | Panama (JVM) | Native FFM (JVM) | Native JNI (Android) | Native cinterop (K/N)
-| FP32 | ✅ | ✅ | ✅ | ❌ | ❌
-| BF16 | ✅ | ✅ | ✅ | ❌ | ❌
-| Q8_0 | ✅ | ✅ | ✅ | ✅ | ✅
-| Q4_0 | ✅ | ✅ | ✅ | ✅ | ✅
-| Q4_K | ✅ | ✅ | ✅ | ✅ | ✅
-| Q6_K | ✅ | ✅ | ❌ | ✅ | ✅
-| Q5_K | ✅ | ✅ | ✅ | ✅ | ✅
-| Q5_1 | ✅ | ✅ | ✅ | ✅ | ✅
-| Q5_0 | ✅ | ✅ | ✅ | ✅ | ✅
-| TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | —
-| BitNet b1.58 (exact FP32 activations, vendored NeoGPU kernel) | ✅ | ✅ FFM | — | ✅ JNI + fused lm_head | ✅ K/N cinterop
-| BITNET_PLANES (multi-plane ternary packing) | ✅ | via kernel pack | — | via kernel pack | via kernel pack
-| Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant to FP32 only) | ❌ | ❌ | ❌ | ❌
+| Weight format | Scalar (all targets) | Panama (JVM) | Native FFM (JVM) | Native JNI (Android) | Native cinterop (K/N) | Wasm SIMD128 (wasmJs)
+| FP32 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
+| BF16 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
+| FP16 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
+| Q8_0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q4_0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q4_K | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q6_K | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q5_K | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q5_1 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| Q5_0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
+| TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | — | —
+| BitNet b1.58 (exact FP32 activations, vendored NeoGPU kernel) | ✅ | ✅ FFM | — | ✅ JNI + fused lm_head | ✅ K/N cinterop | ❌ (reference)
+| BITNET_PLANES (multi-plane ternary packing) | ✅ | via kernel pack | — | via kernel pack | via kernel pack | ❌ (reference)
+| Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant to FP32 only) | ❌ | ❌ | ❌ | ❌ | ❌
 |===
 
 Resolution is by priority: *Native (100 — whichever of FFM/JNI/cinterop applies to the target) →
-Panama (50, JVM only) → Scalar (0)*. The best *available* provider that carries the kernel wins;
+Panama / Wasm SIMD128 (50) → Scalar (0)*. The best *available* provider that carries the kernel wins;
 otherwise it cascades down. At most one native tier is compiled into a given target, so the native
-columns are mutually exclusive per platform rather than stacked.
+columns are mutually exclusive per platform rather than stacked. The Wasm SIMD128 column is the
+sidecar pack (`skainet-backend-wasm-simd`), present only after `WasmSimd.install()`; the explicit
+SIMD128 bodies are Q8_0, Q4_0 and dense `x · Wᵀ`, the other formats run the portable C body
+auto-vectorised by Emscripten.
 
 Packed weights reach a kernel through the registry by declaring their
 xref:explanation/packed-weight-layout.adoc[block order]; a canonical weight is relayouted once,
@@ -96,7 +100,11 @@ Packed-quant matmul works on every target: those formats have a `commonMain` sca
 
 == Gaps
 
-* *Native FFM Q6_K* — the only packed format the FFM C kernel set does not cover.
+* *Wasm ternary / BitNet* — the ternary gemv and planes lm-head kernels are not in the sidecar
+build yet, so BitNet models in a browser run the decoding reference kernel.
+* *Wasm beyond matmul* — elementwise, activations, reductions, normalisation and attention are the
+common scalar Kotlin paths on wasmJs; Kotlin/Wasm has no SIMD types and no shared-memory threads, so
+these follow the matmuls into the sidecar (SKEEP-007 rollout step 3).
 * *Native JNI dense FP32/BF16* — the Android JNI provider has no GEMM shim, so dense ops fall
 through to scalar there whichever `.so` tier loaded (SKaiNET#920).
 * *Dense FP32/BF16 SIMD on Kotlin/Native linux* — still the scalar floor; Apple has Accelerate

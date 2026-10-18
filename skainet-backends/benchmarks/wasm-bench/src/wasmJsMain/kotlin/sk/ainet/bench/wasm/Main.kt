@@ -21,7 +21,9 @@ import kotlin.time.TimeSource
  *
  * `[SKAINET_PERF_WASM] <case> m=<m> n=<n> k=<k> form=<dense|q8_0> ms=<median> gflops=<rate>`
  *
- * Every later tier (SIMD128 sidecar, quantize-at-load) is measured against these lines.
+ * Every later tier (SIMD128 sidecar, quantize-at-load) is measured against these lines. Each pass
+ * also runs the `engine-*` scenarios of the JVM publish harness ([runEngineScenarios]) so the two
+ * tiers are compared on identical shapes.
  */
 private data class Case(val name: String, val m: Int, val n: Int, val k: Int)
 
@@ -107,7 +109,8 @@ suspend fun main() {
 
 private fun runPass(tier: String) {
     val ctx = DirectCpuExecutionContext()
-    println("[SKAINET_PERF_WASM] tier=$tier backend=${ctx.ops::class.simpleName} cases=${cases.size}")
+    println("[SKAINET_PERF_WASM] tier=$tier backend=${ctx.ops::class.simpleName} cases=${cases.size} features=${WasmKernels.features()}")
+    runEngineScenarios(tier)
     for (case in cases) {
         val x = ctx.fromFloatArray<FP32, Float>(Shape(case.m, case.k), FP32::class, pseudo(case.m * case.k, 3))
         val dense = ctx.fromFloatArray<FP32, Float>(Shape(case.n, case.k), FP32::class, pseudo(case.n * case.k, 7))

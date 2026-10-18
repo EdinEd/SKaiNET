@@ -2,8 +2,15 @@ package sk.ainet.exec.wasm
 
 import kotlinx.coroutines.test.runTest
 import sk.ainet.backend.api.kernel.KernelDispatch
+import sk.ainet.backend.api.kernel.KernelRegistry
+import sk.ainet.backend.api.kernel.KernelStrictness
+import sk.ainet.backend.api.kernel.NoSuchKernelException
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
+import sk.ainet.exec.kernel.ScalarFp16MatmulKernel
 import sk.ainet.exec.tensor.ops.DefaultCpuOps
+import sk.ainet.lang.types.Bf16Codec
+import sk.ainet.lang.types.Fp16Codec
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Q4_0Quantizer
@@ -16,6 +23,7 @@ import kotlin.math.abs
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -65,11 +73,70 @@ class WasmSimdParityTest {
     fun `install swaps the ops and the sidecar reports a SIMD mode`() = runTest {
         val before = DirectCpuExecutionContext()
         assertIs<DefaultCpuOps>(before.ops)
+        assertEquals("none", WasmKernels.features().mode)
         WasmSimd.install()
         assertTrue(WasmSimd.isInstalled)
         assertTrue(WasmKernels.mode.startsWith("simd128-"), WasmKernels.mode)
         val after = DirectCpuExecutionContext()
         assertIs<WasmCpuOps>(after.ops)
+        val f = WasmSimd.features()
+        assertEquals(WasmKernels.mode, f.mode)
+        assertTrue(f.simd128)
+        assertEquals(f.mode == "simd128-mt", f.threads)
+        assertTrue(f.hardwareConcurrency >= 1, "cores: ${f.hardwareConcurrency}")
+    }
+
+    @Test
+    fun `BF16 and FP16 weights run on the sidecar and match the scalar kernels`() = runTest {
+        WasmSimd.install()
+        val provider = checkNotNull(KernelRegistry.bestAvailable())
+        assertEquals("wasm-simd128", provider.name)
+        val m = 7; val n = 33; val k = 40
+        val a = pseudo(m * k, 21)
+        val wf = pseudo(k * n, 23)
+        val bf16 = ByteArray(k * n * 2)
+        val fp16 = ByteArray(k * n * 2)
+        for (i in 0 until k * n) {
+            val b = Bf16Codec.encode(wf[i]); bf16[i * 2] = (b and 0xFF).toByte(); bf16[i * 2 + 1] = ((b ushr 8) and 0xFF).toByte()
+            val h = Fp16Codec.encode(wf[i]); fp16[i * 2] = (h and 0xFF).toByte(); fp16[i * 2 + 1] = ((h ushr 8) and 0xFF).toByte()
+        }
+        val refB = FloatArray(m * n); val refH = FloatArray(m * n)
+        ScalarBf16MatmulKernel.matmul(a, 0, k, bf16, 0, n * 2, refB, 0, n, m, n, k)
+        ScalarFp16MatmulKernel.matmul(a, 0, k, fp16, 0, n * 2, refH, 0, n, m, n, k)
+        val gotB = FloatArray(m * n); val gotH = FloatArray(m * n)
+        checkNotNull(provider.matmulBf16()).matmul(a, 0, k, bf16, 0, n * 2, gotB, 0, n, m, n, k)
+        checkNotNull(provider.matmulFp16()).matmul(a, 0, k, fp16, 0, n * 2, gotH, 0, n, m, n, k)
+        assertClose(refB, gotB, "bf16")
+        assertClose(refH, gotH, "fp16")
+        // A contiguous weight is resident after the first call; a strided window is staged per call.
+        assertTrue(WasmKernels.residentWeightBytes() >= 2L * k * n * 2)
+        val sub = FloatArray(m * 8)
+        val refSub = FloatArray(m * 8)
+        ScalarBf16MatmulKernel.matmul(a, 0, k, bf16, 4, n * 2, refSub, 0, 8, m, 8, k)
+        checkNotNull(provider.matmulBf16()).matmul(a, 0, k, bf16, 4, n * 2, sub, 0, 8, m, 8, k)
+        assertClose(refSub, sub, "bf16 window")
+    }
+
+    @Test
+    fun `strict mode is honoured on wasm`() = runTest {
+        KernelStrictness.overrideEnabled = true
+        try {
+            assertTrue(KernelStrictness.isEnabled())
+            val ctx = DirectCpuExecutionContext()
+            // Packed weight, no pack installed and the reference fallback forbidden: fail fast.
+            val w = q8(ctx, 64, 96, 5)
+            val x = ctx.fromFloatArray<FP32, Float>(Shape(2, 96), FP32::class, pseudo(2 * 96, 1))
+            KernelDispatch.clearForTesting()
+            // A canonical row-major Q8_0 view has no exact scalar kernel (those are keyed input-block-major)
+            // and prepack is off by default here, so this is the reference-fallback site.
+            val out = sk.ainet.lang.memory.TensorView.dense(sk.ainet.lang.memory.Storage.Heap.floats(2 * 64), Shape(2, 64), sk.ainet.lang.types.FP32)
+            assertFailsWith<NoSuchKernelException> {
+                KernelDispatch.matmul(x.data.view!!, w.data.view!!, out, sk.ainet.lang.memory.Scope.Ambient)
+            }
+        } finally {
+            KernelStrictness.overrideEnabled = null
+        }
+        assertEquals(false, KernelStrictness.isEnabled())
     }
 
     @Test

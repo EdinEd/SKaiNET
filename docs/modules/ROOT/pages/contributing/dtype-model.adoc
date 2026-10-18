@@ -105,11 +105,18 @@ affordance today (W4, shipped):
 java -Dskainet.strict.kernels=true …
 ----
 
+[source,kotlin]
+----
+KernelStrictness.overrideEnabled = true   // every target; the only switch on JS, Wasm and Kotlin/Native
+----
+
 When set, `DefaultCpuOpsJvm.matmul` raises
 `NoSuchKernelException` (with the failing dtype pair and the list
 of currently-registered providers) just before its silent scalar
-fallback would have run. Default off — adaptive behaviour is
-preserved.
+fallback would have run; on every tier `KernelDispatch` raises it
+before the decoding reference kernel and `DefaultCpuOps.matmul`
+before the generic per-element loop. Default off — adaptive
+behaviour is preserved.
 
 The constraint-resolution pass (W7) raises the same exception
 shape at *graph-prep* time, before forward execution can even

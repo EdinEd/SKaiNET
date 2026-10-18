@@ -49,8 +49,10 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
             appendLine(
                 "Each cell is the best (highest-priority) provider that serves " +
                     "`${module.inputDtype} × format` `${module.op}` on that platform: " +
-                    "*native-ffm* (100) → *panama-vector* (50) → *scalar* (0). An empty cell " +
-                    "(`—`) means no provider carries a kernel there (the format is dequant-to-FP32 only).",
+                    "*native-ffm* / *native-jni* / *native-cinterop* (100) → *panama-vector* / " +
+                    "*wasm-simd128* (50) → *scalar* (0). An empty cell " +
+                    "(`—`) means no provider carries a kernel there (the format is dequant-to-FP32 only). " +
+                    "The JS/WASM column assumes `WasmSimd.install()` has run; without the sidecar it is the scalar floor.",
             )
             appendLine("")
             if (module.formats.isEmpty() || module.platforms.isEmpty()) {
@@ -93,6 +95,32 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
                 appendLine("")
                 appendLine("")
                 module.mapped.forEach { fmt ->
+                    append("| `${fmt.name}` ")
+                    module.platforms.forEach { p -> append("| ${fmt.byPlatform[p] ?: "—"} ") }
+                    appendLine("")
+                }
+                appendLine("|===")
+                appendLine("")
+            }
+            if (module.resident.isNotEmpty()) {
+                appendLine("== Resident serving (sidecar memory)")
+                appendLine("")
+                appendLine(
+                    "The browser has no files to map, so the wasm tier keeps weights *resident* in the " +
+                        "SIMD128 sidecar's linear memory instead: each weight is uploaded once on its first " +
+                        "matmul and every later call reads it in place (`WasmKernels.weightHandle`). This is " +
+                        "the JS/WASM counterpart of mapped serving above — no per-call copy of the weight, " +
+                        "no prepack — bounded by the wasm32 4 GB linear memory rather than the page cache. " +
+                        "The other platforms serve from the heap, off-heap or the mapping and have no cell here.",
+                )
+                appendLine("")
+                appendLine("[cols=\"$colSpec\", options=\"header\"]")
+                appendLine("|===")
+                append("| Weight format ")
+                module.platforms.forEach { append("| $it ") }
+                appendLine("")
+                appendLine("")
+                module.resident.forEach { fmt ->
                     append("| `${fmt.name}` ")
                     module.platforms.forEach { p -> append("| ${fmt.byPlatform[p] ?: "—"} ") }
                     appendLine("")

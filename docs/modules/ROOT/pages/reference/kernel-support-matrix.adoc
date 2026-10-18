@@ -3,18 +3,19 @@
 
 Generated from `kernel-support.json` (version `0.61.0`) by `KernelSupportMatrixTest` — registry introspection of the registered `KernelProvider` implementations. Do not edit by hand; run `./gradlew generateKernelMatrix` to refresh.
 
-Each cell is the best (highest-priority) provider that serves `Float32 × format` `matmul` on that platform: *native-ffm* (100) → *panama-vector* (50) → *scalar* (0). An empty cell (`—`) means no provider carries a kernel there (the format is dequant-to-FP32 only).
+Each cell is the best (highest-priority) provider that serves `Float32 × format` `matmul` on that platform: *native-ffm* / *native-jni* / *native-cinterop* (100) → *panama-vector* / *wasm-simd128* (50) → *scalar* (0). An empty cell (`—`) means no provider carries a kernel there (the format is dequant-to-FP32 only). The JS/WASM column assumes `WasmSimd.install()` has run; without the sidecar it is the scalar floor.
 
 [cols="1,1,1,1,1,1", options="header"]
 |===
 | Weight format | JVM | Android | Native·linux | Native·apple | JS/WASM 
 
 | `Float32` | native-ffm | scalar | scalar | scalar | wasm-simd128 
-| `BFloat16` | native-ffm | scalar | scalar | scalar | scalar 
+| `BFloat16` | native-ffm | scalar | scalar | scalar | wasm-simd128 
+| `Float16` | native-ffm | scalar | scalar | scalar | wasm-simd128 
 | `Q8_0` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
 | `Q4_0` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
 | `Q4_K` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
-| `Q6_K` | panama-vector | native-jni | native-cinterop | native-cinterop | wasm-simd128 
+| `Q6_K` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
 | `Q5_K` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
 | `Q5_1` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
 | `Q5_0` | native-ffm | native-jni | native-cinterop | native-cinterop | wasm-simd128 
@@ -35,6 +36,26 @@ Kernels that read the weight in canonical row-major GGUF file order straight fro
 | `Q5_K` | ffm-rowmajor | native-jni-direct | — | — | — 
 | `Q5_1` | ffm-rowmajor | native-jni-direct | — | — | — 
 | `Q5_0` | ffm-rowmajor | native-jni-direct | — | — | — 
+|===
+
+== Resident serving (sidecar memory)
+
+The browser has no files to map, so the wasm tier keeps weights *resident* in the SIMD128 sidecar's linear memory instead: each weight is uploaded once on its first matmul and every later call reads it in place (`WasmKernels.weightHandle`). This is the JS/WASM counterpart of mapped serving above — no per-call copy of the weight, no prepack — bounded by the wasm32 4 GB linear memory rather than the page cache. The other platforms serve from the heap, off-heap or the mapping and have no cell here.
+
+[cols="1,1,1,1,1,1", options="header"]
+|===
+| Weight format | JVM | Android | Native·linux | Native·apple | JS/WASM 
+
+| `Float32` | — | — | — | — | wasm-resident 
+| `BFloat16` | — | — | — | — | wasm-resident 
+| `Float16` | — | — | — | — | wasm-resident 
+| `Q8_0` | — | — | — | — | wasm-resident 
+| `Q4_0` | — | — | — | — | wasm-resident 
+| `Q4_K` | — | — | — | — | wasm-resident 
+| `Q6_K` | — | — | — | — | wasm-resident 
+| `Q5_K` | — | — | — | — | wasm-resident 
+| `Q5_1` | — | — | — | — | wasm-resident 
+| `Q5_0` | — | — | — | — | wasm-resident 
 |===
 
 See also the eager backends & kernels mindmap (xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.

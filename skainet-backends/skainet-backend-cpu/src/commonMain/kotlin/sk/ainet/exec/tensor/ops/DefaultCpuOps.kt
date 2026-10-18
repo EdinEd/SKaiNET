@@ -711,7 +711,15 @@ public open class DefaultCpuOpsBase(
         // legacy per-element fallback stays one flag away (skainet.dispatch.registry=false) until the
         // migration is complete.
         return KernelProfile.timeGeneric {
-            dispatchMatmulViaRegistry(a, b) ?: matmulGeneric(a, b)
+            dispatchMatmulViaRegistry(a, b) ?: run {
+                // Fail-fast point shared by every tier: the legacy per-element path is the silent
+                // fallback strict mode exists to catch (the JVM subclass checks its SPI paths first).
+                sk.ainet.backend.api.kernel.KernelStrictness.failIfStrict {
+                    "matmul (${a.dtype.simpleName} ${a.shape} × ${b.dtype.simpleName} ${b.shape}) is not " +
+                        "expressible for KernelDispatch; would fall back to the generic per-element loop"
+                }
+                matmulGeneric(a, b)
+            }
         }
     }
 

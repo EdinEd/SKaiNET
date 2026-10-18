@@ -28,7 +28,12 @@ public object WasmSimd {
         KernelDispatch.clearForTesting()
         WasmSimdKernelPack.install()
         WasmCpuOpsOverride.factory = { factory, schedule -> WasmCpuOps(factory, schedule) }
+        // The same one-line banner the JVM factory prints, so a console shows which tier runs.
+        println("[SKaiNET] Using SIMD128 sidecar kernels (${WasmKernels.features()})")
     }
+
+    /** What the installed sidecar runs on; `mode == "none"` when not installed. */
+    public fun features(): WasmKernels.SidecarFeatures = WasmKernels.features()
 
     /** Back to the scalar lane; frees every resident weight. Tests and model switching. */
     public fun uninstall() {
