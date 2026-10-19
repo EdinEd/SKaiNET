@@ -331,6 +331,46 @@ public object WasmKernels {
     public fun f32ReduceAxis(inPtr: Int, outer: Int, red: Int, inner: Int, mean: Boolean, outPtr: Int): Unit =
         jsF32ReduceAxis(mod(), inPtr, outer, red, inner, if (mean) 1 else 0, outPtr)
 
+    /** `skainet_f32_softmax_rows`: row-wise softmax (or log-softmax when [log]) over [rows] rows of [cols]. */
+    public fun f32SoftmaxRows(inPtr: Int, outPtr: Int, rows: Int, cols: Int, log: Boolean): Unit =
+        jsF32SoftmaxRows(mod(), inPtr, outPtr, rows, cols, if (log) 1 else 0)
+
+    /** `skainet_f32_layer_norm` over [rows] rows of [cols]; [gammaPtr] / [betaPtr] `0` skip the affine. */
+    public fun f32LayerNorm(inPtr: Int, gammaPtr: Int, betaPtr: Int, outPtr: Int, rows: Int, cols: Int, eps: Float): Unit =
+        jsF32LayerNorm(mod(), inPtr, gammaPtr, betaPtr, outPtr, rows, cols, eps)
+
+    /** `skainet_f32_rms_norm` over [rows] rows of [cols]; [gammaPtr] `0` skips the scale. */
+    public fun f32RmsNorm(inPtr: Int, gammaPtr: Int, outPtr: Int, rows: Int, cols: Int, eps: Float): Unit =
+        jsF32RmsNorm(mod(), inPtr, gammaPtr, outPtr, rows, cols, eps)
+
+    /**
+     * `skainet_f32_sdpa`: fused scaled dot-product attention with the ops layer's structural masks
+     * (causal, sliding window with right context, per-batch key lengths at [lengthsPtr] or `0`) and
+     * an optional dense additive mask at [maskPtr] (`0` for none) broadcast over the four mask dims.
+     */
+    public fun f32Sdpa(
+        qPtr: Int, kPtr: Int, vPtr: Int, outPtr: Int,
+        batch: Int, heads: Int, kvHeads: Int, seqQ: Int, seqKV: Int, headDim: Int,
+        scale: Float, causal: Boolean, window: Int, rightContext: Int,
+        lengthsPtr: Int, maskPtr: Int, maskB: Int, maskH: Int, maskQ: Int, maskK: Int,
+    ): Unit = jsF32Sdpa(
+        mod(), qPtr, kPtr, vPtr, outPtr, batch, heads, kvHeads, seqQ, seqKV, headDim,
+        scale, if (causal) 1 else 0, window, rightContext, lengthsPtr, maskPtr, maskB, maskH, maskQ, maskK,
+    )
+
+    /** Write [count] ints of [src] from [srcOffset] at [dstPtr], little-endian (the sidecar's int32). */
+    public fun writeInts(dstPtr: Int, src: IntArray, srcOffset: Int, count: Int) {
+        val bytes = ByteArray(count * 4)
+        for (i in 0 until count) {
+            val v = src[srcOffset + i]
+            bytes[i * 4] = v.toByte()
+            bytes[i * 4 + 1] = (v shr 8).toByte()
+            bytes[i * 4 + 2] = (v shr 16).toByte()
+            bytes[i * 4 + 3] = (v shr 24).toByte()
+        }
+        writeBytes(dstPtr, bytes, 0, count * 4)
+    }
+
     // ── diagnostics ───────────────────────────────────────────────────────────────────────────────
 
     /**
@@ -508,6 +548,24 @@ private fun jsF32ReduceAll(mod: JsAny, inPtr: Int, n: Int, mean: Int, outPtr: In
 
 private fun jsF32ReduceAxis(mod: JsAny, inPtr: Int, outer: Int, red: Int, inner: Int, mean: Int, outPtr: Int): Unit =
     js("mod._skainet_f32_reduce_axis(inPtr, outer, red, inner, mean, outPtr)")
+
+private fun jsF32SoftmaxRows(mod: JsAny, inPtr: Int, outPtr: Int, rows: Int, cols: Int, log: Int): Unit =
+    js("mod._skainet_f32_softmax_rows(inPtr, outPtr, rows, cols, log)")
+
+private fun jsF32LayerNorm(mod: JsAny, inPtr: Int, gammaPtr: Int, betaPtr: Int, outPtr: Int, rows: Int, cols: Int, eps: Float): Unit =
+    js("mod._skainet_f32_layer_norm(inPtr, gammaPtr, betaPtr, outPtr, rows, cols, eps)")
+
+private fun jsF32RmsNorm(mod: JsAny, inPtr: Int, gammaPtr: Int, outPtr: Int, rows: Int, cols: Int, eps: Float): Unit =
+    js("mod._skainet_f32_rms_norm(inPtr, gammaPtr, outPtr, rows, cols, eps)")
+
+private fun jsF32Sdpa(
+    mod: JsAny, qPtr: Int, kPtr: Int, vPtr: Int, outPtr: Int,
+    batch: Int, heads: Int, kvHeads: Int, seqQ: Int, seqKV: Int, headDim: Int,
+    scale: Float, causal: Int, window: Int, rightContext: Int,
+    lengthsPtr: Int, maskPtr: Int, maskB: Int, maskH: Int, maskQ: Int, maskK: Int,
+): Unit = js(
+    "mod._skainet_f32_sdpa(qPtr, kPtr, vPtr, outPtr, batch, heads, kvHeads, seqQ, seqKV, headDim, scale, causal, window, rightContext, lengthsPtr, maskPtr, maskB, maskH, maskQ, maskK)"
+)
 
 private fun jsCrossOriginIsolated(): Boolean = js("typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true")
 

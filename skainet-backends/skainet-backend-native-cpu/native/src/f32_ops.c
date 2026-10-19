@@ -31,7 +31,8 @@
  *     out[i] = f(in[i]) with f one of relu, sigmoid, silu, gelu (tanh form), gelu (erf form),
  *     erf, tanh. The formulas are those of the Kotlin reference ops, so results agree to the
  *     last-ulp differences between libm and the Kotlin math functions. The transcendental ones are
- *     scalar libm calls (no vector libm in wasm or portable C); relu has SIMD bodies.
+ *     scalar libm calls through the opaque wrappers of skainet_simd.h (no libmvec dependency);
+ *     relu has SIMD bodies.
  *
  *   skainet_f32_reduce_all(in, n, mean, out)      *out = Σ in[i], divided by n when mean != 0
  *   skainet_f32_reduce_axis(in, outer, red, inner, mean, out)
@@ -218,7 +219,7 @@ typedef struct {
     int32_t op;
 } skainet_f32_unary_ctx;
 
-static inline float skainet_f32_sigmoid(float x) { return 1.0f / (1.0f + expf(-x)); }
+static inline float skainet_f32_sigmoid(float x) { return 1.0f / (1.0f + skainet_expf(-x)); }
 
 static void skainet_f32_unary_chunks(void* vctx, int32_t c0, int32_t c1) {
     const skainet_f32_unary_ctx* c = (const skainet_f32_unary_ctx*) vctx;
@@ -246,20 +247,20 @@ static void skainet_f32_unary_chunks(void* vctx, int32_t c0, int32_t c1) {
             for (int32_t i = i0; i < i1; ++i) {
                 const float x = in[i];
                 const float inner = x + 0.044715f * (x * x * x);
-                out[i] = 0.5f * x * (1.0f + tanhf(0.7978845608f * inner));
+                out[i] = 0.5f * x * (1.0f + skainet_tanhf(0.7978845608f * inner));
             }
             break;
         case SKAINET_F32_GELU_EXACT:
             for (int32_t i = i0; i < i1; ++i) {
                 const double x = (double) in[i];
-                out[i] = (float) (0.5 * x * (1.0 + erf(x * 0.70710678118654752440)));
+                out[i] = (float) (0.5 * x * (1.0 + skainet_erf(x * 0.70710678118654752440)));
             }
             break;
         case SKAINET_F32_ERF:
-            for (int32_t i = i0; i < i1; ++i) out[i] = (float) erf((double) in[i]);
+            for (int32_t i = i0; i < i1; ++i) out[i] = (float) skainet_erf((double) in[i]);
             break;
         default: /* SKAINET_F32_TANH */
-            for (int32_t i = i0; i < i1; ++i) out[i] = tanhf(in[i]);
+            for (int32_t i = i0; i < i1; ++i) out[i] = skainet_tanhf(in[i]);
             break;
     }
 }
@@ -314,11 +315,20 @@ static void skainet_f32_reduce_axis_rows(void* vctx, int32_t o0, int32_t o1) {
         for (int32_t x = 0; x < inner; ++x) out[x] = 0.0f;
         for (int32_t k = 0; k < red; ++k) {
             const float* SKAINET_RESTRICT row = base + (size_t) k * inner;
-            skainet_f32_binary_full(SKAINET_F32_ADD, out, row, out, 0, inner);
+            int32_t x = 0;
+#ifdef SKAINET_F32_HAVE_VEC
+            for (; x + 4 <= inner; x += 4) SKAINET_F32_STORE(out + x, SKAINET_F32_VADD(SKAINET_F32_LOAD(out + x), SKAINET_F32_LOAD(row + x)));
+#endif
+            for (; x < inner; ++x) out[x] += row[x];
         }
         if (c->mean && red > 0) {
             const float inv = 1.0f / (float) red;
-            skainet_f32_binary_scalar(SKAINET_F32_MUL, out, inv, 0, out, 0, inner);
+            int32_t x = 0;
+#ifdef SKAINET_F32_HAVE_VEC
+            const SKAINET_F32_VEC vinv = SKAINET_F32_SPLAT(inv);
+            for (; x + 4 <= inner; x += 4) SKAINET_F32_STORE(out + x, SKAINET_F32_VMUL(SKAINET_F32_LOAD(out + x), vinv));
+#endif
+            for (; x < inner; ++x) out[x] *= inv;
         }
     }
 }

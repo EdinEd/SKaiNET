@@ -41,6 +41,9 @@ microbench tests under `skainet-backends/skainet-backend-native-cpu`:
 | engine-elementwise-add  | `ctx.ops.add` on 1M FP32 elements                           | M elements/s  | higher is better
 | engine-reductions-sum   | `ctx.ops.sum` on 1M FP32 elements                           | M elements/s  | higher is better
 | engine-reductions-mean  | `ctx.ops.mean` on 1M FP32 elements                          | M elements/s  | higher is better
+| engine-softmax          | `ctx.ops.softmax` over the last dimension of `[1024, 1024]` FP32 (ffm: fused native rows; panama/scalar: the common loop) | M elements/s  | higher is better
+| engine-layer-norm       | a `LayerNormalization` layer with affine over `[1024, 768]` FP32 (ffm: one fused native pass; panama/scalar: the decomposed elementwise chain) | M elements/s  | higher is better
+| engine-sdpa             | `ctx.ops.scaledDotProductAttention`, causal, 12 heads × 150 × 150, head dim 64 (ffm: fused native kernel; panama/scalar: the common per-head kernel under the context's schedule) | GFLOPS (`4·h·s²·d`) | higher is better
 |===
 
 Each scenario is wired up as a Phoronix test profile under

@@ -1,7 +1,7 @@
 = SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
 :description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
 
-Status: Implemented (Tiers 0, 1 and 2 in engine 0.61.0; resident activations with sidecar elementwise, activation and reduction kernels in the parity series that followed); the SKaiNET-transformers consumer and the WebGPU proposal remain open +
+Status: Implemented (Tiers 0, 1 and 2 in engine 0.61.0; resident activations with sidecar elementwise, activation and reduction kernels, then fused softmax / normalisation / attention kernels on the wasm and JVM tiers, in the parity series that followed); the SKaiNET-transformers consumer and the WebGPU proposal remain open +
 Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352], Tier 2 quantize-at-load https://github.com/SKaiNET-developers/SKaiNET/pull/1353[#1353], Tier 1 `skainet-backend-wasm-simd` https://github.com/SKaiNET-developers/SKaiNET/pull/1354[#1354] — engine 0.61.0; the consumer work in SKaiNET-transformers follows, see <<_rollout_plan>>. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
 Created: 2026-10-16 +
@@ -270,8 +270,10 @@ copies and the thread hand-off, which is what resident activations address next.
 * Whether the dense FP32 fast path in `matmul` (the `[k, n]` loop) should also route through
   `KernelDispatch` first, so a registered dense kernel wins without an ops override. Deferred to
   PR 2, where the first such kernel appears.
-* Whether `TensorOps` should grow a fused `layerNorm`; the cost on the encoder is allocation rather
-  than arithmetic, and `ForwardScope` may already answer it.
+* Whether `TensorOps` should grow a fused `layerNorm` — answered without touching `TensorOps`: the
+  optional `FusedNormOps` interface beside it, which `LayerNormalization` consults for FP32 input
+  and only the sidecar and the JVM FFM op sets implement, so recording and differentiating op sets
+  keep the decomposition.
 
 == References
 

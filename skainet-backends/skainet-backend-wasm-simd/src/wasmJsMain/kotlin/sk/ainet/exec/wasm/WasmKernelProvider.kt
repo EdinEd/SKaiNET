@@ -3,7 +3,10 @@ package sk.ainet.exec.wasm
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.Fp32AttentionKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulWtKernel
+import sk.ainet.backend.api.kernel.Fp32NormKernel
+import sk.ainet.backend.api.kernel.Fp32SoftmaxKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
@@ -15,8 +18,12 @@ import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 
 /**
  * The sidecar as a [KernelProvider] (SKEEP-007 §T1): the dense FP32 GEMM and the feed-order packed
- * kernels, so `KernelPacks.install()` and `chooseQuantizedMatmulHeap` serve from SIMD128 as well.
- * Priority 50 — above the scalar provider (0), the same tier the JVM's Panama provider sits at.
+ * kernels, so `KernelPacks.install()` and `chooseQuantizedMatmulHeap` serve from SIMD128 as well,
+ * plus the fused row kernels (softmax, the normalisations, attention — [WasmFp32SoftmaxKernel],
+ * [WasmFp32NormKernel], [WasmFp32AttentionKernel]) the JVM FFM provider exposes under the same
+ * accessors. Priority 50 — above the scalar provider (0), the same tier the JVM's Panama provider
+ * sits at. [WasmCpuOps] does not go through these heap faces: it hands the sidecar resident
+ * operands directly.
  */
 public object WasmKernelProvider : KernelProvider {
     override val name: String = "wasm-simd128"
@@ -27,6 +34,9 @@ public object WasmKernelProvider : KernelProvider {
     override fun matmulFp32Wt(): Fp32MatmulWtKernel = WasmFp32MatmulWtKernel
     override fun matmulBf16(): Bf16MatmulKernel = WasmBf16MatmulKernel
     override fun matmulFp16(): Fp16MatmulKernel = WasmFp16MatmulKernel
+    override fun softmaxFp32(): Fp32SoftmaxKernel = WasmFp32SoftmaxKernel
+    override fun normFp32(): Fp32NormKernel = WasmFp32NormKernel
+    override fun attentionFp32(): Fp32AttentionKernel = WasmFp32AttentionKernel
 
     override fun matmulQ8_0(): Q8_0MatmulKernel = object : Q8_0MatmulKernel {
         override fun matmul(input: FloatArray, inputOffset: Int, weight: ByteArray, weightByteOffset: Int, inputDim: Int, outputDim: Int, output: FloatArray, outputOffset: Int) =

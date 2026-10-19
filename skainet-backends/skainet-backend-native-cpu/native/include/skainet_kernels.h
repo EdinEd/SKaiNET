@@ -540,6 +540,45 @@ SKAINET_API void skainet_f32_reduce_axis(
     const float* in, int32_t outer, int32_t red, int32_t inner, int32_t mean, float* out
 );
 
+/*
+ * Fused dense FP32 row kernels (SKEEP-007 resident activations, step 3; see
+ * src/f32_fused.c for the contracts). Operands are contiguous, row-major.
+ *
+ *   skainet_f32_softmax_rows: out[r, :] = softmax(in[r, :]) per row of `cols`,
+ *     or the log-softmax when log_form != 0.
+ *   skainet_f32_layer_norm: out[r, c] = (in[r, c] - mean_r) / sqrt(var_r + eps)
+ *     · gamma[c] + beta[c]; gamma / beta may be NULL.
+ *   skainet_f32_rms_norm: out[r, c] = in[r, c] / sqrt(mean(in[r, :]²) + eps)
+ *     · gamma[c]; gamma may be NULL.
+ *   skainet_f32_sdpa: softmax(q · kᵀ · scale + rules + mask) · v over
+ *     q [batch, heads, seq_q, head_dim], k / v [batch, kv_heads, seq_kv, head_dim]
+ *     (grouped-query heads), with the structural rules of the ops layer's
+ *     AttentionMask (causal, sliding window with right_context, per-batch key
+ *     lengths — NULL for none) and an optional dense additive mask broadcast
+ *     over the mask_* dims (NULL for none). `scale` is applied as given.
+ *
+ * Threaded over rows (query rows for attention) through the shared row pool.
+ */
+SKAINET_API void skainet_f32_softmax_rows(const float* in, float* out, int32_t rows, int32_t cols, int32_t log_form);
+
+SKAINET_API void skainet_f32_layer_norm(
+    const float* in, const float* gamma, const float* beta, float* out,
+    int32_t rows, int32_t cols, float eps
+);
+
+SKAINET_API void skainet_f32_rms_norm(
+    const float* in, const float* gamma, float* out, int32_t rows, int32_t cols, float eps
+);
+
+SKAINET_API void skainet_f32_sdpa(
+    const float* q, const float* k, const float* v, float* out,
+    int32_t batch, int32_t heads, int32_t kv_heads,
+    int32_t seq_q, int32_t seq_kv, int32_t head_dim,
+    float scale, int32_t causal, int32_t window, int32_t right_context,
+    const int32_t* lengths,
+    const float* mask, int32_t mask_b, int32_t mask_h, int32_t mask_q, int32_t mask_k
+);
+
 #ifdef __cplusplus
 }
 #endif

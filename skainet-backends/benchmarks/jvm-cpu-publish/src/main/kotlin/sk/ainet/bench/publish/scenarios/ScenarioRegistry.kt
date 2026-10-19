@@ -15,6 +15,9 @@ public object ScenarioRegistry {
         "engine-elementwise-add",
         "engine-reductions-sum",
         "engine-reductions-mean",
+        "engine-softmax",
+        "engine-layer-norm",
+        "engine-sdpa",
     )
 
     public fun byId(id: String, provider: String, smoke: Boolean): Scenario? = when (id) {
@@ -28,6 +31,9 @@ public object ScenarioRegistry {
         "engine-elementwise-add" -> ElementwiseAddScenario(smoke = smoke, providerName = provider)
         "engine-reductions-sum" -> ReductionsScenario(op = ReductionOp.SUM, smoke = smoke, providerName = provider)
         "engine-reductions-mean" -> ReductionsScenario(op = ReductionOp.MEAN, smoke = smoke, providerName = provider)
+        "engine-softmax" -> SoftmaxScenario(smoke = smoke, providerName = provider)
+        "engine-layer-norm" -> LayerNormScenario(smoke = smoke, providerName = provider)
+        "engine-sdpa" -> SdpaScenario(smoke = smoke, providerName = provider)
         else -> null
     }
 }

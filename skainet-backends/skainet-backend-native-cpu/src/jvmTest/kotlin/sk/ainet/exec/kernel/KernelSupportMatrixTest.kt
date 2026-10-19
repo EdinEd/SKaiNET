@@ -112,26 +112,32 @@ class KernelSupportMatrixTest {
      * through the `matmul` accessors the tables above introspect — the ternary kernels are
      * `ViewKernelPack`s keyed in `KernelDispatch` (`FfmTernaryKernelPackFactory`, the JNI ternary pack,
      * `NativeKnTernaryF32Gemv` / `NativeKnTernaryLmhead`, `WasmTernaryKernelPack`), and `x · Wᵀ` is the
-     * `matmulFp32Wt` accessor the ops layer consults before transposing a weight. Hand-declared per
+     * `matmulFp32Wt` accessor the ops layer consults before transposing a weight, and the fused row
+     * kernels (softmax, layer norm / RMS norm, banded SDPA — `softmaxFp32`, `normFp32`,
+     * `attentionFp32`) are what the ops layer calls instead of its scalar loops. Hand-declared per
      * platform like the Android rows; the JVM cells are gated below against what the FFM provider and
      * pack actually expose on this runner. Row names are the encodings as `TensorEncoding.name` spells
-     * them, plus the dense direct product.
+     * them, plus the dense direct product and the fused ops.
      */
     private val packRows = listOf(
         TensorEncoding.BITNET_B1_58.name + " (FP32 activations)",
         TensorEncoding.BITNET_PLANES.name,
         TensorEncoding.TQ2_0.name + " (int8 activations)",
         "Float32 x·Wᵀ direct",
+        "Float32 softmax (fused rows)",
+        "Float32 layer_norm / rms_norm (fused)",
+        "Float32 SDPA (fused, banded, GQA)",
     )
 
     private fun packTiers(): List<Tier> {
         val b158 = packRows[0]; val planes = packRows[1]; val tq2 = packRows[2]; val wt = packRows[3]
+        val softmax = packRows[4]; val norm = packRows[5]; val sdpa = packRows[6]
         return listOf(
             Tier("ffm-ternary", 100, setOf("JVM"), setOf(b158, planes)),
-            Tier("native-ffm", 100, setOf("JVM"), setOf(wt)),
+            Tier("native-ffm", 100, setOf("JVM"), setOf(wt, softmax, norm, sdpa)),
             Tier("native-jni", 100, setOf("Android"), setOf(b158, planes, tq2)),
             Tier("native-cinterop", 100, setOf("Native·linux", "Native·apple"), setOf(b158, planes)),
-            Tier("wasm-simd128", 50, setOf("JS/WASM"), setOf(b158, planes, tq2, wt)),
+            Tier("wasm-simd128", 50, setOf("JS/WASM"), setOf(b158, planes, tq2, wt, softmax, norm, sdpa)),
         )
     }
 
@@ -231,6 +237,11 @@ class KernelSupportMatrixTest {
         // carry the direct `x · Wᵀ` kernel and the ternary pack both of its kernels.
         if (NativeKernelProvider.isAvailable()) {
             assertTrue(NativeKernelProvider.matmulFp32Wt() != null, "native-ffm lost its direct x·Wᵀ kernel — update packTiers()")
+            assertTrue(
+                NativeKernelProvider.supports("softmax", listOf("Float32")) && NativeKernelProvider.supports("layer_norm", listOf("Float32")) &&
+                    NativeKernelProvider.supports("rms_norm", listOf("Float32")) && NativeKernelProvider.supports("sdpa", listOf("Float32")),
+                "native-ffm lost a fused row kernel — update packTiers()",
+            )
             assertTrue(NativeTernaryF32GemvKernel.isAvailable() && NativeTernaryLmheadKernel.isAvailable(),
                 "ffm-ternary lost a kernel — update packTiers()")
         }

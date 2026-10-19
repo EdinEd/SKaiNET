@@ -44,7 +44,12 @@ import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0Quantizer
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.matmulWeightTransposed
+import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
+import sk.ainet.lang.nn.normalization.LayerNormalization
+import sk.ainet.lang.tensor.ops.AttentionMask
+import sk.ainet.lang.tensor.ops.FusedNormOps
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -444,6 +449,93 @@ class WasmSimdParityTest {
         assertEquals(m, got.getValue("sumLast").size)
         assertEquals(n, got.getValue("meanFirst").size)
         assertEquals(1, got.getValue("sumAll").size)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun lengthsTensor(ctx: DirectCpuExecutionContext, lengths: IntArray): Tensor<DType, *> =
+        ctx.fromIntArray<Int32, Int>(Shape(lengths.size), Int32::class, lengths) as Tensor<DType, *>
+
+    @Test
+    fun `softmax, the normalisations and attention run fused in the sidecar and match the scalar lane`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        val rows = 16; val cols = 96
+        val xArr = pseudo(rows * cols, 51, 3f)
+        val gArr = FloatArray(cols) { 0.5f + (it % 7) * 0.1f }
+        val bArr = FloatArray(cols) { ((it % 5) - 2) * 0.05f }
+        val batch = 2; val heads = 4; val kvHeads = 2; val seqQ = 5; val seqKV = 9; val headDim = 16
+        val qArr = pseudo(batch * heads * seqQ * headDim, 53)
+        val kArr = pseudo(batch * kvHeads * seqKV * headDim, 55)
+        val vArr = pseudo(batch * kvHeads * seqKV * headDim, 57)
+        val lengths = intArrayOf(seqKV, 4)
+        val maskArr = pseudo(seqQ * seqKV, 59)
+        val wqArr = pseudo(cols * cols, 61)
+
+        fun run(ctx: DirectCpuExecutionContext, probe: (String, Tensor<FP32, Float>) -> Unit): Map<String, FloatArray> {
+            val ops = ctx.ops
+            val out = LinkedHashMap<String, FloatArray>()
+            fun keep(name: String, t: Tensor<FP32, Float>) { probe(name, t); out[name] = t.data.copyToFloatArray() }
+            val x = ctx.fromFloatArray<FP32, Float>(Shape(rows, cols), FP32::class, xArr)
+            keep("softmax", ops.softmax(x, -1))
+            keep("logSoftmax", ops.logSoftmax(x, -1))
+            keep("softmaxDim0", ops.softmax(x, 0))
+            val gamma = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, gArr)
+            val beta = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, bArr)
+            val ln = LayerNormalization<FP32, Float>(intArrayOf(cols), eps = 1e-5, elementwiseAffine = true, name = "ln", initGamma = gamma, initBeta = beta)
+            keep("layerNorm", ln.forward(x, ctx))
+            val lnPlain = LayerNormalization<FP32, Float>(intArrayOf(cols), eps = 1e-5, elementwiseAffine = false, name = "lnPlain")
+            keep("layerNormPlain", lnPlain.forward(x, ctx))
+            (ops as? FusedNormOps)?.rmsNorm(x, gamma, 1e-6f, 1)?.let { keep("rmsNorm", it) }
+            // On the sidecar the operands are made resident first (as a projection's output is), so
+            // attention reads them in place: the probe checks they were never downloaded.
+            val wasm = ops as? WasmCpuOps
+            fun resident(t: Tensor<FP32, Float>) = wasm?.toResident(t) ?: t
+            val q = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, heads, seqQ, headDim), FP32::class, qArr))
+            val k = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, kvHeads, seqKV, headDim), FP32::class, kArr))
+            val v = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, kvHeads, seqKV, headDim), FP32::class, vArr))
+            keep("sdpa", ops.scaledDotProductAttention(q, k, v))
+            probe("q", q); probe("k", k); probe("v", v)
+            keep("sdpaCausal", ops.scaledDotProductAttention(q, k, v, causal = true))
+            keep("sdpaLengths", ops.scaledDotProductAttention(q, k, v, causal = true, keyLengths = lengthsTensor(ctx, lengths)))
+            keep("sdpaWindow", ops.scaledDotProductAttention(q, k, v, keyLengths = lengthsTensor(ctx, lengths), window = 3, rightContext = 1))
+            val mask = ctx.fromFloatArray<FP32, Float>(Shape(seqQ, seqKV), FP32::class, maskArr)
+            keep("sdpaMask", ops.scaledDotProductAttention(q, k, v, mask = mask, scale = 0.3f))
+            val dense = ctx.fromFloatArray<FP32, Float>(Shape(batch, 1, seqQ, seqKV), FP32::class, AttentionMask.additive(batch, seqQ, seqKV, true, 3, 1, lengths))
+            keep("sdpaDense", ops.scaledDotProductAttention(q, k, v, mask = dense))
+            keep("sdpaStructured", ops.scaledDotProductAttention(q, k, v, causal = true, keyLengths = lengthsTensor(ctx, lengths), window = 3, rightContext = 1))
+            keep("sdpaPadded", ops.scaledDotProductAttention(q, k, v, keyLengths = lengthsTensor(ctx, intArrayOf(0, seqKV))))
+            // A projection's output goes straight into the normalisation without a download.
+            val wq = ctx.fromFloatArray<FP32, Float>(Shape(cols, cols), FP32::class, wqArr)
+            val proj = ops.matmulWeightTransposed(x, wq)
+            keep("projNorm", lnPlain.forward(proj, ctx))
+            probe("proj", proj)
+            return out
+        }
+        val ref = run(scalar) { _, _ -> }
+        assertTrue(ref.containsKey("rmsNorm").not() || scalar.ops !is FusedNormOps, "the scalar lane has no fused-norm hook")
+
+        WasmSimd.install()
+        val fast = DirectCpuExecutionContext()
+        assertIs<FusedNormOps>(fast.ops)
+        val got = run(fast) { name, t ->
+            if (name == "softmaxDim0") return@run
+            val d = t.data
+            assertIs<WasmLinearTensorData<*>>(d, "$name should be resident")
+            if (name == "proj" || name == "q" || name == "k" || name == "v") assertTrue(!d.isMirrored, "$name was not downloaded")
+        }
+        for ((name, values) in ref) {
+            val (rel, abs) = if (name.startsWith("sdpa") || name.contains("Norm")) 1e-4f to 1e-5f else 1e-5f to 1e-6f
+            val actual = checkNotNull(got[name]) { name }
+            assertEquals(values.size, actual.size, "$name size")
+            var maxAbs = 0f
+            for (v in values) maxAbs = maxOf(maxAbs, kotlin.math.abs(v))
+            val tol = maxAbs * rel + abs
+            for (i in values.indices) assertTrue(kotlin.math.abs(values[i] - actual[i]) <= tol, "$name[$i]: ${actual[i]} vs ${values[i]} (tol $tol)")
+        }
+        assertTrue(got.containsKey("rmsNorm"), "rmsNorm served by the sidecar")
+        // The structured rules equal the dense -1e30 mask on the sidecar kernel.
+        val a = got.getValue("sdpaStructured"); val b = got.getValue("sdpaDense")
+        for (i in a.indices) assertTrue(abs(a[i] - b[i]) <= 1e-6f, "structured vs dense [$i]")
+        assertTrue(got.getValue("sdpaPadded").all { it.isFinite() }, "fully padded row is finite")
     }
 
     @Test

@@ -27,6 +27,7 @@ set(SKAINET_KERNEL_SOURCES
     src/q5_1_matmul.c
     src/skainet_ternary_f32.c
     src/f32_ops.c
+    src/f32_fused.c
 )
 
 # Vendored NeoGPU ternary LUT kernel (MIT, verbatim — src/vendor/neogpu/).

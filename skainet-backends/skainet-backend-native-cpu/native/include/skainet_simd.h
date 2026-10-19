@@ -166,4 +166,24 @@ static inline void skainet_wasm_q5_fifth_bits(uint32_t qh32, v128_t* fifth_lo, v
 }
 #endif
 
+/*
+ * Transcendentals called from element loops go through these opaque wrappers. GCC with
+ * -ffast-math and glibc's math-vector.h otherwise vectorises such a loop into libmvec's
+ * _ZGVbN4v_expf / _ZGVbN4v_tanhf / _ZGVbN2v_erf, which the shared library is not linked
+ * against (and which older glibc and aarch64 builds lack): the symbol fails to resolve at
+ * the first call and the loader terminates the process. Under -ffast-math GCC also narrows
+ * (float) erf((double) x) to erff. A non-inlined scalar call per element costs nothing next
+ * to the function itself; clang and MSVC never emit the vector variants, so there the
+ * wrappers inline away.
+ */
+#include <math.h>
+#if defined(__GNUC__) && !defined(__clang__)
+#  define SKAINET_LIBM_FN static __attribute__((noinline, unused))
+#else
+#  define SKAINET_LIBM_FN static inline
+#endif
+SKAINET_LIBM_FN float skainet_expf(float x) { return expf(x); }
+SKAINET_LIBM_FN float skainet_tanhf(float x) { return tanhf(x); }
+SKAINET_LIBM_FN double skainet_erf(double x) { return erf(x); }
+
 #endif /* SKAINET_SIMD_H */

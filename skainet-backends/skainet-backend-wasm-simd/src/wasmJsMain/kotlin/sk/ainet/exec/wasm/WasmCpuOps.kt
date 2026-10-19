@@ -10,6 +10,7 @@ import sk.ainet.lang.tensor.data.FloatArrayTensorData
 import sk.ainet.lang.tensor.data.StorageFloatTensorData
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.data.TensorDataFactory
+import sk.ainet.lang.tensor.ops.FusedNormOps
 import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.tensor.storage.MemoryDomain
 import sk.ainet.lang.types.DType
@@ -34,6 +35,9 @@ import kotlin.reflect.KClass
  *   a chain starts resident at its first matmul anyway.
  * - `sigmoid`/`silu`/`gelu`/`erf`/`tanh`: always — the transcendental loop is several times the
  *   upload. `relu`, `sum`, `mean`: when the operand is resident.
+ * - `softmax`/`logSoftmax` over the last dimension, `scaledDotProductAttention` and the fused
+ *   normalisations of [FusedNormOps] (what `LayerNormalization` calls): always — one sidecar pass
+ *   against several allocating scalar passes, whatever the operands' home.
  *
  * An output is resident only while [WasmSimd.residentBudgetBytes] allows; above it the kernel still
  * runs in the sidecar and the result is read back to the heap. Scoped contexts (`ForwardScope`)
@@ -43,7 +47,7 @@ import kotlin.reflect.KClass
 public class WasmCpuOps(
     dataFactory: TensorDataFactory,
     schedule: Schedule,
-) : DefaultCpuOpsBase(dataFactory, schedule) {
+) : DefaultCpuOpsBase(dataFactory, schedule), FusedNormOps {
 
     override fun withSchedule(schedule: Schedule): TensorOps =
         if (schedule === this.schedule) this else WasmCpuOps(dataFactory, schedule)
@@ -327,4 +331,140 @@ public class WasmCpuOps(
 
     override fun <T : DType, V> mean(tensor: Tensor<T, V>, dim: Int?): Tensor<T, V> =
         reduce(tensor, dim, mean = true) ?: super.mean(tensor, dim)
+
+    // ── fused row kernels: softmax, the normalisations, attention ─────────────────────────────────
+
+    private fun <T : DType, V> softmaxRows(t: Tensor<T, V>, dim: Int, log: Boolean): Tensor<T, V>? {
+        if (!WasmKernels.isReady || !isSidecarFloat(t)) return null
+        val rank = t.rank
+        if (rank == 0) return null
+        val nd = if (dim < 0) dim + rank else dim
+        if (nd != rank - 1) return null
+        val cols = t.shape[nd]
+        val n = t.shape.volume
+        if (cols <= 0 || n == 0) return null
+        val o = operand(t) ?: return null
+        try {
+            val inPtr = o.ptr
+            return output(t.shape, t.dtype, arrayOf(t)) { out -> WasmKernels.f32SoftmaxRows(inPtr, out, n / cols, cols, log) }
+        } finally {
+            release(o)
+        }
+    }
+
+    override fun <T : DType, V> softmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> =
+        softmaxRows(tensor, dim, log = false) ?: super.softmax(tensor, dim)
+
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> =
+        softmaxRows(tensor, dim, log = true) ?: super.logSoftmax(tensor, dim)
+
+    /** A norm parameter of [cols] values as a sidecar operand: in place or staged when dense FP32, copied out otherwise (a placeholder). */
+    private fun normParam(t: Tensor<*, *>, cols: Int): Operand? {
+        if (t.shape.volume != cols) return null
+        if (t.dtype == FP32::class) operand(t)?.let { return it }
+        return stage(t.data.copyToFloatArray(), 0, cols)
+    }
+
+    private fun <T : DType, V> norm(
+        input: Tensor<T, V>, gamma: Tensor<T, V>?, beta: Tensor<T, V>?, eps: Float, normalizedRank: Int, rms: Boolean,
+    ): Tensor<T, V>? {
+        if (!WasmKernels.isReady || !isSidecarFloat(input)) return null
+        val rank = input.rank
+        if (normalizedRank !in 1..rank) return null
+        var cols = 1
+        for (i in rank - normalizedRank until rank) cols *= input.shape[i]
+        val n = input.shape.volume
+        if (cols == 0 || n == 0) return null
+        val rows = n / cols
+        var io: Operand? = null
+        var go: Operand? = null
+        var bo: Operand? = null
+        try {
+            io = operand(input) ?: return null
+            go = gamma?.let { normParam(it, cols) ?: return null }
+            bo = beta?.let { normParam(it, cols) ?: return null }
+            val inPtr = io.ptr
+            val gPtr = go?.ptr ?: 0
+            val bPtr = bo?.ptr ?: 0
+            val inputs = listOfNotNull(input, gamma, beta).toTypedArray()
+            return output(input.shape, input.dtype, inputs) { out ->
+                if (rms) WasmKernels.f32RmsNorm(inPtr, gPtr, out, rows, cols, eps)
+                else WasmKernels.f32LayerNorm(inPtr, gPtr, bPtr, out, rows, cols, eps)
+            }
+        } finally {
+            release(bo)
+            release(go)
+            release(io)
+        }
+    }
+
+    override fun <T : DType, V> layerNorm(input: Tensor<T, V>, gamma: Tensor<T, V>?, beta: Tensor<T, V>?, eps: Float, normalizedRank: Int): Tensor<T, V>? =
+        norm(input, gamma, beta, eps, normalizedRank, rms = false)
+
+    override fun <T : DType, V> rmsNorm(input: Tensor<T, V>, gamma: Tensor<T, V>?, eps: Float, normalizedRank: Int): Tensor<T, V>? =
+        norm(input, gamma, null, eps, normalizedRank, rms = true)
+
+    /**
+     * Attention in one sidecar pass (`skainet_f32_sdpa`): the same operand contract and mask rules
+     * as the common implementation, the scores never materialised on the Kotlin heap, query rows
+     * threaded in the sidecar's pool. Resident operands are read in place — a chain
+     * `q/k/v = x · Wᵀ → sdpa → · Wₒᵀ` never leaves linear memory.
+     */
+    override fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>,
+        key: Tensor<T, V>,
+        value: Tensor<T, V>,
+        mask: Tensor<T, V>?,
+        scale: Float,
+        causal: Boolean,
+        keyLengths: Tensor<DType, *>?,
+        window: Int,
+        rightContext: Int,
+    ): Tensor<T, V> {
+        if (!WasmKernels.isReady || !isSidecarFloat(query) || !isSidecarFloat(key) || !isSidecarFloat(value) || (mask != null && !isSidecarFloat(mask))) {
+            return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+        }
+        requireSdpaOperands(query, key, value, window, rightContext)
+        val batch = query.shape[0]
+        val heads = query.shape[1]
+        val seqQ = query.shape[2]
+        val headDim = query.shape[3]
+        val kvHeads = key.shape[1]
+        val seqKV = key.shape[2]
+        val lengths = sdpaKeyLengths(keyLengths, batch, seqKV)
+        val maskDims = sdpaMaskDims(mask, batch, heads, kvHeads, seqQ, seqKV) ?: intArrayOf(1, 1, 1, 1)
+        val effectiveScale = if (scale == 0f) (1.0 / kotlin.math.sqrt(headDim.toDouble())).toFloat() else scale
+        var qo: Operand? = null
+        var ko: Operand? = null
+        var vo: Operand? = null
+        var mo: Operand? = null
+        var lengthsPtr = 0
+        try {
+            qo = operand(query) ?: return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+            ko = operand(key) ?: return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+            vo = operand(value) ?: return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+            mo = mask?.let { operand(it) ?: return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext) }
+            if (lengths != null && batch > 0) {
+                lengthsPtr = WasmKernels.alloc(batch * 4)
+                WasmKernels.writeInts(lengthsPtr, lengths, 0, batch)
+            }
+            val qPtr = qo.ptr
+            val kPtr = ko.ptr
+            val vPtr = vo.ptr
+            val mPtr = mo?.ptr ?: 0
+            val lPtr = lengthsPtr
+            return output(Shape(batch, heads, seqQ, headDim), query.dtype, arrayOf(query, key, value)) { out ->
+                WasmKernels.f32Sdpa(
+                    qPtr, kPtr, vPtr, out, batch, heads, kvHeads, seqQ, seqKV, headDim,
+                    effectiveScale, causal, window, rightContext, lPtr, mPtr, maskDims[0], maskDims[1], maskDims[2], maskDims[3],
+                )
+            }
+        } finally {
+            if (lengthsPtr != 0) WasmKernels.free(lengthsPtr)
+            release(mo)
+            release(vo)
+            release(ko)
+            release(qo)
+        }
+    }
 }
