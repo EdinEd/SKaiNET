@@ -172,6 +172,12 @@ documentation {
 tasks.named("generateDocs") {
     dependsOn(":skainet-lang:skainet-lang-core:kspCommonMainKotlinMetadata")
     dependsOn(":skainet-backends:skainet-backend-cpu:kspCommonMainKotlinMetadata")
+    // The coverage dumps are opt-in (see the regenerate command above), but when they are
+    // requested in the same invocation they must finish before the matrix is rendered.
+    mustRunAfter(
+        ":skainet-compile:skainet-compile-hlo:jvmTest",
+        ":skainet-compile:skainet-compile-dag:jvmTest",
+    )
 }
 
 tasks.named("generateKernelMatrix") {

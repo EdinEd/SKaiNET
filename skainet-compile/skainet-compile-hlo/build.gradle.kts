@@ -96,3 +96,9 @@ tasks.register<JavaExec>("generateHlo") {
     providers.gradleProperty("batch").orNull?.let { argsList += "--batch=$it" }
     args = argsList
 }
+
+// HloCoverageDumpTest writes the StableHLO column data for the ops coverage matrix here;
+// declaring it as an output keeps up-to-date checks and the build cache from skipping the dump.
+tasks.withType<Test>().matching { it.name == "jvmTest" }.configureEach {
+    outputs.dir(layout.buildDirectory.dir("generated/coverage"))
+}
