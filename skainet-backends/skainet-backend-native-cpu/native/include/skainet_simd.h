@@ -37,8 +37,9 @@
 /* WebAssembly SIMD128 (SKEEP-007 Tier 1): the browser sidecar is built with
  * `emcc -msimd128`, which defines __wasm_simd128__. Kernels that have an explicit
  * SIMD128 body select it with `#elif defined(__wasm_simd128__)` between their NEON
- * and portable branches; the rest rely on clang's auto-vectoriser over the
- * portable body. */
+ * and portable branches. Every matmul kernel in the sidecar build has one
+ * (q8_0, q4_0, q4k, q5k, q6k, q5_0, q5_1, fp32, fp32_wt, bf16, fp16); the helpers
+ * below are the SIMD128 counterparts of the NEON ones above. */
 #if defined(__wasm_simd128__)
 #  include <wasm_simd128.h>
 #  define SKAINET_HAVE_WASM_SIMD128 1
@@ -90,6 +91,78 @@ static inline void skainet_neon_u8x16_to_f32x4x4(uint8x16_t v, float32x4_t out[4
     out[1] = vcvtq_f32_u32(vmovl_u16(vget_high_u16(lo16)));
     out[2] = vcvtq_f32_u32(vmovl_u16(vget_low_u16(hi16)));
     out[3] = vcvtq_f32_u32(vmovl_u16(vget_high_u16(hi16)));
+}
+#endif
+
+#ifdef SKAINET_HAVE_WASM_SIMD128
+/* Horizontal sum of an f32x4 lane vector. */
+static inline float skainet_wasm_hadd_f32(v128_t v) {
+    return wasm_f32x4_extract_lane(v, 0) + wasm_f32x4_extract_lane(v, 1)
+         + wasm_f32x4_extract_lane(v, 2) + wasm_f32x4_extract_lane(v, 3);
+}
+
+/* Horizontal sum of an i32x4 lane vector. */
+static inline int32_t skainet_wasm_hadd_i32(v128_t v) {
+    return wasm_i32x4_extract_lane(v, 0) + wasm_i32x4_extract_lane(v, 1)
+         + wasm_i32x4_extract_lane(v, 2) + wasm_i32x4_extract_lane(v, 3);
+}
+
+/*
+ * 16 × (int8 · int8) → i32x4 partial sums: the SIMD128 stand-in for NEON's
+ * vdotq_s32. Both operands widen to i16x8 halves and `i32x4.dot_i16x8_s`
+ * multiplies lane pairs and adds them, so each i32 lane holds four products.
+ * Exact for any int8 inputs (|product| ≤ 2^14, four of them fit an i32).
+ */
+static inline v128_t skainet_wasm_dot_i8x16(v128_t a, v128_t b) {
+    const v128_t lo = wasm_i32x4_dot_i16x8(wasm_i16x8_extend_low_i8x16(a),
+                                           wasm_i16x8_extend_low_i8x16(b));
+    const v128_t hi = wasm_i32x4_dot_i16x8(wasm_i16x8_extend_high_i8x16(a),
+                                           wasm_i16x8_extend_high_i8x16(b));
+    return wasm_i32x4_add(lo, hi);
+}
+
+/* Same for an UNSIGNED 8-bit left operand (quant codes 0..31) against int8. */
+static inline v128_t skainet_wasm_dot_u8x16_i8x16(v128_t codes, v128_t a) {
+    const v128_t lo = wasm_i32x4_dot_i16x8(wasm_u16x8_extend_low_u8x16(codes),
+                                           wasm_i16x8_extend_low_i8x16(a));
+    const v128_t hi = wasm_i32x4_dot_i16x8(wasm_u16x8_extend_high_u8x16(codes),
+                                           wasm_i16x8_extend_high_i8x16(a));
+    return wasm_i32x4_add(lo, hi);
+}
+
+/* Σ of 16 int8 lanes as i32x4 partial sums (pairwise widening adds). */
+static inline v128_t skainet_wasm_sum_i8x16(v128_t a) {
+    return wasm_i32x4_extadd_pairwise_i16x8(wasm_i16x8_extadd_pairwise_i8x16(a));
+}
+
+/* Widen 16 unsigned bytes to four f32x4 lanes (out[0] = lanes 0..3, …). */
+static inline void skainet_wasm_u8x16_to_f32x4x4(v128_t v, v128_t out[4]) {
+    const v128_t lo16 = wasm_u16x8_extend_low_u8x16(v);
+    const v128_t hi16 = wasm_u16x8_extend_high_u8x16(v);
+    out[0] = wasm_f32x4_convert_i32x4(wasm_u32x4_extend_low_u16x8(lo16));
+    out[1] = wasm_f32x4_convert_i32x4(wasm_u32x4_extend_high_u16x8(lo16));
+    out[2] = wasm_f32x4_convert_i32x4(wasm_u32x4_extend_low_u16x8(hi16));
+    out[3] = wasm_f32x4_convert_i32x4(wasm_u32x4_extend_high_u16x8(hi16));
+}
+
+/*
+ * Expand the 32-bit high-bit plane of a Q5_0/Q5_1 block into two u8x16 masks
+ * holding 0x10 where element j (lo: 0..15, hi: 16..31) has its fifth bit set:
+ * broadcast each `qh` byte to its eight lanes with a swizzle, test the per-lane
+ * bit and turn the compare mask into the code value 16.
+ */
+static inline void skainet_wasm_q5_fifth_bits(uint32_t qh32, v128_t* fifth_lo, v128_t* fifth_hi) {
+    const v128_t bytes = wasm_i32x4_splat((int32_t) qh32);
+    const v128_t idx_lo = wasm_i8x16_const(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1);
+    const v128_t idx_hi = wasm_i8x16_const(2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3);
+    const v128_t bitmask = wasm_i8x16_const(1, 2, 4, 8, 16, 32, 64, (int8_t) 0x80,
+                                            1, 2, 4, 8, 16, 32, 64, (int8_t) 0x80);
+    const v128_t sixteen = wasm_i8x16_splat(0x10);
+    const v128_t zero = wasm_i8x16_splat(0);
+    const v128_t lo = wasm_v128_and(wasm_i8x16_swizzle(bytes, idx_lo), bitmask);
+    const v128_t hi = wasm_v128_and(wasm_i8x16_swizzle(bytes, idx_hi), bitmask);
+    *fifth_lo = wasm_v128_and(wasm_i8x16_ne(lo, zero), sixteen);
+    *fifth_hi = wasm_v128_and(wasm_i8x16_ne(hi, zero), sixteen);
 }
 #endif
 

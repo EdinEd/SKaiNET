@@ -129,6 +129,30 @@ static inline float q5_1_block_term(
             accv = vfmaq_f32(accv, vld1q_f32(input_block + 24), hi_f[2]);
             accv = vfmaq_f32(accv, vld1q_f32(input_block + 28), hi_f[3]);
             code_dot = skainet_neon_hadd_f32(accv);
+#elif defined(SKAINET_HAVE_WASM_SIMD128)
+            /* SIMD128 body (SKEEP-007 §T1): the NEON structure on 128-bit lanes — the
+             * fifth bits come from a byte swizzle + per-lane bit test (skainet_simd.h). */
+            v128_t fifth_lo, fifth_hi;
+            skainet_wasm_q5_fifth_bits((uint32_t) qh[0] | ((uint32_t) qh[1] << 8) |
+                                       ((uint32_t) qh[2] << 16) | ((uint32_t) qh[3] << 24),
+                                       &fifth_lo, &fifth_hi);
+            const v128_t packed = wasm_v128_load(qs);
+            const v128_t code_lo = wasm_v128_or(wasm_v128_and(packed, wasm_i8x16_splat(0x0F)), fifth_lo); /* elems 0..15  */
+            const v128_t code_hi = wasm_v128_or(wasm_u8x16_shr(packed, 4), fifth_hi);                    /* elems 16..31 */
+            v128_t lo_f[4];
+            v128_t hi_f[4];
+            skainet_wasm_u8x16_to_f32x4x4(code_lo, lo_f);
+            skainet_wasm_u8x16_to_f32x4x4(code_hi, hi_f);
+            v128_t accv = wasm_f32x4_splat(0.0f);
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 0),  lo_f[0]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 4),  lo_f[1]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 8),  lo_f[2]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 12), lo_f[3]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 16), hi_f[0]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 20), hi_f[1]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 24), hi_f[2]));
+            accv = wasm_f32x4_add(accv, wasm_f32x4_mul(wasm_v128_load(input_block + 28), hi_f[3]));
+            code_dot = skainet_wasm_hadd_f32(accv);
 #else
             uint32_t qh32 = (uint32_t) qh[0] | ((uint32_t) qh[1] << 8) |
                             ((uint32_t) qh[2] << 16) | ((uint32_t) qh[3] << 24);

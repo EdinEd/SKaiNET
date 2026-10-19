@@ -91,6 +91,24 @@ static inline void skainet_q6k_unpack_codes(const uint8_t* SKAINET_RESTRICT bloc
         int8_t* out = codes + half * 128;
         for (int is = 0; is < 2; ++is) {
             const int l_start = is * 16;
+#ifdef SKAINET_HAVE_WASM_SIMD128
+            /* The 16-element scale group is exactly one lane vector per sub-code. */
+            const v128_t nib = wasm_i8x16_splat(0x0F);
+            const v128_t two = wasm_i8x16_splat(0x03);
+            const v128_t bias = wasm_i8x16_splat(32);
+            const v128_t q_l0 = wasm_v128_load(ql + l_start);
+            const v128_t q_l32 = wasm_v128_load(ql + l_start + 32);
+            const v128_t q_h = wasm_v128_load(qh + l_start);
+            const v128_t h0 = wasm_i8x16_shl(wasm_v128_and(q_h, two), 4);
+            const v128_t h1 = wasm_i8x16_shl(wasm_v128_and(wasm_u8x16_shr(q_h, 2), two), 4);
+            const v128_t h2 = wasm_i8x16_shl(wasm_v128_and(wasm_u8x16_shr(q_h, 4), two), 4);
+            const v128_t h3 = wasm_i8x16_shl(wasm_u8x16_shr(q_h, 6), 4);
+            wasm_v128_store(out + l_start,      wasm_i8x16_sub(wasm_v128_or(wasm_v128_and(q_l0, nib), h0), bias));
+            wasm_v128_store(out + l_start + 32, wasm_i8x16_sub(wasm_v128_or(wasm_v128_and(q_l32, nib), h1), bias));
+            wasm_v128_store(out + l_start + 64, wasm_i8x16_sub(wasm_v128_or(wasm_u8x16_shr(q_l0, 4), h2), bias));
+            wasm_v128_store(out + l_start + 96, wasm_i8x16_sub(wasm_v128_or(wasm_u8x16_shr(q_l32, 4), h3), bias));
+            continue;
+#endif
             for (int l = l_start; l < l_start + 16; ++l) {
                 const int q_l0  = ql[l];
                 const int q_l32 = ql[l + 32];
@@ -109,7 +127,8 @@ static inline void skainet_q6k_unpack_codes(const uint8_t* SKAINET_RESTRICT bloc
  * over the 16 scale-groups (each a 16-element contiguous run in natural order).
  * Run `r` for (half,k,is) starts at half*128 + 32*k + is*16 and uses signed
  * scale sc[half*8 + is + 2*k]. On AArch64 with dotprod each 16-element dot is a
- * single vdotq_s32; otherwise a scalar fallback (auto-vectorizes under -O3).
+ * single vdotq_s32; in the wasm sidecar two i32x4.dot_i16x8_s over widened
+ * lanes; otherwise a scalar fallback (auto-vectorizes under -O3).
  */
 #if defined(SKAINET_HAVE_DOTPROD) || defined(SKAINET_DOTPROD_DISPATCH)
 SKAINET_DOTPROD_TARGET
@@ -142,8 +161,13 @@ static int64_t skainet_q6k_weighted_dot_generic(const int8_t* SKAINET_RESTRICT q
             for (int is = 0; is < 2; ++is) {
                 const int start = half * 128 + 32 * k + is * 16;
                 const int gs = half * 8 + is + 2 * k;
+#ifdef SKAINET_HAVE_WASM_SIMD128
+                const int32_t dot = skainet_wasm_hadd_i32(
+                    skainet_wasm_dot_i8x16(wasm_v128_load(codes + start), wasm_v128_load(q8 + start)));
+#else
                 int32_t dot = 0;
                 for (int j = 0; j < 16; ++j) dot += (int) q8[start + j] * (int) codes[start + j];
+#endif
                 sum += (int64_t) sc[gs] * dot;
             }
         }
