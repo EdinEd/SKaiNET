@@ -205,6 +205,43 @@ public object WasmKernels {
     /** `skainet_fp32_matmul_wt`: `out(m,n) = in(m,k) · w(n,k)ᵀ`. */
     public fun fp32MatmulWt(inPtr: Int, wPtr: Int, outPtr: Int, m: Int, n: Int, k: Int): Unit =
         jsFp32MatmulWt(mod(), inPtr, wPtr, outPtr, m, n, k)
+
+    /**
+     * `skainet_bf16_matmul` / `skainet_fp16_matmul`: `C(m,n) = A(m,k) · B(k,n)` with `B` stored as
+     * 16-bit floats, strides in floats for `A`/`C` and in bytes for `B`.
+     */
+    public fun narrowFloatMatmul(fnName: String, aPtr: Int, aStride: Int, bPtr: Int, bByteStride: Int, cPtr: Int, cStride: Int, m: Int, n: Int, k: Int): Unit =
+        jsNarrowFloatMatmul(mod(), fnName, aPtr, aStride, bPtr, bByteStride, cPtr, cStride, m, n, k)
+
+    // ── diagnostics ───────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * What the sidecar runs on — the wasm counterpart of the JVM's provider banner and CPU-feature
+     * probes. [hardwareConcurrency] is the browser's (or Node's) logical core count, [threads] whether
+     * the pthreads build is loaded (it only is when [crossOriginIsolated] or under Node).
+     */
+    public data class SidecarFeatures(
+        val mode: String,
+        val simd128: Boolean,
+        val threads: Boolean,
+        val crossOriginIsolated: Boolean,
+        val hardwareConcurrency: Int,
+        val residentWeightBytes: Long,
+    ) {
+        override fun toString(): String =
+            "mode=$mode simd128=$simd128 threads=$threads crossOriginIsolated=$crossOriginIsolated " +
+                "cores=$hardwareConcurrency residentWeightBytes=$residentWeightBytes"
+    }
+
+    /** Current sidecar capabilities; `mode == "none"` before [initialize]. */
+    public fun features(): SidecarFeatures = SidecarFeatures(
+        mode = modeName,
+        simd128 = isReady,
+        threads = modeName == "simd128-mt",
+        crossOriginIsolated = jsCrossOriginIsolated(),
+        hardwareConcurrency = jsHardwareConcurrency(),
+        residentWeightBytes = if (isReady) residentWeightBytes() else 0L,
+    )
 }
 
 // ── JS glue ───────────────────────────────────────────────────────────────────────────────────────
@@ -260,3 +297,20 @@ private fun jsFp32Matmul(mod: JsAny, aPtr: Int, aStride: Int, bPtr: Int, bStride
 
 private fun jsFp32MatmulWt(mod: JsAny, inPtr: Int, wPtr: Int, outPtr: Int, m: Int, n: Int, k: Int): Unit =
     js("mod._skainet_fp32_matmul_wt(inPtr, 0, wPtr, 0, outPtr, 0, m, n, k)")
+
+private fun jsNarrowFloatMatmul(mod: JsAny, fnName: String, aPtr: Int, aStride: Int, bPtr: Int, bByteStride: Int, cPtr: Int, cStride: Int, m: Int, n: Int, k: Int): Unit =
+    js("mod[fnName](aPtr, 0, aStride, bPtr, 0, bByteStride, cPtr, 0, cStride, m, n, k)")
+
+private fun jsCrossOriginIsolated(): Boolean = js("typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true")
+
+private fun jsHardwareConcurrency(): Int = js(
+    """
+    (function() {
+      if (typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number') return navigator.hardwareConcurrency;
+      if (typeof process !== 'undefined' && process.versions != null && process.versions.node != null) {
+        try { return require('os').cpus().length; } catch (e) { return 0; }
+      }
+      return 0;
+    })()
+    """,
+)

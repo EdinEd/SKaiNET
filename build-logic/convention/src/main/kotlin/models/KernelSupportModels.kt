@@ -22,6 +22,7 @@ data class KernelSupportModule(
      * prepack. Absent/empty in pre-#1189 JSON, so old files stay decodable.
      */
     val mapped: List<KernelFormatSupport> = emptyList(),
+    val resident: List<KernelFormatSupport> = emptyList(),
 )
 
 @Serializable

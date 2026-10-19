@@ -28,7 +28,7 @@ class KernelSupportMatrixTest {
     @AfterTest
     fun reset() = KernelDispatch.clearForTesting()
 
-    private val formats = listOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")
+    private val formats = listOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")
 
     // platform key (display) -> the set of providers (by source-set) reaching it.
     private val platforms = listOf("JVM", "Android", "Native·linux", "Native·apple", "JS/WASM")
@@ -48,9 +48,11 @@ class KernelSupportMatrixTest {
     private fun tiers(): List<Tier> = listOf(
         Tier("scalar", 0, platforms.toSet(), scalarFormats()),
         Tier("panama-vector", 50, setOf("JVM"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
+            setOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
+        // native-ffm: every accessor of NativeKernelProvider, Q6_K included (DefaultCpuOps resolves
+        // `matmulQ6K()` from the best available provider, so the FFM kernel wins over Panama).
         Tier("native-ffm", 100, setOf("JVM"),
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q5_1", "Q5_0")),
+            setOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0")),
         Tier("native-jni", 100, setOf("Android"),
             setOf("Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
         // native-cinterop: NativeKnKernelProvider (nativeMain) — the same C
@@ -65,9 +67,22 @@ class KernelSupportMatrixTest {
         // kernels compiled by Emscripten into a SIMD128 sidecar module (SKEEP-007 Tier 1), with
         // pthreads on cross-origin-isolated pages and under Node. Installed by WasmSimd.install();
         // without it the JS/WASM column is the scalar floor. The row-major `_rm` kernels are also
-        // served (WasmSimdKernelPack), heap-resident in the sidecar rather than mapped.
+        // served (WasmSimdKernelPack), heap-resident in the sidecar rather than mapped. BF16 and FP16
+        // bind the sidecar's `skainet_bf16_matmul` / `skainet_fp16_matmul` exports.
         Tier("wasm-simd128", 50, setOf("JS/WASM"),
-            setOf("Float32", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
+            setOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
+    )
+
+    /**
+     * Resident serving: the wasm tier's counterpart of mapped serving. A browser has no file to map,
+     * so `WasmKernels.weightHandle` / `denseWeightHandle` upload each weight into the sidecar's linear
+     * memory once and every later matmul reads it in place — the dense and narrow-float kernels and
+     * all seven packed `_rm` kernels. Hand-declared like the Android mapped row: nothing on a JVM
+     * test run can instantiate the sidecar.
+     */
+    private fun residentTiers(): List<Tier> = listOf(
+        Tier("wasm-resident", 50, setOf("JS/WASM"),
+            setOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q5_K", "Q6_K", "Q5_1", "Q5_0")),
     )
 
     /**
@@ -120,6 +135,16 @@ class KernelSupportMatrixTest {
                 .append(cells.joinToString(", ")).append("}}")
             sb.append(if (i == mappedFormats.lastIndex) "\n" else ",\n")
         }
+        sb.append("  ],\n")
+        val resident = residentTiers()
+        val residentFormats = formats.filter { fmt -> resident.any { fmt in it.formats } }
+        sb.append("  \"resident\": [\n")
+        residentFormats.forEachIndexed { i, fmt ->
+            val cells = platforms.mapNotNull { p -> best(fmt, p, resident)?.let { "\"$p\": \"$it\"" } }
+            sb.append("    {\"name\": \"").append(fmt).append("\", \"byPlatform\": {")
+                .append(cells.joinToString(", ")).append("}}")
+            sb.append(if (i == residentFormats.lastIndex) "\n" else ",\n")
+        }
         sb.append("  ]\n}\n")
         return sb.toString()
     }
@@ -131,7 +156,7 @@ class KernelSupportMatrixTest {
         // Drift gate on the scalar floor (the all-platform baseline): the documented set
         // below must equal what the scalar provider actually carries. Update both together.
         assertEquals(
-            setOf("Float32", "BFloat16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0"),
+            setOf("Float32", "BFloat16", "Float16", "Q8_0", "Q4_0", "Q4_K", "Q6_K", "Q5_K", "Q5_1", "Q5_0"),
             scalarFormats(),
             "ScalarKernelProvider coverage changed — update the declared sets + run ./gradlew generateKernelMatrix",
         )
@@ -139,6 +164,16 @@ class KernelSupportMatrixTest {
         // Sanity: every provider singleton is a KernelProvider (compile-time anchor).
         val providers: List<KernelProvider> = listOf(ScalarKernelProvider, PanamaVectorKernelProvider, NativeKernelProvider)
         assertEquals(3, providers.size)
+
+        // Drift gate on the declared JVM tiers, where the environment allows it: a provider whose
+        // accessors answer (`isAvailable()`) must expose exactly the hand-kept set, so a provider
+        // gaining or losing a kernel fails here. An unavailable provider (no Vector API module, no
+        // native library on this runner) is skipped — that is the env gate the KDoc describes.
+        fun exposed(p: KernelProvider) = formats.filter { p.supports("matmul", listOf("Float32", it)) }.toSet()
+        for (p in listOf(PanamaVectorKernelProvider, NativeKernelProvider)) {
+            if (!p.isAvailable()) continue
+            assertEquals(tiers.first { it.name == p.name }.formats, exposed(p), "${p.name} tier drifted from the provider")
+        }
 
         // Drift gate on mapped serving (#1193): install the JVM-reachable mapped-capable
         // kernels and assert what they actually serve against StorageCapabilities'

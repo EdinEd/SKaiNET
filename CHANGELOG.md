@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **BF16 and FP16 matmul on the wasm tier**: `WasmKernelProvider` now binds the sidecar's `skainet_bf16_matmul` / `skainet_fp16_matmul` exports (`WasmBf16MatmulKernel`, `WasmFp16MatmulKernel`), so 16-bit dense weights no longer fall to the scalar kernels in a browser; a contiguous weight stays resident in the sidecar after its first call.
+- **`WasmSimd.features()` / `WasmKernels.features()`**: mode, SIMD128, threads, cross-origin isolation, logical cores and resident weight bytes — the wasm counterpart of the JVM provider banner. `WasmSimd.install()` prints one `[SKaiNET] Using SIMD128 sidecar kernels (…)` line like the JVM factory does.
+- **`KernelStrictness` is common code** (was JVM-only): `KernelStrictness.overrideEnabled` is the programmatic switch on every target; the JVM and Android still read `-Dskainet.strict.kernels`. `KernelDispatch` fails fast before the decoding reference fallback and `DefaultCpuOps.matmul` before the generic per-element loop, so strict mode means the same thing on every tier.
+- **Kernel support matrix**: a `Float16` row, BF16/FP16 in the wasm column, Q6_K corrected to `native-ffm` on the JVM (the provider has had the kernel; the declared tier had not), and a third table, *Resident serving*, naming the sidecar-resident weights that stand in for mapped serving on JS/WASM. `KernelSupportMatrixTest` now gates the declared Panama and FFM tiers against what the providers expose.
+- **`wasm-bench` runs the `engine-*` scenarios** of the JVM publish harness (`engine-fp32-gemm`, `engine-kernel-matmul`, `engine-bf16-matmul`, `engine-q8-matmul`, `engine-q4-gemm`, `engine-ternary-f32-gemv`, `engine-elementwise-add`, `engine-reductions-sum/mean`) with identical shapes and metrics on every tier it measures, so the JVM and wasm numbers sit in one table.
+
 ## [0.61.0] - 2026-10-16
 
 Headline: **the browser lane (SKEEP-007): packed SIMD128 kernels, quantize-at-load, and no more

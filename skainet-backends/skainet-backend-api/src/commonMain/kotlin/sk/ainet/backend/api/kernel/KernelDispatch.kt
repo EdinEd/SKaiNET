@@ -202,6 +202,13 @@ public object KernelDispatch {
         // blocked weight (per-element block decode) — a process that lands here on a quantized
         // weight almost certainly forgot to install a kernel pack. Say so once, loudly, even with
         // no sink attached: silent fallback is how a 25 s/token regression ships unnoticed.
+        if (b.layout.blocked) {
+            KernelStrictness.failIfStrict {
+                "matmul (activation=${a.format.encoding}, weight=${b.format.encoding}, " +
+                    "order=${b.layout.blockOrder}) has no registered kernel; would fall back to the " +
+                    "decoding reference kernel. Registered: ${kernels().joinToString { it.name }.ifEmpty { "<none>" }}"
+            }
+        }
         if (!warnedReferenceFallback && b.layout.blocked) {
             warnedReferenceFallback = true
             println(
