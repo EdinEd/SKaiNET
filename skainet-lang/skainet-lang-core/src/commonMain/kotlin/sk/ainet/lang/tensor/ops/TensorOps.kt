@@ -169,7 +169,7 @@ public interface TensorOps {
      * Not implemented on any backend yet: the default throws. Once a backend kernel lands this
      * becomes an abstract `@Diff` op like [convTranspose1d].
      */
-    @NotImplemented(reason = "no backend kernel yet; TransposedConv2d.forward depends on it")
+    @NotImplemented(reason = "no backend kernel yet; TransposedConv2d.forward depends on it", issue = "#1371")
     public fun <T : DType, V> convTranspose2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -179,7 +179,7 @@ public interface TensorOps {
         outputPadding: Pair<Int, Int> = 0 to 0,
         dilation: Pair<Int, Int> = 1 to 1,
         groups: Int = 1
-    ): Tensor<T, V> = throw NotImplementedError("convTranspose2d is not implemented on this backend yet")
+    ): Tensor<T, V> = throw NotImplementedError("convTranspose2d is not implemented on this backend yet (see #1371)")
 
     // Pooling operations
     @Diff

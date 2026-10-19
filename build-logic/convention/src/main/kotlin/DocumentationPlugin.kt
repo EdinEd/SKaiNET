@@ -42,9 +42,14 @@ class DocumentationPlugin : Plugin<Project> {
                 task.group = "verification"
                 task.description = "Fail on NotImplementedError / TODO( stubs that are neither @NotImplemented nor allowlisted"
                 val root = project.rootProject.layout.projectDirectory
-                task.sources.from(root.asFileTree.matching {
+                // Per-project src/ trees (not the repo root) so the scan never overlaps other
+                // tasks' outputs such as the generated docs pages.
+                project.rootProject.allprojects.forEach { p ->
+                    task.sources.from(p.fileTree("src") { include("**/*.kt") })
+                }
+                task.sources.from(root.dir("build-logic").asFileTree.matching {
                     include("**/src/**/*.kt")
-                    exclude("**/build/**", ".gradle/**", "**/node_modules/**")
+                    exclude("**/build/**", "**/.gradle/**")
                 })
                 task.rootDirectory.set(root)
                 task.allowlistFile.set(root.file("config/stub-allowlist.txt"))

@@ -37,7 +37,7 @@ import sk.ainet.lang.ops.NotImplemented
  * @param initWeights Initial weights tensor
  * @param initBias Initial bias tensor (if bias is true)
  */
-@NotImplemented(reason = "forward needs TensorOps.convTranspose2d, which no backend implements yet")
+@NotImplemented(reason = "forward needs TensorOps.convTranspose2d, which no backend implements yet", issue = "#1371")
 public class TransposedConv2d<T : DType, V>(
     public val inChannels: Int,
     public val outChannels: Int,

@@ -1326,7 +1326,7 @@ public class DefaultGradientTape(
      * Dispatched ops whose backward rule is still a stub that returns `null` gradients, so
      * gradients silently stop there. Rendered as ❌ in the Backward column of the operator
      * coverage matrix (BackwardCoverageDumpTest). Remove an entry in the change that
-     * implements its rule.
+     * implements its rule. scaledDotProductAttention: #1384.
      */
     internal val stubbedBackwardOpNames: Set<String> = setOf("scaledDotProductAttention")
 

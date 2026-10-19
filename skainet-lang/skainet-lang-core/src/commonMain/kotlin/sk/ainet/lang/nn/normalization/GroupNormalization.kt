@@ -23,7 +23,7 @@ import kotlin.reflect.KClass
  * @param initGamma Initial gamma (scale) parameter
  * @param initBeta Initial beta (shift) parameter
  */
-@NotImplemented(reason = "forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied")
+@NotImplemented(reason = "forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied", issue = "#1379")
 public class GroupNormalization<T : DType, V>(
     private val numGroups: Int,
     private val numChannels: Int,

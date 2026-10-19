@@ -34,7 +34,7 @@ Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemen
 | `TensorOps.conv2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.conv3d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
 | `TensorOps.convTranspose1d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
-| `TensorOps.convTranspose2d` | ✖ | — | ❌ | — | ❌ | ❌ | ❌ 
+| `TensorOps.convTranspose2d` | ✖ | — | ❌ | — | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] 
 | `TensorOps.maxPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.avgPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
 | `TensorOps.upsample2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
@@ -111,7 +111,7 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Lstm` | `sk.ainet.lang.nn` | ✅ | —
 | `MaxPool2d` | `sk.ainet.lang.nn` | ✅ | —
 | `TransposedConv1d` | `sk.ainet.lang.nn` | ✅ | —
-| `TransposedConv2d` | `sk.ainet.lang.nn` | ❌ | forward needs TensorOps.convTranspose2d, which no backend implements yet
+| `TransposedConv2d` | `sk.ainet.lang.nn` | ❌ | forward needs TensorOps.convTranspose2d, which no backend implements yet — https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371]
 | `Upsample2d` | `sk.ainet.lang.nn` | ✅ | —
 | `ActivationsWrapperModule` | `sk.ainet.lang.nn.activations` | ✅ | —
 | `ELU` | `sk.ainet.lang.nn.activations` | ✅ | —
@@ -125,7 +125,7 @@ Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forw
 | `Dropout` | `sk.ainet.lang.nn.layers` | ✅ | —
 | `LossModule` | `sk.ainet.lang.nn.loss` | ✅ | —
 | `BatchNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
-| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ❌ | forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied
+| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ❌ | forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied — https://github.com/SKaiNET-developers/SKaiNET/issues/1379[#1379]
 | `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
 | `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
 

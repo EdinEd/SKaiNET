@@ -8,26 +8,26 @@
 # Ops and nn layers do not belong here: annotate them with @NotImplemented(reason, issue).
 
 # --- Docs generator ----------------------------------------------------------------------
-build-logic/convention/src/main/kotlin/GenerateDocumentationTask.kt|2|Markdown / HTML output formats (AsciiDoc only)
+build-logic/convention/src/main/kotlin/GenerateDocumentationTask.kt|2|#1418 Markdown / HTML output formats (AsciiDoc only)
 
 # --- Compile / export: writeExportToFile has only a JVM actual ---------------------------
-skainet-compile/skainet-compile-json/src/androidNativeMain/kotlin/sk/ainet/compile/json/Serialization.androidNative.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/iosArm64Main/kotlin/sk/ainet/compile/json/Serialization.ios.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/iosSimulatorArm64Main/kotlin/sk/ainet/compile/json/Serialization.iossim.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/jsMain/kotlin/sk/ainet/compile/json/Serialization.js.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/linuxArm64Main/kotlin/sk/ainet/compile/json/Serialization.linuxarm64.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/linuxX64Main/kotlin/sk/ainet/compile/json/Serialization.linuxx64.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/macosArm64Main/kotlin/sk/ainet/compile/json/Serialization.macos.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/wasmJsMain/kotlin/sk/ainet/compile/json/Serialization.wasm.kt|1|writeExportToFile on non-JVM targets
-skainet-compile/skainet-compile-json/src/wasmWasiMain/kotlin/sk/ainet/compile/json/Serialization.wasmWasi.kt|1|writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/androidNativeMain/kotlin/sk/ainet/compile/json/Serialization.androidNative.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/iosArm64Main/kotlin/sk/ainet/compile/json/Serialization.ios.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/iosSimulatorArm64Main/kotlin/sk/ainet/compile/json/Serialization.iossim.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/jsMain/kotlin/sk/ainet/compile/json/Serialization.js.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/linuxArm64Main/kotlin/sk/ainet/compile/json/Serialization.linuxarm64.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/linuxX64Main/kotlin/sk/ainet/compile/json/Serialization.linuxx64.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/macosArm64Main/kotlin/sk/ainet/compile/json/Serialization.macos.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/wasmJsMain/kotlin/sk/ainet/compile/json/Serialization.wasm.kt|1|#1420 writeExportToFile on non-JVM targets
+skainet-compile/skainet-compile-json/src/wasmWasiMain/kotlin/sk/ainet/compile/json/Serialization.wasmWasi.kt|1|#1420 writeExportToFile on non-JVM targets
 
 # --- IO ------------------------------------------------------------------------------------
-skainet-io/skainet-io-iree-params/src/nativeMain/kotlin/sk/ainet/io/irpa/FileBackedTransfer.native.kt|1|IRPA FileBacked transfer on Kotlin/Native
+skainet-io/skainet-io-iree-params/src/nativeMain/kotlin/sk/ainet/io/irpa/FileBackedTransfer.native.kt|1|#1423 IRPA FileBacked transfer on Kotlin/Native
 skainet-io/skainet-io-iree-params/src/wasmJsMain/kotlin/sk/ainet/io/irpa/FileBackedTransfer.wasmjs.kt|1|platform limitation: no file mapping in the browser
-skainet-io/skainet-io-iree-params/src/wasmWasiMain/kotlin/sk/ainet/io/irpa/FileBackedTransfer.wasmwasi.kt|1|IRPA FileBacked transfer on wasmWasi
-skainet-io/skainet-io-onnx/src/commonMain/kotlin/sk/ainet/io/onnx/OnnxModelReader.kt|1|streaming tensor loading for ONNX
+skainet-io/skainet-io-iree-params/src/wasmWasiMain/kotlin/sk/ainet/io/irpa/FileBackedTransfer.wasmwasi.kt|1|IRPA FileBacked transfer on wasmWasi (follow-up of #1423)
+skainet-io/skainet-io-onnx/src/commonMain/kotlin/sk/ainet/io/onnx/OnnxModelReader.kt|1|#1407 streaming tensor loading for ONNX
 
 # --- Lang core: DSL and tensor views ---------------------------------------------------------
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/dsl/NetworkBuilder.kt|6|mixed-precision dense<T>() / stage<T>() (needs a SKEEP)
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/TensorSlicingExtensions.kt|1|sliceCopy {} materialization
-skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/dsl/TensorDSL.kt|1|TensorDefineDslImpl.create() (unused; implement or delete)
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/dsl/NetworkBuilder.kt|6|mixed-precision dense<T>() / stage<T>() — needs a SKEEP before an issue
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/TensorSlicingExtensions.kt|1|#1415 sliceCopy {} materialization
+skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/dsl/TensorDSL.kt|1|#1417 TensorDefineDslImpl.create() (unused; implement or delete)
