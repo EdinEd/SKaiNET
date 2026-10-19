@@ -510,6 +510,36 @@ SKAINET_API void skainet_fp32_matmul_wt(
     int32_t m, int32_t n, int32_t k
 );
 
+/*
+ * Dense FP32 elementwise, activation and reduction kernels (SKEEP-007 resident
+ * activations; see src/f32_ops.c for the contracts). Operands are contiguous.
+ *
+ *   skainet_f32_binary: out[i] = a[ia] op b[ib], op ∈ {0 add, 1 sub, 2 mul, 3 div};
+ *     a_mode / b_mode ∈ {0 full (ia = i), 1 scalar (ia = 0), 2 bias (ia = i % inner)}.
+ *   skainet_f32_unary: out[i] = f(in[i]), f ∈ {0 relu, 1 sigmoid, 2 silu,
+ *     3 gelu (tanh form), 4 gelu (erf form), 5 erf, 6 tanh}.
+ *   skainet_f32_reduce_all: *out = Σ in[0..n) (/ n when mean != 0).
+ *   skainet_f32_reduce_axis: out[o*inner + x] = Σ_k in[(o*red + k)*inner + x]
+ *     (/ red when mean != 0).
+ *
+ * Threaded over chunks of the output through the shared row pool; per-element
+ * results do not depend on the partition.
+ */
+SKAINET_API void skainet_f32_binary(
+    int32_t op,
+    const float* a, int32_t a_mode,
+    const float* b, int32_t b_mode,
+    float* out, int32_t n, int32_t inner
+);
+
+SKAINET_API void skainet_f32_unary(int32_t op, const float* in, float* out, int32_t n);
+
+SKAINET_API void skainet_f32_reduce_all(const float* in, int32_t n, int32_t mean, float* out);
+
+SKAINET_API void skainet_f32_reduce_axis(
+    const float* in, int32_t outer, int32_t red, int32_t inner, int32_t mean, float* out
+);
+
 #ifdef __cplusplus
 }
 #endif

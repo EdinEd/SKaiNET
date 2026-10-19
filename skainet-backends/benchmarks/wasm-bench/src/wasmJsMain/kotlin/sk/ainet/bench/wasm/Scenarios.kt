@@ -4,6 +4,7 @@ import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelKey
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.exec.wasm.WasmCpuOps
 import sk.ainet.lang.memory.Scope
 import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
@@ -131,6 +132,23 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val a = ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { it.toFloat() * 0.5f })
         val b = ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { 1f });
         { n / seconds { ctx.ops.add(a, b) } / 1e6 }
+    },
+    // The same three ops on operands already resident in the sidecar (the shape a chain between two
+    // matmuls has); heap operands above stay on the common lane by design.
+    WasmScenario("engine-elementwise-add", "melems_per_sec", mapOf("elements" to "1000000", "operands" to "resident"), reps = 10) {
+        val n = 1_000_000
+        val ctx = DirectCpuExecutionContext()
+        val ops = ctx.ops as? WasmCpuOps ?: error("resident operands need the sidecar")
+        val a = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { it.toFloat() * 0.5f }))
+        val b = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { 1f }));
+        { n / seconds { ctx.ops.add(a, b) } / 1e6 }
+    },
+    WasmScenario("engine-reductions-sum", "melems_per_sec", mapOf("elements" to "1000000", "op" to "sum", "operands" to "resident"), reps = 10) {
+        val n = 1_000_000
+        val ctx = DirectCpuExecutionContext()
+        val ops = ctx.ops as? WasmCpuOps ?: error("resident operands need the sidecar")
+        val a = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { (it % 1024).toFloat() * 0.25f }));
+        { n / seconds { ctx.ops.sum(a).data.copyToFloatArray() } / 1e6 }
     },
     WasmScenario("engine-reductions-sum", "melems_per_sec", mapOf("elements" to "1000000", "op" to "sum"), reps = 10) {
         val n = 1_000_000

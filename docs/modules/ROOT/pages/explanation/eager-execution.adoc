@@ -103,7 +103,7 @@ not per call.
 | *Android* | Scalar + Native-JNI | Panama (`jdk.incubator.vector`) and FFM (`java.lang.foreign`) are JDK-only — ART has neither, so Android's native tier is JNI, not a degraded JVM. Includes the NEON `bitnet_gemv` pack.
 | *Kotlin/Native — linux x64/arm64* | Scalar + Native-cinterop | Static archive embedded in the klib; manual `installNativeKernels()`, no ServiceLoader on K/N.
 | *Kotlin/Native — macOS/iOS* | Scalar + Apple Accelerate + Native-cinterop | Accelerate covers dense FP32 and reductions; cinterop covers packed quant with runtime `FEAT_DotProd` dispatch, so one archive serves A12 through M-series.
-| *JS / WASM (Js, Wasi)* | Scalar; wasmJs + `skainet-backend-wasm-simd` | No SIMD in Kotlin code: packed weights are relaid once per weight into kernel feed order and served by the scalar packed kernels; dense `[out, in]` weights are multiplied in place without a transpose copy (SKEEP-007 Tier 0). On wasmJs, `WasmSimd.install()` adds the SIMD128 sidecar pack — the engine's C kernels compiled by Emscripten, with pthreads on cross-origin-isolated pages (SKEEP-007 Tier 1).
+| *JS / WASM (Js, Wasi)* | Scalar; wasmJs + `skainet-backend-wasm-simd` | No SIMD in Kotlin code: packed weights are relaid once per weight into kernel feed order and served by the scalar packed kernels; dense `[out, in]` weights are multiplied in place without a transpose copy (SKEEP-007 Tier 0). On wasmJs, `WasmSimd.install()` adds the SIMD128 sidecar pack — the engine's C kernels compiled by Emscripten, with pthreads on cross-origin-isolated pages (SKEEP-007 Tier 1) — and binds `HOST_OFFHEAP` to the sidecar's linear memory, so matmul outputs, elementwise arithmetic, activations and reductions stay resident there between kernels and cross back to the Kotlin heap only when read.
 |===
 
 Packed-quant matmul works on every target: those formats have a `commonMain` scalar kernel and
@@ -111,9 +111,10 @@ Packed-quant matmul works on every target: those formats have a `commonMain` sca
 
 == Gaps
 
-* *Wasm beyond matmul* — elementwise, activations, reductions, normalisation and attention are the
-common scalar Kotlin paths on wasmJs; Kotlin/Wasm has no SIMD types and no shared-memory threads, so
-these follow the matmuls into the sidecar (SKEEP-007 rollout step 3).
+* *Wasm beyond matmul, part two* — softmax, the normalisations and attention are still the common
+scalar Kotlin paths on wasmJs. Elementwise arithmetic, the activations and `sum`/`mean` already run
+in the sidecar with the activations kept resident in its linear memory (`Storage.WasmLinear`,
+`WasmCpuOps`); the remaining ops follow as fused kernels on both tiers (SKEEP-007 rollout step 3).
 * *Native JNI dense FP32/BF16* — the Android JNI provider has no GEMM shim, so dense ops fall
 through to scalar there whichever `.so` tier loaded (SKaiNET#920).
 * *Dense FP32/BF16 SIMD on Kotlin/Native linux* — still the scalar floor; Apple has Accelerate

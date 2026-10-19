@@ -51,6 +51,7 @@ public object WasmKernels {
             loadEmbeddedSidecar(mjs, wasm).await<JsAny>()
         }
         modeName = if (mt) "simd128-mt" else "simd128-st"
+        jsResidentState(mod())
     }
 
     /** Drop the sidecar and every cached weight; the next [initialize] starts over. Tests only. */
@@ -137,6 +138,70 @@ public object WasmKernels {
             done += n
         }
     }
+
+    /** Copy [count] bytes from sidecar memory at [srcPtr] into [dst]. */
+    public fun readBytes(srcPtr: Int, dst: ByteArray, dstOffset: Int, count: Int) {
+        val m = mod()
+        var done = 0
+        while (done < count) {
+            val n = minOf(count - done, CHUNK_BYTES)
+            withScopedMemoryAllocator { allocator ->
+                val base = allocator.allocate(n)
+                jsCopyOut(m, wasmMemory, srcPtr + done, base.address.toInt(), n)
+                var p: Pointer = base
+                var i = 0
+                while (i + 4 <= n) {
+                    val v = p.loadInt()
+                    val o = dstOffset + done + i
+                    dst[o] = (v and 0xFF).toByte()
+                    dst[o + 1] = ((v ushr 8) and 0xFF).toByte()
+                    dst[o + 2] = ((v ushr 16) and 0xFF).toByte()
+                    dst[o + 3] = ((v ushr 24) and 0xFF).toByte()
+                    p = p + 4
+                    i += 4
+                }
+                while (i < n) {
+                    dst[dstOffset + done + i] = p.loadByte()
+                    p = p + 1
+                    i++
+                }
+            }
+            done += n
+        }
+    }
+
+    /** Copy [bytes] bytes inside sidecar memory from [srcPtr] to [dstPtr]. */
+    public fun copy(srcPtr: Int, dstPtr: Int, bytes: Int) {
+        if (bytes > 0) jsCopyWithin(mod(), srcPtr, dstPtr, bytes)
+    }
+
+    /** Zero [bytes] bytes of sidecar memory at [ptr]. */
+    public fun zero(ptr: Int, bytes: Int) {
+        if (bytes > 0) jsZero(mod(), ptr, bytes)
+    }
+
+    // ── resident activations (Storage.WasmLinear) ─────────────────────────────────────────────────
+
+    /**
+     * Sidecar bytes currently held by resident activations ([WasmLinearStorage]), scoped and
+     * ambient — the figure [WasmSimd.residentBudgetBytes] is checked against.
+     */
+    public fun residentActivationBytes(): Long = if (isReady) jsResidentBytes(mod()).toLong() else 0L
+
+    /** Allocate [bytes] for a resident activation; counted in [residentActivationBytes]. */
+    internal fun allocResident(bytes: Int): Int = jsResidentAlloc(mod(), bytes)
+
+    /** Free a resident activation's bytes and stop counting them. */
+    internal fun freeResident(ptr: Int, bytes: Int): Unit = jsResidentFree(mod(), ptr, bytes)
+
+    /**
+     * Register an ambient (GC-managed) resident allocation with the sidecar's `FinalizationRegistry`:
+     * the returned token is held by the Kotlin storage object, and when that object is collected the
+     * registry frees the sidecar bytes. Explicit `close()` must [untrackResident] first.
+     */
+    internal fun trackResident(ptr: Int, bytes: Int): JsAny = jsResidentTrack(mod(), ptr, bytes)
+
+    internal fun untrackResident(token: JsAny): Unit = jsResidentUntrack(mod(), token)
 
     // ── resident weights ──────────────────────────────────────────────────────────────────────────
 
@@ -231,6 +296,41 @@ public object WasmKernels {
     public fun bitnetGemvTq2_0(activationPtr: Int, activationScale: Float, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
         jsBitnetGemvTq2_0(mod(), activationPtr, activationScale, weightPtr, inputDim, outputDim, outPtr)
 
+    /** Operand index modes of [f32Binary] (`skainet_f32_binary`). */
+    public const val F32_FULL: Int = 0
+    public const val F32_SCALAR: Int = 1
+    public const val F32_BIAS: Int = 2
+
+    /** Operators of [f32Binary]. */
+    public const val F32_ADD: Int = 0
+    public const val F32_SUB: Int = 1
+    public const val F32_MUL: Int = 2
+    public const val F32_DIV: Int = 3
+
+    /** Functions of [f32Unary] (`skainet_f32_unary`). */
+    public const val F32_RELU: Int = 0
+    public const val F32_SIGMOID: Int = 1
+    public const val F32_SILU: Int = 2
+    public const val F32_GELU_TANH: Int = 3
+    public const val F32_GELU_EXACT: Int = 4
+    public const val F32_ERF: Int = 5
+    public const val F32_TANH: Int = 6
+
+    /** `skainet_f32_binary`: `out[i] = a[ia] op b[ib]` over [n] outputs, each side indexed by its mode (full, scalar, last-dim bias of [inner]). */
+    public fun f32Binary(op: Int, aPtr: Int, aMode: Int, bPtr: Int, bMode: Int, outPtr: Int, n: Int, inner: Int): Unit =
+        jsF32Binary(mod(), op, aPtr, aMode, bPtr, bMode, outPtr, n, inner)
+
+    /** `skainet_f32_unary`: `out[i] = f(in[i])`. */
+    public fun f32Unary(op: Int, inPtr: Int, outPtr: Int, n: Int): Unit = jsF32Unary(mod(), op, inPtr, outPtr, n)
+
+    /** `skainet_f32_reduce_all`: the sum (or mean) of [n] floats into the single float at [outPtr]. */
+    public fun f32ReduceAll(inPtr: Int, n: Int, mean: Boolean, outPtr: Int): Unit =
+        jsF32ReduceAll(mod(), inPtr, n, if (mean) 1 else 0, outPtr)
+
+    /** `skainet_f32_reduce_axis`: sum (or mean) over the middle of an `(outer, red, inner)` decomposition. */
+    public fun f32ReduceAxis(inPtr: Int, outer: Int, red: Int, inner: Int, mean: Boolean, outPtr: Int): Unit =
+        jsF32ReduceAxis(mod(), inPtr, outer, red, inner, if (mean) 1 else 0, outPtr)
+
     // ── diagnostics ───────────────────────────────────────────────────────────────────────────────
 
     /**
@@ -245,10 +345,11 @@ public object WasmKernels {
         val crossOriginIsolated: Boolean,
         val hardwareConcurrency: Int,
         val residentWeightBytes: Long,
+        val residentActivationBytes: Long = 0L,
     ) {
         override fun toString(): String =
             "mode=$mode simd128=$simd128 threads=$threads crossOriginIsolated=$crossOriginIsolated " +
-                "cores=$hardwareConcurrency residentWeightBytes=$residentWeightBytes"
+                "cores=$hardwareConcurrency residentWeightBytes=$residentWeightBytes residentActivationBytes=$residentActivationBytes"
     }
 
     /** Current sidecar capabilities; `mode == "none"` before [initialize]. */
@@ -259,6 +360,7 @@ public object WasmKernels {
         crossOriginIsolated = jsCrossOriginIsolated(),
         hardwareConcurrency = jsHardwareConcurrency(),
         residentWeightBytes = if (isReady) residentWeightBytes() else 0L,
+        residentActivationBytes = residentActivationBytes(),
     )
 }
 
@@ -327,6 +429,85 @@ private fun jsTernaryLmheadStage1(mod: JsAny, inPtr: Int, planesPtr: Int, planeS
 
 private fun jsBitnetGemvTq2_0(mod: JsAny, activationPtr: Int, activationScale: Float, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
     js("mod._skainet_bitnet_gemv_tq2_0(activationPtr, 0, activationScale, weightPtr, 0, inputDim, outputDim, outPtr, 0)")
+
+private fun jsCopyWithin(mod: JsAny, srcPtr: Int, dstPtr: Int, bytes: Int): Unit =
+    js("new Uint8Array(mod.wasmMemory.buffer).copyWithin(dstPtr, srcPtr, srcPtr + bytes)")
+
+private fun jsZero(mod: JsAny, ptr: Int, bytes: Int): Unit =
+    js("new Uint8Array(mod.wasmMemory.buffer, ptr, bytes).fill(0)")
+
+// Resident-activation accounting lives on the module object: the byte count and, where the runtime
+// has one, a FinalizationRegistry that frees an ambient allocation when its Kotlin storage object has
+// been collected (Kotlin/Wasm objects are traced by the same GC as the token they hold).
+private fun jsResidentState(mod: JsAny): JsAny = js(
+    """
+    (function() {
+      if (!mod.__skainetResident) {
+        var st = { bytes: 0, registry: null };
+        if (typeof FinalizationRegistry !== 'undefined') {
+          st.registry = new FinalizationRegistry(function (h) { mod._free(h.ptr); st.bytes -= h.bytes; });
+        }
+        mod.__skainetResident = st;
+      }
+      return mod.__skainetResident;
+    })()
+    """,
+)
+
+private fun jsResidentBytes(mod: JsAny): Double = js("(mod.__skainetResident ? mod.__skainetResident.bytes : 0)")
+
+private fun jsResidentAlloc(mod: JsAny, bytes: Int): Int = js(
+    """
+    (function() {
+      var st = mod.__skainetResident;
+      var p = mod._malloc(bytes);
+      st.bytes += bytes;
+      return p;
+    })()
+    """,
+)
+
+private fun jsResidentFree(mod: JsAny, ptr: Int, bytes: Int): Unit = js(
+    """
+    (function() {
+      var st = mod.__skainetResident;
+      mod._free(ptr);
+      st.bytes -= bytes;
+    })()
+    """,
+)
+
+private fun jsResidentTrack(mod: JsAny, ptr: Int, bytes: Int): JsAny = js(
+    """
+    (function() {
+      var st = mod.__skainetResident;
+      var token = {};
+      if (st.registry) st.registry.register(token, { ptr: ptr, bytes: bytes }, token);
+      return token;
+    })()
+    """,
+)
+
+private fun jsResidentUntrack(mod: JsAny, token: JsAny): Unit = js(
+    """
+    (function() {
+      var st = mod.__skainetResident;
+      if (st && st.registry) st.registry.unregister(token);
+    })()
+    """,
+)
+
+private fun jsF32Binary(mod: JsAny, op: Int, aPtr: Int, aMode: Int, bPtr: Int, bMode: Int, outPtr: Int, n: Int, inner: Int): Unit =
+    js("mod._skainet_f32_binary(op, aPtr, aMode, bPtr, bMode, outPtr, n, inner)")
+
+private fun jsF32Unary(mod: JsAny, op: Int, inPtr: Int, outPtr: Int, n: Int): Unit =
+    js("mod._skainet_f32_unary(op, inPtr, outPtr, n)")
+
+private fun jsF32ReduceAll(mod: JsAny, inPtr: Int, n: Int, mean: Int, outPtr: Int): Unit =
+    js("mod._skainet_f32_reduce_all(inPtr, n, mean, outPtr)")
+
+private fun jsF32ReduceAxis(mod: JsAny, inPtr: Int, outer: Int, red: Int, inner: Int, mean: Int, outPtr: Int): Unit =
+    js("mod._skainet_f32_reduce_axis(inPtr, outer, red, inner, mean, outPtr)")
 
 private fun jsCrossOriginIsolated(): Boolean = js("typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true")
 
