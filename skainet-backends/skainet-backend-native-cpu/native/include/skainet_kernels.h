@@ -426,6 +426,10 @@ SKAINET_API void skainet_q5_1_matmul(
  * unpacking, after which `sdot` accumulates sixteen products per instruction
  * where the core has ARMv8.2 dotprod.
  *
+ * The Emscripten sidecar runs the same block in SIMD128 (`i32x4.dot_i16x8_s` on
+ * widened halves). Output rows are split over the shared row pool once there
+ * are enough of them (#1195 pattern); bit-identical to a single thread.
+ *
  * @param activation        int8 codes of one token, `input_dim` of them
  * @param activation_scale  the token's absmax scale (`absmax / 127`)
  * @param weight            canonical TQ2_0 blocks, row-major per output row
@@ -454,9 +458,10 @@ SKAINET_API void skainet_bitnet_gemv_tq2_0(
  * input_dim must be a multiple of 4. Unlike the int8 `bitnet_gemv` path
  * there is no activation quantization: results are exact. Backed by the
  * vendored NeoGPU LUT kernel (baseline NEON, no dotprod — the fast path for
- * Cortex-A72/Pi-4 class cores); it threads internally with pthreads once
- * output_dim >= 512. A portable scalar build stands in where the vendored
- * file cannot compile (MSVC).
+ * Cortex-A72/Pi-4 class cores), driven from the shared row pool. Where the
+ * vendored file cannot compile (MSVC, the Emscripten sidecar) a portable
+ * mirror with the same compile-time LUT stands in — scalar on MSVC, SIMD128
+ * in the sidecar — threaded over output rows through the same pool.
  */
 SKAINET_API void skainet_ternary_f32_gemv(
     const float* input, int32_t input_offset,
@@ -477,7 +482,9 @@ SKAINET_API void skainet_ternary_f32_gemv(
  * plane_stride_bytes == output_dim * input_dim / 4. row_scale holds raw
  * little-endian IEEE binary16 bit patterns, one per output row (sign
  * ignored — encoders store max|row| >= 0). input_dim must be a multiple
- * of 4. Threads internally with pthreads at any output_dim.
+ * of 4. The vendored kernel threads internally with pthreads at any
+ * output_dim; the portable mirror (MSVC, Emscripten) threads over output
+ * rows through the shared row pool.
  */
 SKAINET_API void skainet_ternary_lmhead_stage1(
     const float* input, int32_t input_offset,

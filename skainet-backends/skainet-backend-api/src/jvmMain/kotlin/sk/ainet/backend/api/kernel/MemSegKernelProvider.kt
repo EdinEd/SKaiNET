@@ -34,4 +34,10 @@ public interface MemSegKernelProvider {
      * keep compiling.
      */
     public fun matmulQ4KMemSeg(): Q4KMemSegMatmulKernel? = null
+
+    /**
+     * Dense `x · Wᵀ` with the `[out, in]` FP32 weight supplied as a `MemorySegment`
+     * ([Fp32MemSegMatmulWtKernel]), or `null`. Same `null` default as [matmulQ4KMemSeg].
+     */
+    public fun matmulFp32WtMemSeg(): Fp32MemSegMatmulWtKernel? = null
 }

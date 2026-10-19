@@ -29,7 +29,8 @@ mindmap
       Native FFM
         JVM only — C kernels via CMake
         Q4_K MemSeg zero-copy
-        Q6_K missing
+        direct x·Wᵀ, no transposed copy
+        ternary LUT gemv and planes lm_head
       Native JNI
         Android only — same C kernels via JNI
         two .so tiers, cpuinfo-gated armv8-a vs armv8.2+dotprod
@@ -47,7 +48,7 @@ mindmap
       Android — scalar, Native-JNI
       Native linux — scalar, Native-cinterop
       Native apple — scalar, Accelerate, Native-cinterop
-      JS and WASM — scalar; packed weights relaid once into kernel feed order (SKEEP-007)
+      JS and WASM — scalar; wasmJs plus the SIMD128 sidecar pack: every matmul format, ternary, direct x·Wᵀ (SKEEP-007)
 ----
 
 == Kernel × provider (matmul, FP32 activations)
@@ -56,6 +57,7 @@ mindmap
 |===
 | Weight format | Scalar (all targets) | Panama (JVM) | Native FFM (JVM) | Native JNI (Android) | Native cinterop (K/N) | Wasm SIMD128 (wasmJs)
 | FP32 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
+| FP32 `x · Wᵀ` direct (weight `[out, in]`, no transposed copy) | row-dot | ❌ (cached transpose) | ✅ | ❌ | ❌ | ✅
 | BF16 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
 | FP16 | ✅ | ✅ | ✅ | ❌ | ❌ | ✅
 | Q8_0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
@@ -65,9 +67,9 @@ mindmap
 | Q5_K | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
 | Q5_1 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
 | Q5_0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅
-| TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | — | —
-| BitNet b1.58 (exact FP32 activations, vendored NeoGPU kernel) | ✅ | ✅ FFM | — | ✅ JNI + fused lm_head | ✅ K/N cinterop | ❌ (reference)
-| BITNET_PLANES (multi-plane ternary packing) | ✅ | via kernel pack | — | via kernel pack | via kernel pack | ❌ (reference)
+| TQ2_0 / BitNet b1.58 (int8 activations) | ✅ | — | — | ✅ NEON | — | ✅ SIMD128
+| BitNet b1.58 (exact FP32 activations, LUT gemv) | ✅ | — | ✅ FFM (vendored NeoGPU) | ✅ JNI | ✅ K/N cinterop | ✅ SIMD128 LUT
+| BITNET_PLANES (multi-plane ternary packing, fused lm_head) | ✅ | — | ✅ FFM (vendored NeoGPU) | ✅ JNI | ✅ K/N cinterop | ✅ SIMD128 LUT
 | Q2_K / Q3_K / Q8_K / IQ4 | ❌ (dequant to FP32 only) | ❌ | ❌ | ❌ | ❌ | ❌
 |===
 
@@ -78,7 +80,15 @@ columns are mutually exclusive per platform rather than stacked. The Wasm SIMD12
 sidecar pack (`skainet-backend-wasm-simd`), present only after `WasmSimd.install()`; every matmul
 kernel in it has an explicit SIMD128 body (the K-quant int8 dots on `i32x4.dot_i16x8_s`, a 4×8
 register-blocked dense GEMM, eight-wide BF16/FP16 widening), and the dense kernels thread over the
-sidecar's pthread pool like the packed ones when the page is cross-origin isolated.
+sidecar's pthread pool like the packed ones when the page is cross-origin isolated. The ternary
+kernels in the sidecar are the portable mirror of the vendored NeoGPU kernel — the same 256-entry
+decode table as a compile-time constant, read four codes at a time in SIMD128 — registered under the
+same dispatch keys as the FFM and JNI ternary packs (`WasmTernaryKernelPack`).
+
+The dense `x · Wᵀ` row is the product a `Linear` layer computes. The JVM and the wasm tier multiply
+the `[out, in]` weight in place through `skainet_fp32_matmul_wt` (`KernelProvider.matmulFp32Wt`;
+the JVM makes a heap weight resident off-heap once, the sidecar keeps it in its linear memory) and
+never materialise the transposed copy the Panama path caches per weight.
 
 Packed weights reach a kernel through the registry by declaring their
 xref:explanation/packed-weight-layout.adoc[block order]; a canonical weight is relayouted once,
@@ -101,8 +111,6 @@ Packed-quant matmul works on every target: those formats have a `commonMain` sca
 
 == Gaps
 
-* *Wasm ternary / BitNet* — the ternary gemv and planes lm-head kernels are not in the sidecar
-build yet, so BitNet models in a browser run the decoding reference kernel.
 * *Wasm beyond matmul* — elementwise, activations, reductions, normalisation and attention are the
 common scalar Kotlin paths on wasmJs; Kotlin/Wasm has no SIMD types and no shared-memory threads, so
 these follow the matmuls into the sidecar (SKEEP-007 rollout step 3).

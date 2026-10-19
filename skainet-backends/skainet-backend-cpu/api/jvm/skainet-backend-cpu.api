@@ -67,6 +67,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/ba
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -85,6 +86,7 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/a
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -168,6 +170,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -186,6 +189,7 @@ public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/b
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;

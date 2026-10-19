@@ -66,21 +66,10 @@ public class WasmCpuOps(
                 if (x.shape.dimensions.last() == k) {
                     val m = if (k == 0) 0 else x.shape.volume / k
                     val out = FloatArray(m * n)
-                    if (m > 0 && n > 0) {
-                        val inPtr = WasmKernels.alloc(m * k * 4)
-                        val outPtr = WasmKernels.alloc(m * n * 4)
-                        try {
-                            WasmKernels.writeFloats(inPtr, a.buffer, 0, m * k)
-                            // Resident like a packed weight: a parameter is immutable once loaded, and
-                            // re-uploading it per call made single-token decode run at copy speed.
-                            val wPtr = WasmKernels.denseWeightHandle(w.buffer)
-                            WasmKernels.fp32MatmulWt(inPtr, wPtr, outPtr, m, n, k)
-                            WasmKernels.readFloats(outPtr, out, 0, m * n)
-                        } finally {
-                            WasmKernels.free(outPtr)
-                            WasmKernels.free(inPtr)
-                        }
-                    }
+                    // The provider kernel keeps a whole-array weight resident like a packed one: a
+                    // parameter is immutable once loaded, and re-uploading it per call made
+                    // single-token decode run at copy speed.
+                    if (m > 0 && n > 0) WasmFp32MatmulWtKernel.matmulWt(a.buffer, 0, w.buffer, 0, out, 0, m, n, k)
                     val outShape = if (x.rank == 1) Shape(n) else Shape(*(x.shape.dimensions.copyOf(x.rank - 1) + n))
                     val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, out) as TensorData<T, V>
                     return newTensor(outData, x.dtype, x, weight)

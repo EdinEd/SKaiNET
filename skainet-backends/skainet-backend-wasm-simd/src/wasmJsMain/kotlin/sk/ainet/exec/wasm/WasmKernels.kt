@@ -213,6 +213,24 @@ public object WasmKernels {
     public fun narrowFloatMatmul(fnName: String, aPtr: Int, aStride: Int, bPtr: Int, bByteStride: Int, cPtr: Int, cStride: Int, m: Int, n: Int, k: Int): Unit =
         jsNarrowFloatMatmul(mod(), fnName, aPtr, aStride, bPtr, bByteStride, cPtr, cStride, m, n, k)
 
+    /**
+     * `skainet_ternary_f32_gemv`: one FP32 activation row against a sequentially packed BitNet b1.58
+     * weight (`inputDim / 4` bytes per output row), per-tensor scale not applied.
+     */
+    public fun ternaryF32Gemv(inPtr: Int, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+        jsTernaryF32Gemv(mod(), inPtr, weightPtr, inputDim, outputDim, outPtr)
+
+    /**
+     * `skainet_ternary_lmhead_stage1`: four planes at [planesPtr] (each [planeStrideBytes] apart) with
+     * the fused weights `{1, ⅓, ⅑, 1/27}`, times the FP16 row scales at [rowScalePtr].
+     */
+    public fun ternaryLmheadStage1(inPtr: Int, planesPtr: Int, planeStrideBytes: Int, rowScalePtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+        jsTernaryLmheadStage1(mod(), inPtr, planesPtr, planeStrideBytes, rowScalePtr, inputDim, outputDim, outPtr)
+
+    /** `skainet_bitnet_gemv_tq2_0`: int8 activation codes with one absmax scale against TQ2_0 blocks. */
+    public fun bitnetGemvTq2_0(activationPtr: Int, activationScale: Float, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+        jsBitnetGemvTq2_0(mod(), activationPtr, activationScale, weightPtr, inputDim, outputDim, outPtr)
+
     // ── diagnostics ───────────────────────────────────────────────────────────────────────────────
 
     /**
@@ -300,6 +318,15 @@ private fun jsFp32MatmulWt(mod: JsAny, inPtr: Int, wPtr: Int, outPtr: Int, m: In
 
 private fun jsNarrowFloatMatmul(mod: JsAny, fnName: String, aPtr: Int, aStride: Int, bPtr: Int, bByteStride: Int, cPtr: Int, cStride: Int, m: Int, n: Int, k: Int): Unit =
     js("mod[fnName](aPtr, 0, aStride, bPtr, 0, bByteStride, cPtr, 0, cStride, m, n, k)")
+
+private fun jsTernaryF32Gemv(mod: JsAny, inPtr: Int, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+    js("mod._skainet_ternary_f32_gemv(inPtr, 0, weightPtr, 0, inputDim, outputDim, outPtr, 0)")
+
+private fun jsTernaryLmheadStage1(mod: JsAny, inPtr: Int, planesPtr: Int, planeStrideBytes: Int, rowScalePtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+    js("mod._skainet_ternary_lmhead_stage1(inPtr, 0, planesPtr, 0, planeStrideBytes, rowScalePtr, 0, inputDim, outputDim, outPtr, 0)")
+
+private fun jsBitnetGemvTq2_0(mod: JsAny, activationPtr: Int, activationScale: Float, weightPtr: Int, inputDim: Int, outputDim: Int, outPtr: Int): Unit =
+    js("mod._skainet_bitnet_gemv_tq2_0(activationPtr, 0, activationScale, weightPtr, 0, inputDim, outputDim, outPtr, 0)")
 
 private fun jsCrossOriginIsolated(): Boolean = js("typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true")
 

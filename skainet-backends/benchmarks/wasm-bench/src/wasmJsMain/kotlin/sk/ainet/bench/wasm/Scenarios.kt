@@ -48,6 +48,15 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val flops = 2.0 * n * n * n;
         { flops / seconds { ctx.ops.matmul(a, b) } / 1e9 }
     },
+    WasmScenario("engine-fp32-linear", "gflops", mapOf("m" to "16", "k" to "768", "n" to "3072"), reps = 10) {
+        val m = 16; val k = 768; val n = 3072
+        val ctx = DirectCpuExecutionContext()
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, FloatArray(m * k) { ((it % 251) - 125).toFloat() / 127f })
+        val w = ctx.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, FloatArray(n * k) { ((it * 13 % 257) - 128).toFloat() / 127f })
+        ctx.ops.matmulWeightTransposed(x, w) // the resident upload happens here, not in a measured run
+        val flops = 2.0 * m * n * k;
+        { flops / seconds { ctx.ops.matmulWeightTransposed(x, w) } / 1e9 }
+    },
     WasmScenario("engine-kernel-matmul", "gflops", mapOf("size" to "1024"), reps = 3) {
         val n = 1024
         DirectCpuExecutionContext()

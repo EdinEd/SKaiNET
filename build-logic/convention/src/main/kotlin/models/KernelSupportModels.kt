@@ -23,6 +23,12 @@ data class KernelSupportModule(
      */
     val mapped: List<KernelFormatSupport> = emptyList(),
     val resident: List<KernelFormatSupport> = emptyList(),
+    /**
+     * Kernel packs (view dispatch): the ternary formats and the direct dense `x · Wᵀ`, served by
+     * `ViewKernelPack`s / the `matmulFp32Wt` accessor rather than the `matmul` accessors. Absent in
+     * older JSON.
+     */
+    val packs: List<KernelFormatSupport> = emptyList(),
 )
 
 @Serializable

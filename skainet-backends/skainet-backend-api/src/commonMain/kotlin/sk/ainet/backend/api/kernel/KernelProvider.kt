@@ -104,6 +104,13 @@ public interface KernelProvider {
     public fun matmulQ5_0(): Q5_0MatmulKernel? = null
 
     /**
+     * Dense `x · Wᵀ` over a row-major `[out, in]` FP32 weight ([Fp32MatmulWtKernel]), or `null`
+     * when this provider has no direct kernel for it and the caller should transpose once and use
+     * [matmulFp32]. Same fall-through pattern as [matmulQ4K].
+     */
+    public fun matmulFp32Wt(): Fp32MatmulWtKernel? = null
+
+    /**
      * Capability query: does this provider carry a kernel for
      * [opName] with the given [dtypeKeys]?
      *
@@ -122,15 +129,18 @@ public interface KernelProvider {
      * - For ops that aren't matmul (future: SDPA, gather, RMSNorm…),
      *   providers can override this method to declare those kernels.
      *
-     * The default body covers the four matmul accessors that exist
-     * on this interface today. Providers that ship additional
+     * The default body covers the matmul accessors on this interface,
+     * plus `"matmul_wt"` with `["Float32", "Float32"]` for the direct
+     * `x · Wᵀ` kernel ([matmulFp32Wt]). Providers that ship additional
      * kernels override and chain through `super.supports(...)` for
      * the matmul base cases.
      */
     public fun supports(opName: String, dtypeKeys: List<String>): Boolean {
-        if (opName != "matmul" || dtypeKeys.size != 2) return false
+        if (dtypeKeys.size != 2) return false
         val (input, weight) = dtypeKeys
         if (input != "Float32") return false
+        if (opName == "matmul_wt") return weight == "Float32" && matmulFp32Wt() != null
+        if (opName != "matmul") return false
         return when (weight) {
             "Float32" -> matmulFp32() != null
             "BFloat16" -> matmulBf16() != null

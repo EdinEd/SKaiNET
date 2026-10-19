@@ -1,5 +1,6 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
+#include "skainet_row_threads.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -31,6 +32,17 @@
  * than it saves, and a checkpoint that is going to be run through this kernel
  * ships as TQ2_0. TQ1_0's base-3 packing is likewise scalar — it is a storage
  * format, not a runtime one.
+ *
+ * The Emscripten sidecar has the same block body in SIMD128: the unpacking is
+ * identical (shift, mask) and the sixteen int8 products go through
+ * `i32x4.dot_i16x8_s` on widened halves, the stand-in for `sdot` every other
+ * int8 kernel in the sidecar uses.
+ *
+ * Output rows are independent, so they are split over the shared row pool
+ * (skainet_row_threads.h) when there are enough of them — the mt sidecar's
+ * pthreads in a browser, the native pool elsewhere. Per-row arithmetic never
+ * changes with the partition, so the result is bit-identical to a single
+ * thread's.
  */
 
 #define SKAINET_TQ2_0_BLOCK_SIZE 256
@@ -160,7 +172,76 @@ static inline int32_t skainet_tq2_0_block_neon(
 
     return vaddvq_s32(acc);
 }
-#endif /* SKAINET_HAVE_NEON */
+#define skainet_tq2_0_block_simd skainet_tq2_0_block_neon
+#elif defined(SKAINET_HAVE_WASM_SIMD128)
+/*
+ * The NEON block in SIMD128: the same two chunks × four bit pairs, codes kept in
+ * {0,1,2} with the Σ a bias removed by the caller. `wasm_u8x16_shr` takes a
+ * runtime shift, so the strips can loop over the bit pair.
+ */
+static inline int32_t skainet_tq2_0_block_wasm(
+    const uint8_t* SKAINET_RESTRICT qs,
+    const int8_t* SKAINET_RESTRICT act) {
+    const v128_t mask = wasm_u8x16_splat(3);
+    v128_t acc = wasm_i32x4_splat(0);
+    for (int32_t c = 0; c < 2; ++c) {
+        const v128_t lo = wasm_v128_load(qs + c * 32);
+        const v128_t hi = wasm_v128_load(qs + c * 32 + 16);
+        for (int32_t l = 0; l < 4; ++l) {
+            const v128_t wlo = wasm_v128_and(wasm_u8x16_shr(lo, (uint32_t) (2 * l)), mask);
+            const v128_t whi = wasm_v128_and(wasm_u8x16_shr(hi, (uint32_t) (2 * l)), mask);
+            const int8_t* a = act + c * 128 + l * 32;
+            acc = wasm_i32x4_add(acc, skainet_wasm_dot_u8x16_i8x16(wlo, wasm_v128_load(a)));
+            acc = wasm_i32x4_add(acc, skainet_wasm_dot_u8x16_i8x16(whi, wasm_v128_load(a + 16)));
+        }
+    }
+    return skainet_wasm_hadd_i32(acc);
+}
+#define skainet_tq2_0_block_simd skainet_tq2_0_block_wasm
+#endif /* SKAINET_HAVE_NEON / SKAINET_HAVE_WASM_SIMD128 */
+
+typedef struct {
+    const int8_t* act;
+    const uint8_t* w;
+    const int32_t* activation_sums;
+    float* out;
+    float activation_scale;
+    int32_t input_dim;
+    int32_t blocks_per_row;
+} skainet_bitnet_gemv_job;
+
+/* Output rows [o_start, o_end): every block of the row, scaled and summed. */
+static void skainet_bitnet_gemv_rows(void* ctx, int32_t o_start, int32_t o_end) {
+    const skainet_bitnet_gemv_job* j = (const skainet_bitnet_gemv_job*) ctx;
+    const int8_t* act = j->act;
+    const int32_t input_dim = j->input_dim;
+    const int32_t blocks_per_row = j->blocks_per_row;
+    for (int32_t o = o_start; o < o_end; ++o) {
+        float sum = 0.0f;
+        for (int32_t b = 0; b < blocks_per_row; ++b) {
+            const uint8_t* block = j->w + (size_t)(o * blocks_per_row + b) * SKAINET_TQ2_0_BYTES_PER_BLOCK;
+            const int32_t first = b * SKAINET_TQ2_0_BLOCK_SIZE;
+            const int32_t count = (input_dim - first) < SKAINET_TQ2_0_BLOCK_SIZE
+                ? (input_dim - first)
+                : SKAINET_TQ2_0_BLOCK_SIZE;
+            uint16_t scale_bits;
+            memcpy(&scale_bits, block + 64, sizeof(scale_bits));
+            const float d = skainet_bitnet_fp16(scale_bits);
+            int32_t partial;
+#ifdef skainet_tq2_0_block_simd
+            if (count == SKAINET_TQ2_0_BLOCK_SIZE) {
+                partial = skainet_tq2_0_block_simd(block, act + first) - j->activation_sums[b];
+            } else {
+                partial = skainet_tq2_0_block_scalar(block, act + first, count);
+            }
+#else
+            partial = skainet_tq2_0_block_scalar(block, act + first, count);
+#endif
+            sum += (float)partial * d;
+        }
+        j->out[o] = sum * j->activation_scale;
+    }
+}
 
 SKAINET_API void skainet_bitnet_gemv_tq2_0(
     const int8_t* SKAINET_RESTRICT activation, int32_t activation_offset,
@@ -203,30 +284,14 @@ SKAINET_API void skainet_bitnet_gemv_tq2_0(
         activation_sums[b] = s;
     }
 
-    for (int32_t o = 0; o < output_dim; ++o) {
-        float sum = 0.0f;
-        for (int32_t b = 0; b < blocks_per_row; ++b) {
-            const uint8_t* block = w + (size_t)(o * blocks_per_row + b) * SKAINET_TQ2_0_BYTES_PER_BLOCK;
-            const int32_t first = b * SKAINET_TQ2_0_BLOCK_SIZE;
-            const int32_t count = (input_dim - first) < SKAINET_TQ2_0_BLOCK_SIZE
-                ? (input_dim - first)
-                : SKAINET_TQ2_0_BLOCK_SIZE;
-            uint16_t scale_bits;
-            memcpy(&scale_bits, block + 64, sizeof(scale_bits));
-            const float d = skainet_bitnet_fp16(scale_bits);
-            int32_t partial;
-#if defined(SKAINET_HAVE_NEON)
-            if (count == SKAINET_TQ2_0_BLOCK_SIZE) {
-                partial = skainet_tq2_0_block_neon(block, act + first) - activation_sums[b];
-            } else {
-                partial = skainet_tq2_0_block_scalar(block, act + first, count);
-            }
-#else
-            partial = skainet_tq2_0_block_scalar(block, act + first, count);
-#endif
-            sum += (float)partial * d;
-        }
-        output[output_offset + o] = sum * activation_scale;
-    }
+    skainet_bitnet_gemv_job job;
+    job.act = act;
+    job.w = w;
+    job.activation_sums = activation_sums;
+    job.out = output + output_offset;
+    job.activation_scale = activation_scale;
+    job.input_dim = input_dim;
+    job.blocks_per_row = blocks_per_row;
+    skainet_run_rows(skainet_bitnet_gemv_rows, &job, output_dim);
     free(heap_sums);
 }

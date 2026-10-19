@@ -3,6 +3,7 @@ package sk.ainet.exec.wasm
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.Fp32MatmulWtKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
@@ -23,6 +24,7 @@ public object WasmKernelProvider : KernelProvider {
     override fun isAvailable(): Boolean = WasmKernels.isReady
 
     override fun matmulFp32(): Fp32MatmulKernel = WasmFp32MatmulKernel
+    override fun matmulFp32Wt(): Fp32MatmulWtKernel = WasmFp32MatmulWtKernel
     override fun matmulBf16(): Bf16MatmulKernel = WasmBf16MatmulKernel
     override fun matmulFp16(): Fp16MatmulKernel = WasmFp16MatmulKernel
 
@@ -162,6 +164,39 @@ public object WasmFp32MatmulKernel : Fp32MatmulKernel {
             WasmKernels.free(cPtr)
             WasmKernels.free(bPtr)
             WasmKernels.free(aPtr)
+        }
+    }
+}
+
+/**
+ * `out(m,n) = x(m,k) · w(n,k)ᵀ` in the sidecar (`skainet_fp32_matmul_wt`). A whole-array weight is a
+ * parameter and stays resident after its first call ([WasmKernels.denseWeightHandle]); a windowed
+ * weight is staged per call, as the activation always is.
+ */
+public object WasmFp32MatmulWtKernel : Fp32MatmulWtKernel {
+    override fun matmulWt(
+        x: FloatArray, xOffset: Int,
+        w: FloatArray, wOffset: Int,
+        out: FloatArray, outOffset: Int,
+        m: Int, n: Int, k: Int,
+    ) {
+        require(m >= 0 && n >= 0 && k >= 0) { "m, n, k must be non-negative; got m=$m n=$n k=$k" }
+        if (m == 0 || n == 0) return
+        val resident = wOffset == 0 && w.size == n * k
+        val inPtr = WasmKernels.alloc(maxOf(m * k, 1) * 4)
+        val wPtr = if (resident) WasmKernels.denseWeightHandle(w) else WasmKernels.alloc(maxOf(n * k, 1) * 4)
+        val outPtr = WasmKernels.alloc(m * n * 4)
+        try {
+            if (k > 0) {
+                WasmKernels.writeFloats(inPtr, x, xOffset, m * k)
+                if (!resident) WasmKernels.writeFloats(wPtr, w, wOffset, n * k)
+            }
+            WasmKernels.fp32MatmulWt(inPtr, wPtr, outPtr, m, n, k)
+            WasmKernels.readFloats(outPtr, out, outOffset, m * n)
+        } finally {
+            WasmKernels.free(outPtr)
+            if (!resident) WasmKernels.free(wPtr)
+            WasmKernels.free(inPtr)
         }
     }
 }

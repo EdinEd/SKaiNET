@@ -33,6 +33,7 @@ microbench tests under `skainet-backends/skainet-backend-native-cpu`:
 |===
 | Scenario | What it exercises | Unit | Direction
 | engine-fp32-gemm        | `ctx.ops.matmul` end-to-end FP32 square matmul              | GFLOPS        | higher is better
+| engine-fp32-linear      | `ctx.ops.matmulWeightTransposed` — a `Linear` layer's `x · Wᵀ` with the weight stored `[out, in]` (panama: cached transpose + GEMM; ffm: native direct kernel, no transposed copy) | GFLOPS | higher is better
 | engine-q4-gemm          | `PanamaVectorQ4KMatmulKernel` F32 × Q4_K matmul at LLM shapes | GOP/s        | higher is better
 | engine-kernel-matmul    | Direct `Fp32MatmulKernel` (scalar vs panama-vector)         | GFLOPS        | higher is better
 | engine-bf16-matmul      | `Bf16MatmulKernel` F32 × BF16-packed matmul (scalar vs panama-vector) | GFLOPS | higher is better

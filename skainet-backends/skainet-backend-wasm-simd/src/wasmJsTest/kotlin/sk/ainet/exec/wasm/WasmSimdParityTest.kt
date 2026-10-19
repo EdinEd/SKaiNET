@@ -1,11 +1,25 @@
 package sk.ainet.exec.wasm
 
 import kotlinx.coroutines.test.runTest
+import sk.ainet.backend.api.kernel.BitNetGemvKernel
 import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.NoSuchKernelException
+import sk.ainet.backend.api.kernel.TernaryF32GemvKernel
+import sk.ainet.backend.api.kernel.TernaryPlanesMatmulKernel
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.lang.memory.I8Absmax
+import sk.ainet.lang.memory.Scope
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.memory.TernaryBlockDecoder
+import sk.ainet.lang.memory.TernaryCodec
+import sk.ainet.lang.memory.trace.RecordingTraceSink
+import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.tensor.data.BitNetB158TensorData
+import sk.ainet.lang.tensor.data.BitNetPlanesTensorData
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
 import sk.ainet.exec.kernel.ScalarFp16MatmulKernel
 import sk.ainet.exec.kernel.ScalarQ4_KMatmulKernel
@@ -36,8 +50,8 @@ import kotlin.test.assertTrue
 
 /**
  * SKEEP-007 §T1: the SIMD128 sidecar agrees with the common scalar lane on every path it takes
- * over — row-major packed matmuls (Q8_0, Q4_0, Q4_K via the pack), dense `x · Wᵀ`, and the dense
- * GEMM — and the wiring makes a freshly built context use [WasmCpuOps].
+ * over — row-major packed matmuls (Q8_0, Q4_0, Q4_K via the pack), dense `x · Wᵀ`, the dense GEMM
+ * and the three ternary kernels — and the wiring makes a freshly built context use [WasmCpuOps].
  *
  * Runs on Node (`wasmJsNodeTest`): the sidecar is loaded from the module's own resources. Lane
  * sums differ from the sequential scalar accumulation in the last bits, so comparisons are
@@ -69,6 +83,8 @@ class WasmSimdParityTest {
     fun tearDown() {
         WasmSimd.uninstall()
     }
+
+    private fun heapFloats(view: TensorView): FloatArray = checkNotNull((view.storage as Storage.Heap).floats)
 
     @Suppress("UNCHECKED_CAST")
     private fun q8(ctx: DirectCpuExecutionContext, n: Int, k: Int, seed: Int): Tensor<FP32, Float> =
@@ -282,5 +298,78 @@ class WasmSimdParityTest {
         val direct = FloatArray(m * n)
         WasmFp32MatmulKernel.matmul(x, 0, k, b, 0, n, direct, 0, n, m, n, k)
         assertClose(refMm, direct, "provider gemm")
+        // The direct `x · Wᵀ` provider kernel: whole-array weight (resident) and a windowed one (staged).
+        val provider = checkNotNull(KernelRegistry.bestAvailable())
+        val wt = checkNotNull(provider.matmulFp32Wt())
+        assertTrue(provider.supports("matmul_wt", listOf("Float32", "Float32")))
+        val directWt = FloatArray(m * n)
+        wt.matmulWt(x, 0, w, 0, directWt, 0, m, n, k)
+        assertClose(refWt, directWt, "provider x·Wᵀ")
+        val window = FloatArray(1 + n * k + 3).also { w.copyInto(it, 1) }
+        val windowed = FloatArray(2 + m * n)
+        wt.matmulWt(x, 0, window, 1, windowed, 2, m, n, k)
+        assertClose(refWt, windowed.copyOfRange(2, 2 + m * n), "windowed x·Wᵀ")
+    }
+
+    /**
+     * The ternary kernels reach the sidecar through the same `KernelDispatch` keys the JVM FFM and
+     * Android JNI packs serve, and agree with the Kotlin reference kernels. Row counts above the row
+     * pool's threshold (512) so the mt sidecar splits the rows over its workers.
+     */
+    @Test
+    fun `ternary weights run on the sidecar and match the reference kernels`() = runTest {
+        WasmSimd.install()
+        val rng = Random(31)
+
+        // BITNET_B1_58, exact FP32 activations, two rows so the pack's row loop runs.
+        run {
+            val k = 256; val n = 600; val rows = 2
+            val values = FloatArray(n * k) { (rng.nextInt(3) - 1) * 0.5f }
+            val w = BitNetB158TensorData.fromFloats(Shape(n, k), values).packedView
+            val a = TensorView.dense(Storage.Heap.wrap(FloatArray(rows * k) { rng.nextFloat() - 0.5f }), Shape(rows, k), FP32)
+            val out = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("ternary_f32_gemv/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+            TernaryF32GemvKernel(TernaryF32GemvKernel.keyFor()).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "ternary f32 gemv", rel = 1e-4f)
+        }
+
+        // BITNET_PLANES: the fused four-plane lm_head, two calls per row, against the 8-plane reference.
+        run {
+            val k = 64; val n = 520
+            val values = FloatArray(n * k) { (rng.nextFloat() - 0.5f) * 2f }
+            val w = BitNetPlanesTensorData.fromFloats(Shape(n, k), values).packedView
+            val a = TensorView.dense(Storage.Heap.wrap(FloatArray(k) { rng.nextFloat() - 0.5f }), Shape(1, k), FP32)
+            val out = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("ternary_planes_matmul/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            TernaryPlanesMatmulKernel(TernaryPlanesMatmulKernel.keyFor()).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "ternary planes lm_head", rel = 1e-4f)
+        }
+
+        // TQ2_0 with int8 activations: integer block sums, so the match is exact up to the scale products.
+        run {
+            val k = 768; val n = 600
+            val values = FloatArray(n * k) { (rng.nextInt(3) - 1) * 0.5f }
+            val w = TensorView.packed(
+                Storage.Heap.wrap(TernaryCodec.encode(TensorEncoding.TQ2_0, values)), Shape(n, k),
+                TensorEncoding.TQ2_0, TernaryBlockDecoder(TensorEncoding.TQ2_0),
+            )
+            val a = I8Absmax.requantize(
+                TensorView.dense(Storage.Heap.wrap(FloatArray(k) { rng.nextFloat() - 0.5f }), Shape(1, k), FP32), Scope.Ambient,
+            )
+            val out = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("bitnet_gemv/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            BitNetGemvKernel(BitNetGemvKernel.keyFor(w.format)).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "bitnet gemv tq2_0")
+        }
+        assertTrue(WasmKernels.residentWeightBytes() > 0, "the ternary weights stay resident")
     }
 }
