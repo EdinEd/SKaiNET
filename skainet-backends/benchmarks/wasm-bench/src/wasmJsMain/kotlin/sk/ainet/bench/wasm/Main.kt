@@ -91,8 +91,15 @@ private fun report(tier: String, case: Case, form: String, ms: Double) {
 /**
  * Three passes: the scalar lane, then the SIMD128 sidecar single-threaded, then with pthreads when
  * the runtime allows them (Node, or a cross-origin-isolated page). Each line carries `tier=`.
+ *
+ * `SKAINET_WASM_RESIDENT=0` in the environment (Node) runs the sidecar passes with
+ * `WasmSimd.residentBudgetBytes = 0`, i.e. every op output read back to the heap — the A/B for the
+ * resident-activation step.
  */
 suspend fun main() {
+    val resident = envVar("SKAINET_WASM_RESIDENT") != "0"
+    if (!resident) WasmSimd.residentBudgetBytes = 0L
+    println("[SKAINET_PERF_WASM] residentActivations=$resident")
     runPass("scalar")
     WasmSimd.install(threads = false)
     runPass(WasmKernels.mode)
@@ -132,7 +139,7 @@ private fun runPass(tier: String) {
  * timed end to end. On the scalar lane every op allocates and walks a heap array; on the sidecar
  * the intermediates stay in linear memory and only the final scalar crosses the boundary.
  *
- * `[SKAINET_PERF_WASM] tier=<tier> laya.chain m=150 n=2304 k=768 ops=matmulWt+gelu+mul+add+sum ms=<median>`
+ * `[SKAINET_PERF_WASM] tier=<tier> laya.chain m=150 n=2304 k=768 ops=matmulWt+gelu+mul+add+sum residentBudget=<bytes> ms=<median>`
  */
 private fun runChain(tier: String, ctx: DirectCpuExecutionContext) {
     val m = 150; val n = 2304; val k = 768
@@ -149,6 +156,13 @@ private fun runChain(tier: String, ctx: DirectCpuExecutionContext) {
     chain()
     val ms = timeMedianMs(5) { chain() }
     val msText = ((ms * 100).roundToInt() / 100.0).toString()
-    val resident = (ctx.ops as? WasmCpuOps) != null
-    println("[SKAINET_PERF_WASM] tier=$tier laya.chain m=$m n=$n k=$k ops=matmulWt+gelu+mul+add+sum resident=$resident ms=$msText")
+    val budget = if (ctx.ops is WasmCpuOps) WasmSimd.residentBudgetBytes else 0L
+    println("[SKAINET_PERF_WASM] tier=$tier laya.chain m=$m n=$n k=$k ops=matmulWt+gelu+mul+add+sum residentBudget=$budget ms=$msText")
 }
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun envVar(name: String): String? = jsEnvVar(name)?.toString()
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun jsEnvVar(name: String): JsString? =
+    js("(typeof process !== 'undefined' && process.env && process.env[name] != null) ? process.env[name] : null")
