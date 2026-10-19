@@ -8,6 +8,11 @@ import sk.ainet.backend.api.kernel.NoSuchKernelException
 import sk.ainet.context.DirectCpuExecutionContext
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
 import sk.ainet.exec.kernel.ScalarFp16MatmulKernel
+import sk.ainet.exec.kernel.ScalarQ4_KMatmulKernel
+import sk.ainet.exec.kernel.ScalarQ5_0MatmulKernel
+import sk.ainet.exec.kernel.ScalarQ5_1MatmulKernel
+import sk.ainet.exec.kernel.ScalarQ5_KMatmulKernel
+import sk.ainet.exec.kernel.ScalarQ6_KMatmulKernel
 import sk.ainet.exec.tensor.ops.DefaultCpuOps
 import sk.ainet.lang.types.Bf16Codec
 import sk.ainet.lang.types.Fp16Codec
@@ -20,6 +25,8 @@ import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.matmulWeightTransposed
 import sk.ainet.lang.types.FP32
 import kotlin.math.abs
+import kotlin.math.sqrt
+import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,6 +43,8 @@ import kotlin.test.assertTrue
  * sums differ from the sequential scalar accumulation in the last bits, so comparisons are
  * relative-tolerance, as the JVM Panama and native parity tests are.
  */
+private typealias PackedMatmul = (FloatArray, ByteArray, Int, Int, FloatArray) -> Unit
+
 class WasmSimdParityTest {
 
     private fun pseudo(n: Int, seed: Int, scale: Float = 1f): FloatArray {
@@ -139,6 +148,86 @@ class WasmSimdParityTest {
         assertEquals(false, KernelStrictness.isEnabled())
     }
 
+    /**
+     * Random packed bytes with the FP16 scale slots forced to 1.0 (0x3C00) so magnitudes stay
+     * finite — the fixture the JVM native parity tests use. [exact] formats accumulate in FP32 on
+     * both sides and agree to lane-sum tolerance; the K-quant int8 kernels (Q4_K, Q6_K) quantize the
+     * activation to Q8 first, so they are gated on an aggregate relative RMS error like the JVM tests.
+     */
+    private fun packedParity(
+        what: String, blockSize: Int, bytesPerBlock: Int, scaleSlots: IntArray, inputDim: Int, outputDim: Int,
+        exact: Boolean, scalar: PackedMatmul, wasm: PackedMatmul,
+    ) {
+        val numBlocks = (inputDim / blockSize) * outputDim
+        val rng = Random(what.hashCode())
+        val packed = ByteArray(numBlocks * bytesPerBlock).also { rng.nextBytes(it) }
+        for (block in 0 until numBlocks) {
+            for (slot in scaleSlots) {
+                packed[block * bytesPerBlock + slot] = 0x00
+                packed[block * bytesPerBlock + slot + 1] = 0x3C
+            }
+        }
+        val input = FloatArray(inputDim) { rng.nextFloat() - 0.5f }
+        val ref = FloatArray(outputDim)
+        val got = FloatArray(outputDim)
+        scalar(input, packed, inputDim, outputDim, ref)
+        wasm(input, packed, inputDim, outputDim, got)
+        if (exact) {
+            assertClose(ref, got, what, rel = 1e-4f)
+        } else {
+            var err = 0.0; var sig = 0.0
+            for (o in 0 until outputDim) { err += (ref[o] - got[o]).toDouble().let { it * it }; sig += ref[o].toDouble().let { it * it } }
+            val relRms = sqrt(err / outputDim) / (sqrt(sig / outputDim) + 1e-9)
+            assertTrue(relRms < 0.03, "$what: relRms=$relRms over $outputDim rows")
+        }
+    }
+
+    @Test
+    fun `K-quant and Q5 weights run on the sidecar and match the scalar kernels`() = runTest {
+        WasmSimd.install()
+        val p = checkNotNull(KernelRegistry.bestAvailable())
+        assertEquals("wasm-simd128", p.name)
+        // 37 rows: an odd count, so a threaded row split (none below 512) is not what is under test;
+        // two or three blocks per row cover the block-outer accumulation and the per-row carry.
+        packedParity("q4_k", 256, 144, intArrayOf(0, 2), 512, 37, exact = false,
+            { i, w, id, od, o -> ScalarQ4_KMatmulKernel.matmul(i, 0, w, 0, id, od, o, 0) },
+            { i, w, id, od, o -> checkNotNull(p.matmulQ4K()).matmul(i, 0, w, 0, id, od, o, 0) })
+        packedParity("q6_k", 256, 210, intArrayOf(208), 512, 37, exact = false,
+            { i, w, id, od, o -> ScalarQ6_KMatmulKernel.matmul(i, 0, w, 0, id, od, o, 0) },
+            { i, w, id, od, o -> checkNotNull(p.matmulQ6K()).matmul(i, 0, w, 0, id, od, o, 0) })
+        packedParity("q5_k", 256, 176, intArrayOf(0, 2), 512, 37, exact = true,
+            { i, w, id, od, o -> ScalarQ5_KMatmulKernel.matmul(i, 0, w, 0, id, od, o, 0) },
+            { i, w, id, od, o -> checkNotNull(p.matmulQ5K()).matmul(i, 0, w, 0, id, od, o, 0) })
+        packedParity("q5_0", 32, 22, intArrayOf(0), 96, 37, exact = true,
+            { i, w, id, od, o -> ScalarQ5_0MatmulKernel.matmul(i, 0, w, 0, id, od, o, 0) },
+            { i, w, id, od, o -> checkNotNull(p.matmulQ5_0()).matmul(i, 0, w, 0, id, od, o, 0) })
+        packedParity("q5_1", 32, 24, intArrayOf(0, 2), 96, 37, exact = true,
+            { i, w, id, od, o -> ScalarQ5_1MatmulKernel.matmul(i, 0, w, 0, id, od, o, 0) },
+            { i, w, id, od, o -> checkNotNull(p.matmulQ5_1()).matmul(i, 0, w, 0, id, od, o, 0) })
+    }
+
+    @Test
+    fun `dense GEMM through the ops layer runs on the sidecar for every tile shape`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        WasmSimd.install()
+        val fast = DirectCpuExecutionContext()
+        assertIs<WasmCpuOps>(fast.ops)
+        // Full 4×8 tiles, a 1-row remainder, a 6-column remainder and a k past one 256-block.
+        for ((m, n, k) in listOf(Triple(9, 70, 300), Triple(1, 8, 5), Triple(4, 3, 1), Triple(5, 16, 256))) {
+            val x = pseudo(m * k, m + n)
+            val b = pseudo(k * n, k)
+            val ref = scalar.ops.matmul(
+                scalar.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x),
+                scalar.fromFloatArray<FP32, Float>(Shape(k, n), FP32::class, b),
+            ).data.copyToFloatArray()
+            val got = fast.ops.matmul(
+                fast.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x),
+                fast.fromFloatArray<FP32, Float>(Shape(k, n), FP32::class, b),
+            ).data.copyToFloatArray()
+            assertClose(ref, got, "gemm $m×$k·$k×$n")
+        }
+    }
+
     @Test
     fun `row-major Q8_0 and Q4_0 weights match the scalar lane and run on the pack`() = runTest {
         val scalar = DirectCpuExecutionContext()
@@ -186,8 +275,8 @@ class WasmSimdParityTest {
         assertClose(refWt, fast.ops.matmulWeightTransposed(xf, wf).data.copyToFloatArray(), "x·Wᵀ")
         val rank1 = fast.fromFloatArray<FP32, Float>(Shape(k), FP32::class, x.copyOfRange(0, k))
         assertClose(refWt.copyOfRange(0, n), fast.ops.matmulWeightTransposed(rank1, wf).data.copyToFloatArray(), "rank-1 x·Wᵀ")
-        // The dense GEMM goes through KernelDispatch → Fp32ViewMatmulKernel(WasmFp32MatmulKernel) for
-        // the registry path; the common [k, n] loop still serves the heap fast path, so exercise the
+        // The dense GEMM runs the sidecar through the WasmCpuOps override (heap operands) and through
+        // KernelDispatch → Fp32ViewMatmulKernel(WasmFp32MatmulKernel) for view operands; exercise the
         // provider kernel directly as well.
         assertClose(refMm, fast.ops.matmul(xf, bf).data.copyToFloatArray(), "matmul")
         val direct = FloatArray(m * n)

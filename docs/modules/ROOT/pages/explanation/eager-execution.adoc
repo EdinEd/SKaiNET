@@ -75,9 +75,10 @@ Resolution is by priority: *Native (100 — whichever of FFM/JNI/cinterop applie
 Panama / Wasm SIMD128 (50) → Scalar (0)*. The best *available* provider that carries the kernel wins;
 otherwise it cascades down. At most one native tier is compiled into a given target, so the native
 columns are mutually exclusive per platform rather than stacked. The Wasm SIMD128 column is the
-sidecar pack (`skainet-backend-wasm-simd`), present only after `WasmSimd.install()`; the explicit
-SIMD128 bodies are Q8_0, Q4_0 and dense `x · Wᵀ`, the other formats run the portable C body
-auto-vectorised by Emscripten.
+sidecar pack (`skainet-backend-wasm-simd`), present only after `WasmSimd.install()`; every matmul
+kernel in it has an explicit SIMD128 body (the K-quant int8 dots on `i32x4.dot_i16x8_s`, a 4×8
+register-blocked dense GEMM, eight-wide BF16/FP16 widening), and the dense kernels thread over the
+sidecar's pthread pool like the packed ones when the page is cross-origin isolated.
 
 Packed weights reach a kernel through the registry by declaring their
 xref:explanation/packed-weight-layout.adoc[block order]; a canonical weight is relayouted once,

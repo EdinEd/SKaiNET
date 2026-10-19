@@ -13,7 +13,7 @@ import sk.ainet.lang.types.FP32
 
 /**
  * The browser tier's `TensorOps` (SKEEP-007 §T1): [DefaultCpuOpsBase] with the dense FP32 matmuls
- * routed through the SIMD128 sidecar. Packed weights need no override — they reach the pack through
+ * (`x · Wᵀ` and `A · B`) routed through the SIMD128 sidecar. Packed weights need no override — they reach the pack through
  * `KernelDispatch` like on every other tier. Everything else is the common scalar implementation,
  * and so is everything here while the sidecar is not ready.
  */
@@ -27,6 +27,33 @@ public class WasmCpuOps(
 
     /** The sidecar computes `x · Wᵀ` from the weight's rows itself; no Kotlin-side row-dot and no transposed copy. */
     override fun preferDirectWeightTransposed(): Boolean = false
+
+    /**
+     * Dense `A(m,k) · B(k,n)` on heap FP32 operands runs the sidecar GEMM. The common implementation
+     * serves this shape with its own `[k, n]` loop before it consults the registry, so without this
+     * override the SIMD128 kernel was reachable only through `KernelDispatch` (batched or view
+     * operands) and a plain 2-D matmul stayed at scalar speed. Both operands are staged per call:
+     * `B` here is not necessarily a parameter (attention scores, projections of activations), so
+     * nothing is kept resident. A packed weight is not `FloatArrayTensorData` and keeps its path.
+     */
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : DType, V> matmul(a: Tensor<T, V>, b: Tensor<T, V>): Tensor<T, V> {
+        if (WasmKernels.isReady && a.rank == 2 && b.rank == 2 && a.dtype == FP32::class && b.dtype == FP32::class) {
+            val ad = a.data as? FloatArrayTensorData<*>
+            val bd = b.data as? FloatArrayTensorData<*>
+            if (ad != null && bd != null && untransposedWeight(b) == null) {
+                val m = a.shape[0]
+                val k = a.shape[1]
+                val n = b.shape[1]
+                require(k == b.shape[0]) { "Matrix multiplication shape mismatch: ${a.shape} vs ${b.shape}" }
+                val out = FloatArray(m * n)
+                if (m > 0 && n > 0) WasmFp32MatmulKernel.matmul(ad.buffer, 0, k, bd.buffer, 0, n, out, 0, n, m, n, k)
+                val outData = dataFactory.adoptFloatArray<T, Float>(Shape(m, n), a.dtype, out) as TensorData<T, V>
+                return newTensor(outData, a.dtype, a, b)
+            }
+        }
+        return super.matmul(a, b)
+    }
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {

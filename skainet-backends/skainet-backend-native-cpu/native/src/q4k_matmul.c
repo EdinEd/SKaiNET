@@ -156,6 +156,27 @@ static void skainet_q4k_block_dot_generic(
         const int8_t* q8_hi = q8_block + sb_hi * Q4K_SUB_BLOCK_SIZE;
 
         int32_t dot_lo = 0, sum_lo = 0, dot_hi = 0, sum_hi = 0;
+#ifdef SKAINET_HAVE_WASM_SIMD128
+        /* SIMD128 body (SKEEP-007 §T1): the dotprod structure on i16 pair dots —
+         * nibbles stay unsigned u8 codes, the int8 activation widens alongside. */
+        v128_t acc_dot_lo = wasm_i32x4_splat(0), acc_dot_hi = wasm_i32x4_splat(0);
+        v128_t acc_sum_lo = wasm_i32x4_splat(0), acc_sum_hi = wasm_i32x4_splat(0);
+        for (int off = 0; off < Q4K_SUB_BLOCK_SIZE; off += 16) {
+            const v128_t packed = wasm_v128_load(qs_group + off);
+            const v128_t code_lo = wasm_v128_and(packed, wasm_i8x16_splat(0x0F));
+            const v128_t code_hi = wasm_u8x16_shr(packed, 4);
+            const v128_t a_lo = wasm_v128_load(q8_lo + off);
+            const v128_t a_hi = wasm_v128_load(q8_hi + off);
+            acc_dot_lo = wasm_i32x4_add(acc_dot_lo, skainet_wasm_dot_u8x16_i8x16(code_lo, a_lo));
+            acc_dot_hi = wasm_i32x4_add(acc_dot_hi, skainet_wasm_dot_u8x16_i8x16(code_hi, a_hi));
+            acc_sum_lo = wasm_i32x4_add(acc_sum_lo, skainet_wasm_sum_i8x16(a_lo));
+            acc_sum_hi = wasm_i32x4_add(acc_sum_hi, skainet_wasm_sum_i8x16(a_hi));
+        }
+        dot_lo = skainet_wasm_hadd_i32(acc_dot_lo);
+        dot_hi = skainet_wasm_hadd_i32(acc_dot_hi);
+        sum_lo = skainet_wasm_hadd_i32(acc_sum_lo);
+        sum_hi = skainet_wasm_hadd_i32(acc_sum_hi);
+#else
         for (int i = 0; i < Q4K_SUB_BLOCK_SIZE; ++i) {
             const uint8_t pb = qs_group[i];
             const int code_lo = (int)(pb & 0x0F);
@@ -167,6 +188,7 @@ static void skainet_q4k_block_dot_generic(
             dot_hi += a_hi * code_hi;
             sum_hi += a_hi;
         }
+#endif
 
         *block_scale_dot += (int64_t) scale_idx[sb_lo] * dot_lo
                           + (int64_t) scale_idx[sb_hi] * dot_hi;
@@ -181,7 +203,8 @@ static void skainet_q4k_block_dot_generic(
  *   d_in[b] * ( d * Σ_s scaleIdx[s]*intDot[s] - dMin * Σ_s minIdx[s]*intSum[s] )
  * where intDot[s] = Σ q8[i]*code[i] and intSum[s] = Σ q8[i] over the sub-block.
  * On AArch64 with dotprod (asimddp) the inner dot uses vdotq_s32 (16 int8 MACs
- * per instruction); otherwise a scalar integer fallback (auto-vectorized).
+ * per instruction); in the wasm sidecar i32x4.dot_i16x8_s over widened lanes;
+ * otherwise a scalar integer fallback (auto-vectorized).
  * Shared by the feed-order and row-major entries — identical math, so the two
  * orders (and any row partition, #1195) stay bit-identical per output row.
  */

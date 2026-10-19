@@ -81,9 +81,9 @@ static inline void skainet_q5k_decode_scales(
  * and combine once via
  *   acc += d * scaleIdx[s] * codeSum[s] - dMin * minIdx[s] * inputSum[s]
  *
- * Scalar single-threaded; the tight inner loop is straight-line FP
- * arithmetic so -O3 auto-vectorizes on AVX2/NEON. A hand-written NEON
- * path is layered on behind __ARM_NEON in a later PR.
+ * Explicit NEON and wasm SIMD128 bodies share the lane structure (unsigned
+ * 5-bit codes widened to f32 lanes, multiply-add against the activation);
+ * the portable loop is straight-line FP arithmetic that -O3 auto-vectorizes.
  */
 /*
  * One block's contribution to out[o] — the loop body of the original kernel,
@@ -159,6 +159,35 @@ static inline float q5k_block_term(
                 input_sum_lo = skainet_neon_hadd_f32(iacc_lo);
                 code_sum_hi = skainet_neon_hadd_f32(cacc_hi);
                 input_sum_hi = skainet_neon_hadd_f32(iacc_hi);
+#elif defined(SKAINET_HAVE_WASM_SIMD128)
+                /* SIMD128 body (SKEEP-007 §T1): the NEON structure on 128-bit lanes; the
+                 * fifth-bit shift count is a runtime scalar, which u8x16.shr_u takes. */
+                v128_t cacc_lo = wasm_f32x4_splat(0.0f), iacc_lo = wasm_f32x4_splat(0.0f);
+                v128_t cacc_hi = wasm_f32x4_splat(0.0f), iacc_hi = wasm_f32x4_splat(0.0f);
+                for (int off = 0; off < Q5K_SUB_BLOCK_SIZE; off += 16) {
+                    const v128_t packed = wasm_v128_load(qs_group + off);
+                    const v128_t qhv = wasm_v128_load(qh + off);
+                    const v128_t one = wasm_i8x16_splat(0x01);
+                    const v128_t lo_nib = wasm_v128_and(packed, wasm_i8x16_splat(0x0F));
+                    const v128_t hi_nib = wasm_u8x16_shr(packed, 4);
+                    const v128_t fifth_lo = wasm_i8x16_shl(wasm_v128_and(wasm_u8x16_shr(qhv, bit_lo), one), 4);
+                    const v128_t fifth_hi = wasm_i8x16_shl(wasm_v128_and(wasm_u8x16_shr(qhv, bit_hi), one), 4);
+                    v128_t cl[4], ch[4];
+                    skainet_wasm_u8x16_to_f32x4x4(wasm_v128_or(lo_nib, fifth_lo), cl);
+                    skainet_wasm_u8x16_to_f32x4x4(wasm_v128_or(hi_nib, fifth_hi), ch);
+                    for (int q = 0; q < 4; ++q) {
+                        const v128_t v_lo = wasm_v128_load(in_lo + off + q * 4);
+                        const v128_t v_hi = wasm_v128_load(in_hi + off + q * 4);
+                        cacc_lo = wasm_f32x4_add(cacc_lo, wasm_f32x4_mul(v_lo, cl[q]));
+                        iacc_lo = wasm_f32x4_add(iacc_lo, v_lo);
+                        cacc_hi = wasm_f32x4_add(cacc_hi, wasm_f32x4_mul(v_hi, ch[q]));
+                        iacc_hi = wasm_f32x4_add(iacc_hi, v_hi);
+                    }
+                }
+                code_sum_lo = skainet_wasm_hadd_f32(cacc_lo);
+                input_sum_lo = skainet_wasm_hadd_f32(iacc_lo);
+                code_sum_hi = skainet_wasm_hadd_f32(cacc_hi);
+                input_sum_hi = skainet_wasm_hadd_f32(iacc_hi);
 #else
                 /* 32 iterations — auto-vectorizes cleanly under -O3. */
                 for (int i = 0; i < Q5K_SUB_BLOCK_SIZE; ++i) {
