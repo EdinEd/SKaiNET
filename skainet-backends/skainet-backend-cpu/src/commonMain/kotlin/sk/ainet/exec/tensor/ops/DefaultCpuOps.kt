@@ -7,7 +7,6 @@ import sk.ainet.lang.tensor.ops.TensorOps
 import sk.ainet.lang.types.DType
 import sk.ainet.lang.ops.Backend
 import sk.ainet.lang.ops.TensorOp
-import sk.ainet.lang.ops.InProgress
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.lang.tensor.data.RowDequantSource
@@ -55,7 +54,6 @@ import kotlin.reflect.KClass
 internal const val SDPA_PARALLEL_MIN_WORK: Long = 1L shl 20
 
 @Backend(id = "cpu", displayName = "CPU")
-@InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#defaultcpuops")
 public open class DefaultCpuOpsBase(
     protected val dataFactory: TensorDataFactory,
     /** How this ops instance maps independent work onto cores (SKEEP-005); [Schedule.Sequential] by default. */
@@ -401,7 +399,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-add")
     override fun <T : DType, V> add(
         a: Tensor<T, V>,
         b: Tensor<T, V>
@@ -425,7 +422,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-subtract")
     override fun <T : DType, V> subtract(
         a: Tensor<T, V>,
         b: Tensor<T, V>
@@ -449,7 +445,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-multiply")
     override fun <T : DType, V> multiply(
         a: Tensor<T, V>,
         b: Tensor<T, V>
@@ -473,7 +468,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-divide")
     override fun <T : DType, V> divide(
         a: Tensor<T, V>,
         b: Tensor<T, V>
@@ -1461,7 +1455,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-conv2d")
     override fun <T : DType, V> conv2d(
         input: Tensor<T, V>,
         weight: Tensor<T, V>,
@@ -1989,7 +1982,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-upsample2d")
     override fun <T : DType, V> upsample2d(
         input: Tensor<T, V>,
         scale: Pair<Int, Int>,
@@ -2064,7 +2056,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-maxpool2d")
     override fun <T : DType, V> maxPool2d(
         input: Tensor<T, V>,
         kernelSize: Pair<Int, Int>,
@@ -2230,7 +2221,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-reshape")
     override fun <T : DType, V> reshape(
         tensor: Tensor<T, V>,
         newShape: Shape
@@ -2293,7 +2283,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-flatten")
     override fun <T : DType, V> flatten(
         tensor: Tensor<T, V>,
         startDim: Int,
@@ -2322,7 +2311,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-concat")
     override fun <T : DType, V> concat(
         tensors: List<Tensor<T, V>>,
         dim: Int
@@ -2403,7 +2391,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-split")
     override fun <T : DType, V> split(
         tensor: Tensor<T, V>,
         splitSize: Int,
@@ -2436,7 +2423,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-squeeze")
     override fun <T : DType, V> squeeze(
         tensor: Tensor<T, V>,
         dim: Int?
@@ -2460,7 +2446,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-unsqueeze")
     override fun <T : DType, V> unsqueeze(
         tensor: Tensor<T, V>,
         dim: Int
@@ -2476,7 +2461,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-relu")
     override fun <T : DType, V> relu(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> if (x < 0f) 0f else x }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -2535,7 +2519,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-softmax")
     override fun <T : DType, V> softmax(
         tensor: Tensor<T, V>,
         dim: Int
@@ -2599,7 +2582,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-logsoftmax")
     override fun <T : DType, V> logSoftmax(
         tensor: Tensor<T, V>,
         dim: Int
@@ -2656,7 +2638,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-sigmoid")
     override fun <T : DType, V> sigmoid(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> 1.0f / (1.0f + kotlin.math.exp(-x)) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -2673,7 +2654,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-silu")
     override fun <T : DType, V> silu(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> x * (1.0f / (1.0f + kotlin.math.exp(-x))) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -2749,7 +2729,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-tril")
     override fun <T : DType, V> tril(tensor: Tensor<T, V>, k: Int): Tensor<T, V> {
         val rank = tensor.rank
         // Apply over last two dims; for rank < 2, just copy
@@ -2784,7 +2763,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-sum")
     override fun <T : DType, V> sum(
         tensor: Tensor<T, V>,
         dim: Int?
@@ -2930,7 +2908,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-argmax")
     override fun <T : DType, V> argMax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> {
         val rank = tensor.rank
         require(rank >= 1) { "argMax: input must have rank >= 1" }
@@ -2970,7 +2947,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-mean")
     override fun <T : DType, V> mean(
         tensor: Tensor<T, V>,
         dim: Int?
@@ -3126,7 +3102,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-variance")
     override fun <T : DType, V> variance(
         tensor: Tensor<T, V>,
         dim: Int?
@@ -3273,7 +3248,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-sqrt")
     override fun <T : DType, V> sqrt(tensor: Tensor<T, V>): Tensor<T, V> {
         require(
             tensor.dtype == sk.ainet.lang.types.FP32::class ||
@@ -3403,7 +3377,6 @@ public open class DefaultCpuOpsBase(
     // ---- TinyFoA ops: abs, sign, clamp, lt, ge ----
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-abs")
     override fun <T : DType, V> abs(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> kotlin.math.abs(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3425,7 +3398,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-sign")
     override fun <T : DType, V> sign(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> if (x > 0f) 1f else if (x < 0f) -1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3447,7 +3419,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-clamp")
     override fun <T : DType, V> clamp(tensor: Tensor<T, V>, minVal: Float, maxVal: Float): Tensor<T, V> {
         require(minVal <= maxVal) { "clamp: minVal ($minVal) must be <= maxVal ($maxVal)" }
         floatUnaryFast(tensor) { x -> x.coerceIn(minVal, maxVal) }?.let { return it }
@@ -3470,7 +3441,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-lt")
     override fun <T : DType, V> lt(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> if (x < value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3492,7 +3462,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-ge")
     override fun <T : DType, V> ge(tensor: Tensor<T, V>, value: Float): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> if (x >= value) 1f else 0f }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->
@@ -3516,7 +3485,6 @@ public open class DefaultCpuOpsBase(
     // ---- narrow, pad2d, unfold ----
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-narrow")
     override fun <T : DType, V> narrow(tensor: Tensor<T, V>, dim: Int, start: Int, length: Int): Tensor<T, V> {
         val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
         require(actualDim in 0 until tensor.shape.rank) { "narrow dim $dim out of bounds for rank ${tensor.shape.rank}" }
@@ -3535,7 +3503,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-pad2d")
     override fun <T : DType, V> pad2d(tensor: Tensor<T, V>, padLeft: Int, padRight: Int, padTop: Int, padBottom: Int): Tensor<T, V> {
         require(tensor.shape.rank == 4) { "pad2d requires 4D tensor [N,C,H,W], got rank ${tensor.shape.rank}" }
         val (n, c, h, w) = tensor.shape.dimensions.toList()
@@ -3564,7 +3531,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:tinyfoa", issue = "PRD-tinyFoA#op-unfold")
     override fun <T : DType, V> unfold(tensor: Tensor<T, V>, dim: Int, size: Int, step: Int): Tensor<T, V> {
         val actualDim = if (dim < 0) tensor.shape.rank + dim else dim
         require(actualDim in 0 until tensor.shape.rank) { "unfold dim $dim out of bounds for rank ${tensor.shape.rank}" }
@@ -3594,7 +3560,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-convert")
     override fun <TFrom : DType, TTo : DType, V> convert(
         tensor: Tensor<TFrom, V>,
         targetType: TTo
@@ -3790,7 +3755,6 @@ public open class DefaultCpuOpsBase(
     }
 
     @TensorOp()
-    @InProgress("cpu", owner = "team:cpu", issue = "task-ops.md#op-tanh")
     override fun <T : DType, V> tanh(tensor: Tensor<T, V>): Tensor<T, V> {
         floatUnaryFast(tensor) { x -> kotlin.math.tanh(x) }?.let { return it }
         val outData = dataFactory.init<T, V>(tensor.shape, tensor.dtype) { idx ->

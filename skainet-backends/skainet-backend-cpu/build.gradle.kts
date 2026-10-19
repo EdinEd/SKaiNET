@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
     alias(libs.plugins.binary.compatibility.validator)
     id("sk.ainet.dokka")
+    alias(libs.plugins.ksp)
 }
 
 skainet {
@@ -60,6 +61,19 @@ kotlin {
         linuxArm64Test { kotlin.srcDir(goldenTestDir) }
         macosArm64Test { kotlin.srcDir(goldenTestDir) }
     }
+}
+
+// Run the operator-doc KSP processor over commonMain so the coverage matrix gets a real
+// `cpu` column: it sees `TensorOps` (from skainet-lang-core) plus the `@Backend("cpu")`
+// `DefaultCpuOps` overrides and their @NotImplemented / @InProgress markers. Root
+// `generateDocs` merges the emitted operators.json via `documentation.backendStatusFiles`.
+dependencies {
+    add("kspCommonMainMetadata", project(":skainet-lang:skainet-lang-ksp-processor"))
+}
+
+ksp {
+    arg("skainet.version", providers.gradleProperty("VERSION_NAME").getOrElse("unknown"))
+    arg("skainet.module", "skainet-backend-cpu")
 }
 
 tasks.withType<Test>().configureEach {

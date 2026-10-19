@@ -37,6 +37,13 @@
         "$ref": "#/$defs/OperatorDoc"
       },
       "description": "Array of operator documentation objects"
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LayerDoc"
+      },
+      "description": "nn Module subclasses with their implementation status (sourced from @NotImplemented on the class)"
     }
   },
   "required": ["schema", "version", "commit", "timestamp", "module", "operators"],
@@ -99,14 +106,14 @@
         "statusByBackend": {
           "type": "object",
           "patternProperties": {
-            "^[a-zA-Z][a-zA-Z0-9_]*$": {
+            "^([a-zA-Z][a-zA-Z0-9_]*|\\*)$": {
               "type": "string",
               "enum": ["implemented", "inherited", "in_progress", "not_implemented"],
               "description": "Implementation status for this backend"
             }
           },
           "additionalProperties": false,
-          "description": "Map of backend names to implementation status"
+          "description": "Map of backend names to implementation status. The key '*' means every backend (a @NotImplemented on the interface function with no backend list)."
         },
         "notes": {
           "type": "array",
@@ -173,13 +180,13 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["owner", "issue", "description"],
+          "enum": ["owner", "issue", "description", "reason"],
           "description": "Type of the note"
         },
         "backend": {
           "type": "string",
-          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
-          "description": "Backend this note applies to"
+          "pattern": "^([a-zA-Z][a-zA-Z0-9_]*|\\*)$",
+          "description": "Backend this note applies to ('*' = every backend, 'all' = backend-agnostic)"
         },
         "content": {
           "type": "string",
@@ -188,6 +195,26 @@
         }
       },
       "required": ["type", "backend", "content"],
+      "additionalProperties": false
+    },
+    "LayerDoc": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Simple class name of the layer" },
+        "packageName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+          "description": "Fully qualified package name"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["implemented", "in_progress", "not_implemented"],
+          "description": "Whether the layer's forward pass works"
+        },
+        "reason": { "type": "string", "description": "What is missing, from @NotImplemented(reason=...)" },
+        "issue": { "type": "string", "description": "Tracking issue, from @NotImplemented(issue=...)" }
+      },
+      "required": ["name", "packageName", "status"],
       "additionalProperties": false
     }
   }

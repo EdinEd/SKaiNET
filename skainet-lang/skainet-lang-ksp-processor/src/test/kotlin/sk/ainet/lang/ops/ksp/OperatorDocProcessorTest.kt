@@ -241,4 +241,85 @@ class OperatorDocProcessorTest {
         assertTrue(output.contains("Generated operators.json"), 
             "Processor should generate operators.json file")
     }
+
+    @Test
+    fun testNotImplementedMarkersFlowIntoStatusAndLayers() {
+        val annotations = SourceFile.kotlin("sk/ainet/lang/ops/Annotations.kt", """
+            package sk.ainet.lang.ops
+
+            @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class NotImplemented(vararg val backends: String, val reason: String = "", val issue: String = "")
+
+            @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class InProgress(vararg val backends: String, val owner: String = "", val issue: String = "")
+
+            @Target(AnnotationTarget.CLASS)
+            @Retention(AnnotationRetention.SOURCE)
+            annotation class Backend(val id: String, val displayName: String = "", val internal: Boolean = false)
+        """.trimIndent())
+        val ops = SourceFile.kotlin("sk/ainet/lang/tensor/ops/TensorOps.kt", """
+            package sk.ainet.lang.tensor.ops
+
+            import sk.ainet.lang.ops.Backend
+            import sk.ainet.lang.ops.InProgress
+            import sk.ainet.lang.ops.NotImplemented
+
+            interface TensorOps {
+                fun add(): Int
+                fun partial(): Int
+                @NotImplemented(reason = "no kernel yet", issue = "#42")
+                fun missing(): Int
+            }
+
+            @Backend(id = "cpu")
+            class CpuOps : TensorOps {
+                override fun add(): Int = 1
+                @NotImplemented("cpu", reason = "FP32 only", issue = "#7")
+                @InProgress("cpu")
+                override fun partial(): Int = 2
+                override fun missing(): Int = throw NotImplementedError()
+            }
+        """.trimIndent())
+        val nn = SourceFile.kotlin("sk/ainet/lang/nn/Layers.kt", """
+            package sk.ainet.lang.nn
+
+            import sk.ainet.lang.ops.NotImplemented
+
+            abstract class Module
+            class Dense : Module()
+            @NotImplemented(reason = "forward throws", issue = "#99")
+            class Deconv : Module()
+        """.trimIndent())
+
+        val compilation = KotlinCompilation().apply {
+            sources = listOf(annotations, ops, nn)
+            configureKsp {}
+            symbolProcessorProviders = mutableListOf(OperatorDocProcessorProvider())
+            inheritClassPath = true
+            messageOutputStream = System.out
+        }
+        compilation.compile()
+        val text = compilation.workingDir.walkTopDown()
+            .first { it.isFile && it.name == "operators.json" }.readText()
+
+        fun statusOf(fn: String): String =
+            Regex("\"name\": \"$fn\"[\\s\\S]*?\"statusByBackend\": \\{([^}]*)}").find(text)!!.groupValues[1]
+
+        assertTrue(statusOf("add").contains("\"cpu\": \"implemented\""), text)
+        // @NotImplemented on the override wins over @InProgress and over "overrides it"
+        assertTrue(statusOf("partial").contains("\"cpu\": \"not_implemented\""), text)
+        // @NotImplemented on the interface function, no backend list -> "*"
+        assertTrue(statusOf("missing").contains("\"*\": \"not_implemented\""), text)
+        // ...and it overrides a backend that overrides the function but still throws
+        assertTrue(statusOf("missing").contains("\"cpu\": \"not_implemented\""), text)
+        assertTrue(!text.contains("\"name\": \"Deconv\",\n"), "class-level layer marker must not become an operator: $text")
+        assertTrue(text.contains("\"content\": \"#42\""), text)
+        assertTrue(text.contains("\"content\": \"FP32 only\""), text)
+        // Layers table
+        assertTrue(text.contains("{\"name\": \"Dense\", \"packageName\": \"sk.ainet.lang.nn\", \"status\": \"implemented\"}"), text)
+        assertTrue(text.contains("\"name\": \"Deconv\", \"packageName\": \"sk.ainet.lang.nn\", \"status\": \"not_implemented\", \"reason\": \"forward throws\", \"issue\": \"#99\""), text)
+        assertTrue(!text.contains("\"name\": \"Module\""), "abstract Module must not be listed: $text")
+    }
 }

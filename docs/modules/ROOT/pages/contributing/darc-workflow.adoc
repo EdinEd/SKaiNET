@@ -237,7 +237,9 @@ All of the following must be true before the annotation goes in:
   been spot-checked.
 . *R — Research.* Every citation resolves and supports the specific
   claim it backs. Broken or drifted links are a hard fail.
-. *C — Code.* `statusByBackend` reflects reality.
+. *C — Code.* `statusByBackend` reflects reality. A function or
+  backend override that still throws carries `@NotImplemented` (see
+  xref:contributing/issue-taxonomy.adoc#marked-gaps[marked gaps]).
 
 Set `referencesChecked = false` only as a deliberate signal — e.g. a
 citation behind a paywall the reviewer could not open. The badge

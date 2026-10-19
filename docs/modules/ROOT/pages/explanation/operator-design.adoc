@@ -42,7 +42,11 @@ Your article must be written in AsciiDoc and include the following sections (use
   [source,kotlin]
   ----
   @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
-  annotation class NotImplemented(vararg val backends: String)
+  annotation class NotImplemented(
+      vararg val backends: String,   // empty = every backend
+      val reason: String = "",
+      val issue: String = ""         // e.g. "#1234"
+  )
 
   @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
   annotation class InProgress(

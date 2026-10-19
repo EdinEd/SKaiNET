@@ -1055,6 +1055,7 @@ public class DefaultGradientTape(
     override fun scaledDotProductAttentionBackward(upstream: Tensor<DType, Any>, output: Tensor<DType, Any>, inputs: List<Tensor<DType, Any>>, attributes: Map<String, Any?>): List<Tensor<DType, Any>?> {
         // SDPA backward is complex; stub returns null gradients (not differentiable through this path).
         // Full backward would require recomputing attention weights from Q,K,V.
+        // Listed in stubbedBackwardOpNames so the coverage matrix shows the gap.
         return inputs.map { null }
     }
 
@@ -1320,6 +1321,14 @@ public class DefaultGradientTape(
 
     /** Trace op names with a wired backward rule. Consumed by the autodiff-coverage guard test. */
     internal val dispatchedOpNames: Set<String> get() = backwardDispatch.keys
+
+    /**
+     * Dispatched ops whose backward rule is still a stub that returns `null` gradients, so
+     * gradients silently stop there. Rendered as ❌ in the Backward column of the operator
+     * coverage matrix (BackwardCoverageDumpTest). Remove an entry in the change that
+     * implements its rule.
+     */
+    internal val stubbedBackwardOpNames: Set<String> = setOf("scaledDotProductAttention")
 
     private fun buildBackwardFromTrace(
         trace: OpTrace,

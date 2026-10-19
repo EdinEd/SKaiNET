@@ -30,12 +30,27 @@ public annotation class TensorOp(val mode: ComputationMode = ComputationMode.INF
 
 /**
  * Annotation to mark classes or functions as not implemented for specific backends.
- * 
- * @param backends List of backend names where this feature is not implemented
+ *
+ * This is the single source-level marker for a known gap: a `TensorOps`
+ * function no backend implements yet, a backend override that still throws,
+ * or an `nn` layer whose `forward` throws. The docs KSP processor renders it
+ * as ❌ in the operator coverage matrix and links [issue] from the cell.
+ * It wins over [InProgress] and over a detected backend override.
+ *
+ * Remove the annotation in the same change that closes the gap.
+ *
+ * @param backends List of backend names where this feature is not implemented.
+ *   Empty means "every backend".
+ * @param reason One-line explanation of what is missing, shown in the docs
+ * @param issue URL or identifier (e.g. `"#1234"`) of the tracking issue
  */
 @Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
-public annotation class NotImplemented(vararg val backends: String)
+public annotation class NotImplemented(
+    vararg val backends: String,
+    val reason: String = "",
+    val issue: String = ""
+)
 
 /**
  * Annotation to mark classes or functions as in progress for specific backends.

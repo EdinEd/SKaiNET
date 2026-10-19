@@ -17,6 +17,10 @@ class DocumentationPlugin : Plugin<Project> {
                 task.format.set(extension.format)
                 task.includeBackendStatus.set(extension.includeBackendStatus)
                 task.generateIndex.set(extension.generateIndex)
+                task.backendStatusFiles.from(extension.backendStatusFiles)
+                task.hloCoverageFile.set(extension.hloCoverageFile)
+                task.backwardCoverageFile.set(extension.backwardCoverageFile)
+                task.issueBaseUrl.set(extension.issueBaseUrl)
             }
         })
 
@@ -28,6 +32,23 @@ class DocumentationPlugin : Plugin<Project> {
                 task.description = "Render the kernel × platform support matrix from kernel-support.json"
                 task.inputFile.set(extension.kernelInputFile)
                 task.outputFile.set(extension.kernelOutputFile)
+            }
+        })
+
+        // Guard: every NotImplementedError / TODO( in production code is either inside a
+        // @NotImplemented / @InProgress declaration (and so in the coverage matrix) or allowlisted.
+        project.tasks.register("checkUnmarkedStubs", CheckUnmarkedStubsTask::class.java, object : Action<CheckUnmarkedStubsTask> {
+            override fun execute(task: CheckUnmarkedStubsTask) {
+                task.group = "verification"
+                task.description = "Fail on NotImplementedError / TODO( stubs that are neither @NotImplemented nor allowlisted"
+                val root = project.rootProject.layout.projectDirectory
+                task.sources.from(root.asFileTree.matching {
+                    include("**/src/**/*.kt")
+                    exclude("**/build/**", ".gradle/**", "**/node_modules/**")
+                })
+                task.rootDirectory.set(root)
+                task.allowlistFile.set(root.file("config/stub-allowlist.txt"))
+                task.reportFile.set(project.layout.buildDirectory.file("reports/stubs/unmarked-stubs.txt"))
             }
         })
 

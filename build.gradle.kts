@@ -133,7 +133,7 @@ tasks.register("generateOperatorDocs") {
     // Configure inputs for incremental builds
     inputs.files("skainet-lang/skainet-lang-core/build/generated/ksp/metadata/commonMain/resources/operators.json")
     // Configure outputs for incremental builds
-    outputs.dir("docs/modules/operators/_generated_")
+    outputs.dir("docs/modules/ROOT/pages/reference/operators/generated")
     outputs.cacheIf { true }
     
     // Depend on KSP processing
@@ -155,6 +155,14 @@ documentation {
     outputDirectory.set(file("docs/modules/ROOT/pages/reference/operators/generated"))
     includeBackendStatus.set(true)
     generateIndex.set(true)
+    // Backend `statusByBackend` maps + StableHLO / backward coverage dumps for the matrix.
+    // The two coverage JSONs come from jvmTests; refresh them before generateDocs with:
+    //   ./gradlew :skainet-compile:skainet-compile-hlo:jvmTest --tests '*HloCoverageDumpTest' \
+    //             :skainet-compile:skainet-compile-dag:jvmTest --tests '*BackwardCoverageDumpTest' generateDocs
+    // (without them the StableHLO / Backward columns are omitted).
+    backendStatusFiles.from(file("skainet-backends/skainet-backend-cpu/build/generated/ksp/metadata/commonMain/resources/operators.json"))
+    hloCoverageFile.set(file("skainet-compile/skainet-compile-hlo/build/generated/coverage/hlo-coverage.json"))
+    backwardCoverageFile.set(file("skainet-compile/skainet-compile-dag/build/generated/coverage/backward-coverage.json"))
     // Kernel × platform matrix — registry-introspected JSON (emitted by KernelSupportMatrixTest)
     // rendered to an Antora page, mirroring the operators.json → ops-status-matrix.adoc pipeline.
     kernelInputFile.set(file("skainet-backends/skainet-backend-native-cpu/build/generated/kernel-support/kernel-support.json"))
@@ -163,6 +171,7 @@ documentation {
 
 tasks.named("generateDocs") {
     dependsOn(":skainet-lang:skainet-lang-core:kspCommonMainKotlinMetadata")
+    dependsOn(":skainet-backends:skainet-backend-cpu:kspCommonMainKotlinMetadata")
 }
 
 tasks.named("generateKernelMatrix") {

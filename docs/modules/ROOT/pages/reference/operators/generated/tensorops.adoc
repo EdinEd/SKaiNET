@@ -425,6 +425,36 @@ fun convTranspose1d(input:Tensor, weight:Tensor, bias:Tensor, stride:Int, paddin
 
 `Tensor`
 
+== convTranspose2d
+
+[.darc-none]#✖ Generated facts only (no human prose)#
+
+=== Signature
+
+[source,kotlin]
+----
+fun convTranspose2d(input:Tensor, weight:Tensor, bias:Tensor, stride:Pair, padding:Pair, outputPadding:Pair, dilation:Pair, groups:Int): Tensor
+----
+
+=== Parameters
+
+* `input: Tensor`
+* `weight: Tensor`
+* `bias: Tensor`
+* `stride: Pair`
+* `padding: Pair`
+* `outputPadding: Pair`
+* `dilation: Pair`
+* `groups: Int`
+
+=== Return Type
+
+`Tensor`
+
+=== Notes
+
+TIP: *all backends*: no backend kernel yet; TransposedConv2d.forward depends on it
+
 == maxPool2d
 
 [.darc-none]#✖ Generated facts only (no human prose)#

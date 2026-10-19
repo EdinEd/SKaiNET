@@ -9,7 +9,18 @@ data class OperatorDocModule(
     val commit: String,
     val timestamp: String,
     val module: String,
-    val operators: List<OperatorDoc>
+    val operators: List<OperatorDoc>,
+    /** nn `Module` subclasses with their implementation status. */
+    val layers: List<LayerDoc> = emptyList(),
+)
+
+@Serializable
+data class LayerDoc(
+    val name: String,
+    val packageName: String,
+    val status: String,
+    val reason: String = "",
+    val issue: String = "",
 )
 
 @Serializable
@@ -30,6 +41,8 @@ data class FunctionDoc(
     val returnType: String,
     val statusByBackend: Map<String, String> = emptyMap(),
     val notes: List<Note> = emptyList(),
+    /** Whether the op carries `@Diff`, i.e. must have a wired backward rule. */
+    val isDifferentiable: Boolean = false,
     val validated: Boolean = false,
     val validatedBy: String = "",
     val validatedOn: String = "",
@@ -47,9 +60,11 @@ data class ParameterDoc(
 )
 
 @Serializable
- data class Note(
+data class Note(
     val type: String = "",
     val backend: String = "",
+    // The KSP processor emits the note text as `content`.
+    @kotlinx.serialization.json.JsonNames("content")
     val message: String = ""
 )
 
