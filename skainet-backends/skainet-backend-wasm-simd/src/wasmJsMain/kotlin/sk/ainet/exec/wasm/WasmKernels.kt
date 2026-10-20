@@ -358,6 +358,18 @@ public object WasmKernels {
         scale, if (causal) 1 else 0, window, rightContext, lengthsPtr, maskPtr, maskB, maskH, maskQ, maskK,
     )
 
+    /** Int32 count of the geometry block `skainet_f32_conv` reads (`f32_conv.c` names the order). */
+    public const val F32_CONV_GEO_INTS: Int = 22
+
+    /**
+     * `skainet_f32_conv`: dense FP32 conv1d/2d/3d as im2col + GEMM. [geoPtr] holds the
+     * [F32_CONV_GEO_INTS] int32 geometry (batch, channels, groups, three spatial dims each of input,
+     * kernel, stride, padding, dilation, output), [colPtr] is scratch of patch_count × col_size
+     * floats, [biasPtr] `0` for none.
+     */
+    public fun f32Conv(inPtr: Int, wPtr: Int, biasPtr: Int, outPtr: Int, colPtr: Int, geoPtr: Int): Unit =
+        jsF32Conv(mod(), inPtr, wPtr, biasPtr, outPtr, colPtr, geoPtr)
+
     /** Write [count] ints of [src] from [srcOffset] at [dstPtr], little-endian (the sidecar's int32). */
     public fun writeInts(dstPtr: Int, src: IntArray, srcOffset: Int, count: Int) {
         val bytes = ByteArray(count * 4)
@@ -566,6 +578,9 @@ private fun jsF32Sdpa(
 ): Unit = js(
     "mod._skainet_f32_sdpa(qPtr, kPtr, vPtr, outPtr, batch, heads, kvHeads, seqQ, seqKV, headDim, scale, causal, window, rightContext, lengthsPtr, maskPtr, maskB, maskH, maskQ, maskK)"
 )
+
+private fun jsF32Conv(mod: JsAny, inPtr: Int, wPtr: Int, biasPtr: Int, outPtr: Int, colPtr: Int, geoPtr: Int): Unit =
+    js("mod._skainet_f32_conv(inPtr, wPtr, biasPtr, outPtr, colPtr, geoPtr)")
 
 private fun jsCrossOriginIsolated(): Boolean = js("typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated === true")
 

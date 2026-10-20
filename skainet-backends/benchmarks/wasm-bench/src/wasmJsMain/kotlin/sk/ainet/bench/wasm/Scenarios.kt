@@ -195,6 +195,19 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val flops = 4.0 * heads * seq * seq * headDim;
         { flops / seconds { ctx.ops.scaledDotProductAttention(q, k, v, causal = true) } / 1e9 }
     },
+    // A CNN's 3×3 same-padding layer, 64 → 64 channels over a 56 × 56 map, with bias: im2col + GEMM
+    // in the sidecar (the common scalar loop before WasmSimd.install()).
+    WasmScenario("engine-conv2d", "gflops", mapOf("batch" to "1", "c_in" to "64", "c_out" to "64", "hw" to "56", "kernel_size" to "3", "bias" to "true"), reps = 5) {
+        val cIn = 64; val cOut = 64; val hw = 56; val k = 3
+        val ctx = DirectCpuExecutionContext()
+        val rnd = lcg(9)
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(1, cIn, hw, hw), FP32::class, FloatArray(cIn * hw * hw) { rnd() - 0.5f })
+        val w = ctx.fromFloatArray<FP32, Float>(Shape(cOut, cIn, k, k), FP32::class, FloatArray(cOut * cIn * k * k) { (rnd() - 0.5f) * 0.2f })
+        val b = ctx.fromFloatArray<FP32, Float>(Shape(cOut), FP32::class, FloatArray(cOut) { rnd() - 0.5f })
+        ctx.ops.conv2d(x, w, b, 1 to 1, 1 to 1, 1 to 1, 1) // the weight's resident upload happens here
+        val flops = 2.0 * cOut * hw * hw * cIn * k * k;
+        { flops / seconds { ctx.ops.conv2d(x, w, b, 1 to 1, 1 to 1, 1 to 1, 1) } / 1e9 }
+    },
 )
 
 private inline fun seconds(block: () -> Unit): Double {

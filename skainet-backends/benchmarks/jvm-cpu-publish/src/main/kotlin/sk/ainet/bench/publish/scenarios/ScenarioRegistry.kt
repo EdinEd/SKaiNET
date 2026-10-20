@@ -18,6 +18,7 @@ public object ScenarioRegistry {
         "engine-softmax",
         "engine-layer-norm",
         "engine-sdpa",
+        "engine-conv2d",
     )
 
     public fun byId(id: String, provider: String, smoke: Boolean): Scenario? = when (id) {
@@ -34,6 +35,7 @@ public object ScenarioRegistry {
         "engine-softmax" -> SoftmaxScenario(smoke = smoke, providerName = provider)
         "engine-layer-norm" -> LayerNormScenario(smoke = smoke, providerName = provider)
         "engine-sdpa" -> SdpaScenario(smoke = smoke, providerName = provider)
+        "engine-conv2d" -> Conv2dScenario(smoke = smoke, providerName = provider)
         else -> null
     }
 }
