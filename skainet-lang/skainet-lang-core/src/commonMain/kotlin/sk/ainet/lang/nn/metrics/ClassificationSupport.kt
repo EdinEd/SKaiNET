@@ -1,65 +1,120 @@
 package sk.ainet.lang.nn.metrics
 
+import sk.ainet.lang.tensor.Tensor
+import sk.ainet.lang.types.DType
+import sk.ainet.lang.types.FP16
+import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
+
 internal object ClassificationSupport {
 
+    /**
+     * Traverses predictions and targets sample by sample, invoking [action] with the
+     * predicted class and target class for each sample.
+     */
     internal inline fun <T : DType, V> forEachPrediction(
         predictions: Tensor<T, V>,
         targets: Tensor<out DType, *>,
         dim: Int = -1,
         threshold: Float? = null,
         action: (predicted: Int, target: Int) -> Unit
-    ){
+    ) {
         validatePredictions(predictions)
         val classDim = normalizeDim(dim, predictions.rank)
 
         when (targets.dtype) {
-            Int32::class -> {
-                require(targets.rank == predictions.rank - 1) {
-                    "Expected target rank ${predictions.rank - 1} for class indices, got ${targets.rank}"
-                }
-                validateIndexTargetShapes(predictions, targets, classDim)
-
-                val classCount = predictions.shape[classDim]
-                @Suppress("UNCHECKED_CAST")
-                val intTargets = targets as Tensor<Int32, Int>
-
-                iterateOverSamples(intTargets.shape.dimensions) { sampleIdx ->
-                    val targetClass = intTargets.data.get(*sampleIdx)
-                    val predictedClass = if (threshold != null && classCount <= 2) {
-                        val logitIdx = insertClassIndex(sampleIdx, if (classCount == 2) 1 else 0, classDim, predictions.rank)
-                        val logit = predictions.data.get(*logitIdx) as Float
-                        if (logit > threshold) 1 else 0
-                    } else {
-                        argmax(predictions, sampleIdx, classDim)
-                    }
-
-                    action(predictedClass, targetClass)
-                }
-            }
-            FP32::class, FP16::class -> {
-                require(predictions.shape == targets.shape) {
-                    "With soft targets requires matching shapes, got ${predictions.shape.dimensions.contentToString()} vs ${targets.shape.dimensions.contentToString()}"
-                }
-
-                val classCount = predictions.shape[classDim]
-                val sampleShape = predictions.shape.dimensions.filterIndexed { i, _ -> i != classDim }.toIntArray()
-
-                iterateOverSamples(sampleShape) { sampleIdx ->
-                    val predictedClass = if (threshold != null && classCount <= 2) {
-                        val logitIdx = insertClassIndex(sampleIdx, if (classCount == 2) 1 else 0, classDim, predictions.rank)
-                        val logit = predictions.data.get(*logitIdx) as Float
-                        if (logit > threshold) 1 else 0
-                    } else {
-                        argmax(predictions, sampleIdx, classDim)
-                    }
-
-                    val targetClass = argmaxTarget(targets, sampleIdx, classDim)
-
-                    action(predictedClass, targetClass)
-                }
-            }
+            Int32::class -> forEachWithIndexTargets(predictions, targets, classDim, threshold, action)
+            FP32::class, FP16::class -> forEachWithSoftTargets(predictions, targets, classDim, threshold, action)
             else -> error("Unsupported target dtype for classification: ${targets.dtype}")
         }
+    }
+
+    /**
+     * Handles traversal for hard class index targets (Int32).
+     */
+    internal inline fun <T : DType, V> forEachWithIndexTargets(
+        predictions: Tensor<T, V>,
+        targets: Tensor<out DType, *>,
+        classDim: Int,
+        threshold: Float?,
+        action: (predicted: Int, target: Int) -> Unit
+    ) {
+        require(targets.rank == predictions.rank - 1) {
+            "Expected target rank ${predictions.rank - 1} for class indices, got ${targets.rank}"
+        }
+        validateIndexTargetShapes(predictions, targets, classDim)
+
+        @Suppress("UNCHECKED_CAST")
+        val intTargets = targets as Tensor<Int32, Int>
+        iteratePredictions(
+            predictions = predictions,
+            sampleShape = intTargets.shape.dimensions,
+            classDim = classDim,
+            threshold = threshold,
+            getTargetClass = { sampleIdx -> intTargets.data.get(*sampleIdx) },
+            action = action
+        )
+    }
+
+    /**
+     * Handles traversal for soft probability / one-hot targets (FP32 / FP16).
+     */
+    internal inline fun <T : DType, V> forEachWithSoftTargets(
+        predictions: Tensor<T, V>,
+        targets: Tensor<out DType, *>,
+        classDim: Int,
+        threshold: Float?,
+        action: (predicted: Int, target: Int) -> Unit
+    ) {
+        require(predictions.shape == targets.shape) {
+            "With soft targets requires matching shapes, got ${predictions.shape.dimensions.contentToString()} vs ${targets.shape.dimensions.contentToString()}"
+        }
+
+        val sampleShape = predictions.shape.dimensions.filterIndexed { i, _ -> i != classDim }.toIntArray()
+        iteratePredictions(
+            predictions = predictions,
+            sampleShape = sampleShape,
+            classDim = classDim,
+            threshold = threshold,
+            getTargetClass = { sampleIdx -> argmaxTarget(targets, sampleIdx, classDim) },
+            action = action
+        )
+    }
+
+    /**
+     * Core sample traversal runner that coordinates per-sample prediction and target extraction.
+     */
+    internal inline fun <T : DType, V> iteratePredictions(
+        predictions: Tensor<T, V>,
+        sampleShape: IntArray,
+        classDim: Int,
+        threshold: Float?,
+        crossinline getTargetClass: (sampleIdx: IntArray) -> Int,
+        action: (predicted: Int, target: Int) -> Unit
+    ) {
+        val classCount = predictions.shape[classDim]
+        iterateOverSamples(sampleShape) { sampleIdx ->
+            val predictedClass = predictClass(predictions, sampleIdx, classDim, classCount, threshold)
+            val targetClass = getTargetClass(sampleIdx)
+            action(predictedClass, targetClass)
+        }
+    }
+
+    /**
+     * Resolves the predicted class for a sample (thresholding for binary, argmax for multiclass).
+     */
+    internal fun <T : DType, V> predictClass(
+        predictions: Tensor<T, V>,
+        sampleIdx: IntArray,
+        classDim: Int,
+        classCount: Int,
+        threshold: Float?
+    ): Int = if (threshold != null && classCount <= 2) {
+        val logitIdx = insertClassIndex(sampleIdx, if (classCount == 2) 1 else 0, classDim, predictions.rank)
+        val logit = predictions.data.get(*logitIdx) as Float
+        if (logit > threshold) 1 else 0
+    } else {
+        argmax(predictions, sampleIdx, classDim)
     }
 
     internal fun <T : DType, V> argmax(
@@ -96,7 +151,7 @@ internal object ClassificationSupport {
             val value = when (tensor.dtype) {
                 FP32::class -> tensor.data.get(*fullIdx) as Float
                 FP16::class -> (tensor.data.get(*fullIdx) as Number).toFloat()
-                else -> error("Unsupported dtype")
+                else -> error("Unsupported dtype: ${tensor.dtype}")
             }
             if (value > maxVal) {
                 maxVal = value
@@ -135,7 +190,7 @@ internal object ClassificationSupport {
         for (pi in predDims.indices) {
             if (pi == classDim) continue
             require(predDims[pi] == targetDims[ti]) {
-                "Accuracy target shape mismatch at dim $pi: expected ${predDims[pi]}, got ${targetDims[ti]}"
+                "Target shape mismatch at dim $pi: expected ${predDims[pi]}, got ${targetDims[ti]}"
             }
             ti++
         }
@@ -143,7 +198,7 @@ internal object ClassificationSupport {
 
     internal fun <T : DType, V> validatePredictions(preds: Tensor<T, V>) {
         require(preds.dtype == FP32::class || preds.dtype == FP16::class) {
-            "Accuracy requires floating point predictions, got ${preds.dtype}"
+            "Requires floating point predictions, got ${preds.dtype}"
         }
     }
 
@@ -164,7 +219,6 @@ internal object ClassificationSupport {
 
         repeat(total) {
             action(idx)
-            // Increment index
             for (d in shape.lastIndex downTo 0) {
                 idx[d]++
                 if (idx[d] < shape[d]) break

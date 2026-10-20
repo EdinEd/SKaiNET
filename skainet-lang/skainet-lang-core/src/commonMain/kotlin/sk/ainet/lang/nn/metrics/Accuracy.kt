@@ -3,9 +3,6 @@ package sk.ainet.lang.nn.metrics
 import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.types.DType
-import sk.ainet.lang.types.FP16
-import sk.ainet.lang.types.FP32
-import sk.ainet.lang.types.Int32
 
 /**
  * Classification accuracy metric.
