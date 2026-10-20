@@ -181,3 +181,61 @@ internal class SdpaScenario(
 
     override fun teardown() = KernelRegistry.clearForTesting()
 }
+
+/**
+ * `ctx.ops.conv2d`: a CNN's 3 × 3 same-padding layer, 64 → 64 channels over a 56 × 56 map, with bias.
+ * Primary metric: GFLOP/s over `2 · c_out · out_h · out_w · c_in · k_h · k_w`. On the JVM every
+ * provider measures the same path — `DefaultCpuOpsJvm`'s im2col + Vector API kernels, which no
+ * provider replaces; the `kernel` parameter records which one was registered. The wasm tier runs the
+ * same scenario as im2col + GEMM in the sidecar.
+ */
+internal class Conv2dScenario(
+    smoke: Boolean,
+    private val providerName: String,
+) : Scenario {
+    override val id: String = "engine-conv2d"
+    override val suite: String = "skainet-engine"
+    override val primaryMetric: String = "gflops"
+    override val unit: String = "gflops"
+    override val higherIsBetter: Boolean = true
+    override val kernelProvider: String = providerName
+
+    private val cIn: Int = if (smoke) 16 else 64
+    private val cOut: Int = if (smoke) 16 else 64
+    private val hw: Int = if (smoke) 28 else 56
+    private val k: Int = 3
+    override val parameters: Map<String, String> = mapOf(
+        "batch" to "1",
+        "c_in" to cIn.toString(),
+        "c_out" to cOut.toString(),
+        "hw" to hw.toString(),
+        "kernel_size" to k.toString(),
+        "bias" to "true",
+        "kernel" to providerName,
+    )
+
+    private lateinit var ctx: DirectCpuExecutionContext
+    private lateinit var x: Tensor<FP32, Float>
+    private lateinit var w: Tensor<FP32, Float>
+    private lateinit var b: Tensor<FP32, Float>
+
+    override fun setup() {
+        registerOnly(providerName)
+        ctx = DirectCpuExecutionContext()
+        x = ctx.fromFloatArray(Shape(1, cIn, hw, hw), FP32::class, pseudo(cIn * hw * hw, 9))
+        w = ctx.fromFloatArray(Shape(cOut, cIn, k, k), FP32::class, pseudo(cOut * cIn * k * k, 17, 0.2f))
+        b = ctx.fromFloatArray(Shape(cOut), FP32::class, pseudo(cOut, 19))
+        ctx.ops.conv2d(x, w, b, 1 to 1, 1 to 1, 1 to 1, 1)
+    }
+
+    override fun runOnce(): Double {
+        val start = System.nanoTime()
+        val result = ctx.ops.conv2d(x, w, b, 1 to 1, 1 to 1, 1 to 1, 1)
+        val elapsedNs = System.nanoTime() - start
+        @Suppress("UNUSED_VARIABLE") val sink = result.hashCode()
+        val flops = 2.0 * cOut * hw * hw * cIn * k * k
+        return (flops / (elapsedNs / 1_000_000_000.0)) / 1e9
+    }
+
+    override fun teardown() = KernelRegistry.clearForTesting()
+}

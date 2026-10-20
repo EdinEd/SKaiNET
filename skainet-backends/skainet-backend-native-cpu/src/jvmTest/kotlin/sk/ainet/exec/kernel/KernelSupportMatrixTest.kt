@@ -127,17 +127,24 @@ class KernelSupportMatrixTest {
         "Float32 softmax (fused rows)",
         "Float32 layer_norm / rms_norm (fused)",
         "Float32 SDPA (fused, banded, GQA)",
+        "Float32 conv1d / conv2d / conv3d (im2col + GEMM)",
     )
 
+    /**
+     * The convolutions are the one row with a JVM cell that is not a provider: `DefaultCpuOpsJvm`
+     * runs im2col + the Vector API itself (`JvmVectorKernels`), so the cell is declared as the
+     * `panama-vector` tier by hand; on wasm `WasmCpuOps` runs `skainet_f32_conv` in the sidecar.
+     */
     private fun packTiers(): List<Tier> {
         val b158 = packRows[0]; val planes = packRows[1]; val tq2 = packRows[2]; val wt = packRows[3]
-        val softmax = packRows[4]; val norm = packRows[5]; val sdpa = packRows[6]
+        val softmax = packRows[4]; val norm = packRows[5]; val sdpa = packRows[6]; val conv = packRows[7]
         return listOf(
             Tier("ffm-ternary", 100, setOf("JVM"), setOf(b158, planes)),
             Tier("native-ffm", 100, setOf("JVM"), setOf(wt, softmax, norm, sdpa)),
+            Tier("panama-vector", 50, setOf("JVM"), setOf(conv)),
             Tier("native-jni", 100, setOf("Android"), setOf(b158, planes, tq2)),
             Tier("native-cinterop", 100, setOf("Native·linux", "Native·apple"), setOf(b158, planes)),
-            Tier("wasm-simd128", 50, setOf("JS/WASM"), setOf(b158, planes, tq2, wt, softmax, norm, sdpa)),
+            Tier("wasm-simd128", 50, setOf("JS/WASM"), setOf(b158, planes, tq2, wt, softmax, norm, sdpa, conv)),
         )
     }
 

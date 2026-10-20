@@ -579,6 +579,25 @@ SKAINET_API void skainet_f32_sdpa(
     const float* mask, int32_t mask_b, int32_t mask_h, int32_t mask_q, int32_t mask_k
 );
 
+/*
+ * Dense FP32 convolution as im2col + GEMM (see src/f32_conv.c for the contract).
+ * One kernel for conv1d/2d/3d over three spatial dims (depth, height, width; a
+ * lower rank sets the leading ones to the identity geometry). Layouts are the
+ * ops layer's: in [n, c_in, d, h, w], w [c_out, c_in / groups, k_d, k_h, k_w],
+ * bias [c_out] or NULL, out [n, c_out, out_d, out_h, out_w]. `geo` holds
+ * SKAINET_CONV_GEO_INTS int32 values:
+ *   n, c_in, c_out, groups, in_d, in_h, in_w, k_d, k_h, k_w, s_d, s_h, s_w,
+ *   p_d, p_h, p_w, d_d, d_h, d_w, out_d, out_h, out_w.
+ * `col` is caller scratch of (out_d · out_h · out_w) × ((c_in / groups) · k_d · k_h · k_w)
+ * floats. Gather and GEMM thread over patches through the shared row pool; each
+ * output accumulates its products in ascending k.
+ */
+#define SKAINET_CONV_GEO_INTS 22
+
+SKAINET_API void skainet_f32_conv(
+    const float* in, const float* w, const float* bias, float* out, float* col, const int32_t* geo
+);
+
 #ifdef __cplusplus
 }
 #endif

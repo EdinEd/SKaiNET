@@ -141,7 +141,9 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
                         "norm / RMS norm and scaled dot-product attention with its structural masks and " +
                         "grouped-query heads (`softmaxFp32`, `normFp32`, `attentionFp32`) — run those ops in one " +
                         "pass where the ops layer otherwise runs its scalar loops or the normalisation's " +
-                        "decomposition. The scalar reference kernels serve every cell that is empty here (`—`), " +
+                        "decomposition. The convolutions run as im2col + GEMM: on the JVM inside the ops layer " +
+                        "itself (`JvmVectorKernels`, declared as the `panama-vector` tier), on wasm as the sidecar's " +
+                        "`skainet_f32_conv`. The scalar reference kernels serve every cell that is empty here (`—`), " +
                         "at reference speed; the common row-dot serves `x · Wᵀ` there.",
                 )
                 appendLine("")

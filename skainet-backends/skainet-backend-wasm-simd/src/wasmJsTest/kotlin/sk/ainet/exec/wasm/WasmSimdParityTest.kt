@@ -539,6 +539,82 @@ class WasmSimdParityTest {
     }
 
     @Test
+    fun `convolutions run as im2col and GEMM in the sidecar and match the scalar lane`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        // conv2d over a [2, 4, 9, 7] input: 3×3 same padding with and without bias, a 2×3 kernel with
+        // stride, dilation and asymmetric padding, depthwise, two groups with stride, 1×1, the 4-D bias
+        // form; conv1d over [2, 3, 17] with stride, dilation and groups; conv3d over [1, 2, 5, 6, 7].
+        val x2Arr = pseudo(2 * 4 * 9 * 7, 71); val w2Arr = pseudo(6 * 4 * 3 * 3, 73); val b2Arr = pseudo(6, 75)
+        val w2sArr = pseudo(5 * 4 * 2 * 3, 77)
+        val wDwArr = pseudo(4 * 1 * 3 * 3, 79)
+        val wGArr = pseudo(6 * 2 * 3 * 3, 81)
+        val w11Arr = pseudo(8 * 4, 83)
+        val x1Arr = pseudo(2 * 3 * 17, 85); val w1Arr = pseudo(4 * 3 * 5, 87); val b1Arr = pseudo(4, 89)
+        val w1gArr = pseudo(6 * 1 * 3, 91)
+        val x3Arr = pseudo(1 * 2 * 5 * 6 * 7, 93); val w3Arr = pseudo(3 * 2 * 2 * 3 * 3, 95); val b3Arr = pseudo(3, 97)
+
+        fun run(ctx: DirectCpuExecutionContext, probe: (String, Tensor<FP32, Float>) -> Unit): Map<String, FloatArray> {
+            val ops = ctx.ops
+            val out = LinkedHashMap<String, FloatArray>()
+            fun keep(name: String, t: Tensor<FP32, Float>) { probe(name, t); out[name] = t.data.copyToFloatArray() }
+            val x2 = ctx.fromFloatArray<FP32, Float>(Shape(2, 4, 9, 7), FP32::class, x2Arr)
+            val w2 = ctx.fromFloatArray<FP32, Float>(Shape(6, 4, 3, 3), FP32::class, w2Arr)
+            val b2 = ctx.fromFloatArray<FP32, Float>(Shape(6), FP32::class, b2Arr)
+            keep("conv2d", ops.conv2d(x2, w2, b2, 1 to 1, 1 to 1, 1 to 1, 1))
+            keep("conv2dNoBias", ops.conv2d(x2, w2, null, 1 to 1, 1 to 1, 1 to 1, 1))
+            keep("conv2dBias4d", ops.conv2d(x2, w2, ctx.fromFloatArray(Shape(1, 6, 1, 1), FP32::class, b2Arr), 1 to 1, 1 to 1, 1 to 1, 1))
+            val w2s = ctx.fromFloatArray<FP32, Float>(Shape(5, 4, 2, 3), FP32::class, w2sArr)
+            keep("conv2dStrideDilation", ops.conv2d(x2, w2s, null, 2 to 1, 0 to 2, 2 to 1, 1))
+            val wDw = ctx.fromFloatArray<FP32, Float>(Shape(4, 1, 3, 3), FP32::class, wDwArr)
+            keep("conv2dDepthwise", ops.conv2d(x2, wDw, null, 1 to 1, 1 to 1, 1 to 1, 4))
+            val wG = ctx.fromFloatArray<FP32, Float>(Shape(6, 2, 3, 3), FP32::class, wGArr)
+            keep("conv2dGrouped", ops.conv2d(x2, wG, b2, 1 to 2, 1 to 1, 1 to 1, 2))
+            val w11 = ctx.fromFloatArray<FP32, Float>(Shape(8, 4, 1, 1), FP32::class, w11Arr)
+            keep("conv2d1x1", ops.conv2d(x2, w11, null, 1 to 1, 0 to 0, 1 to 1, 1))
+            val x1 = ctx.fromFloatArray<FP32, Float>(Shape(2, 3, 17), FP32::class, x1Arr)
+            val w1 = ctx.fromFloatArray<FP32, Float>(Shape(4, 3, 5), FP32::class, w1Arr)
+            val b1 = ctx.fromFloatArray<FP32, Float>(Shape(4), FP32::class, b1Arr)
+            keep("conv1d", ops.conv1d(x1, w1, b1, 2, 2, 1, 1))
+            keep("conv1dDilation", ops.conv1d(x1, w1, null, 1, 4, 2, 1))
+            val w1g = ctx.fromFloatArray<FP32, Float>(Shape(6, 1, 3), FP32::class, w1gArr)
+            keep("conv1dGrouped", ops.conv1d(x1, w1g, null, 1, 1, 1, 3))
+            val x3 = ctx.fromFloatArray<FP32, Float>(Shape(1, 2, 5, 6, 7), FP32::class, x3Arr)
+            val w3 = ctx.fromFloatArray<FP32, Float>(Shape(3, 2, 2, 3, 3), FP32::class, w3Arr)
+            val b3 = ctx.fromFloatArray<FP32, Float>(Shape(3), FP32::class, b3Arr)
+            keep("conv3d", ops.conv3d(x3, w3, b3, Triple(1, 2, 1), Triple(1, 1, 0), Triple(1, 1, 1), 1))
+            // A layer's chain: the convolution's output feeds the activation without a download, and
+            // a resident input (the previous layer's output) is read in place.
+            keep("convRelu", ops.relu(ops.conv2d(x2, w2, b2, 1 to 1, 1 to 1, 1 to 1, 1)))
+            val wasm = ops as? WasmCpuOps
+            val xResident = wasm?.toResident(x2) ?: x2
+            keep("conv2dResidentInput", ops.conv2d(xResident, w2, b2, 1 to 1, 1 to 1, 1 to 1, 1))
+            probe("xResident", xResident)
+            return out
+        }
+        val ref = run(scalar) { _, _ -> }
+
+        WasmSimd.install()
+        val fast = DirectCpuExecutionContext()
+        assertIs<WasmCpuOps>(fast.ops)
+        val got = run(fast) { name, t ->
+            val d = t.data
+            assertIs<WasmLinearTensorData<*>>(d, "$name should be resident")
+            if (name == "xResident") assertTrue(!d.isMirrored, "the resident input was not downloaded")
+        }
+        for ((name, values) in ref) assertClose(values, checkNotNull(got[name]) { name }, name)
+
+        // A weight is a parameter: resident after its first call, not re-uploaded by the next one.
+        val x2 = fast.fromFloatArray<FP32, Float>(Shape(2, 4, 9, 7), FP32::class, x2Arr)
+        val w2 = fast.fromFloatArray<FP32, Float>(Shape(6, 4, 3, 3), FP32::class, w2Arr)
+        val before = WasmKernels.residentWeightBytes()
+        fast.ops.conv2d(x2, w2, null, 1 to 1, 1 to 1, 1 to 1, 1)
+        val held = WasmKernels.residentWeightBytes()
+        assertEquals(before + w2Arr.size * 4L, held, "the weight went resident on its first call")
+        fast.ops.conv2d(x2, w2, null, 1 to 1, 1 to 1, 1 to 1, 1)
+        assertEquals(held, WasmKernels.residentWeightBytes(), "a second call with the same weight uploads nothing")
+    }
+
+    @Test
     fun `heap operands keep the common path while transcendental activations and matmul outputs go resident`() = runTest {
         WasmSimd.install()
         val ctx = DirectCpuExecutionContext()

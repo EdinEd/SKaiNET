@@ -38,6 +38,8 @@ import kotlin.reflect.KClass
  * - `softmax`/`logSoftmax` over the last dimension, `scaledDotProductAttention` and the fused
  *   normalisations of [FusedNormOps] (what `LayerNormalization` calls): always — one sidecar pass
  *   against several allocating scalar passes, whatever the operands' home.
+ * - `conv1d`/`conv2d`/`conv3d` (dense FP32): always — im2col and the GEMM in the sidecar, the
+ *   weight resident after its first call, the output resident.
  *
  * An output is resident only while [WasmSimd.residentBudgetBytes] allows; above it the kernel still
  * runs in the sidecar and the result is read back to the heap. Scoped contexts (`ForwardScope`)
@@ -467,4 +469,122 @@ public class WasmCpuOps(
             release(qo)
         }
     }
+
+    // ── convolutions: im2col + GEMM in the sidecar ────────────────────────────────────────────────
+
+    /**
+     * `conv1d` / `conv2d` / `conv3d` on dense FP32 operands run `skainet_f32_conv`: the receptive
+     * fields are gathered patch-major into a sidecar scratch and multiplied against the weight rows
+     * by the SIMD128 `x · Wᵀ` kernel, both threaded over patches — the JVM's im2col + Vector API
+     * path, in the sidecar. The weight is a parameter and stays resident after its first call; a heap
+     * input is staged per call and a resident one read in place; the output is resident, so a
+     * `conv → relu → …` chain never leaves linear memory. Groups (depthwise included), stride,
+     * padding and dilation go to the kernel as they are, a bias of `[c_out]` or `[1, c_out, 1, …]`
+     * is added there. Whatever the common validation would reject stays on the common path, which
+     * raises its message; `null` here means "not this path".
+     */
+    private fun <T : DType, V> conv(
+        input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?,
+        spatial: Int, stride: IntArray, padding: IntArray, dilation: IntArray, groups: Int,
+    ): Tensor<T, V>? {
+        if (!WasmKernels.isReady || !isSidecarFloat(input) || !isSidecarFloat(weight)) return null
+        if (bias != null && !isSidecarFloat(bias)) return null
+        val rank = spatial + 2
+        if (input.rank != rank || weight.rank != rank || groups < 1) return null
+        val n = input.shape[0]
+        val cIn = input.shape[1]
+        val cOut = weight.shape[0]
+        if (n <= 0 || cOut <= 0 || cIn % groups != 0 || cOut % groups != 0 || weight.shape[1] != cIn / groups) return null
+        if (bias != null) {
+            val ok = (bias.rank == 1 && bias.shape[0] == cOut) || (bias.rank == rank && bias.shape[1] == cOut && bias.shape.volume == cOut)
+            if (!ok) return null
+        }
+        // Three spatial dims for the kernel; a lower rank fills the leading ones with the identity geometry.
+        val inDims = IntArray(3) { 1 }
+        val k = IntArray(3) { 1 }
+        val s = IntArray(3) { 1 }
+        val p = IntArray(3)
+        val d = IntArray(3) { 1 }
+        val outDims = IntArray(3) { 1 }
+        for (i in 0 until spatial) {
+            val j = 3 - spatial + i
+            inDims[j] = input.shape[2 + i]
+            k[j] = weight.shape[2 + i]
+            s[j] = stride[i]
+            p[j] = padding[i]
+            d[j] = dilation[i]
+            if (s[j] <= 0 || d[j] <= 0 || k[j] <= 0 || p[j] < 0) return null
+            outDims[j] = (inDims[j] + 2 * p[j] - d[j] * (k[j] - 1) - 1) / s[j] + 1
+            if (outDims[j] <= 0) return null
+        }
+        val patchCount = outDims[0].toLong() * outDims[1] * outDims[2]
+        val colSize = (cIn / groups).toLong() * k[0] * k[1] * k[2]
+        val colBytes = patchCount * colSize * 4
+        if (colSize <= 0 || colBytes > Int.MAX_VALUE) return null
+        val outShape = Shape(*(intArrayOf(n, cOut) + outDims.copyOfRange(3 - spatial, 3)))
+        val geo = intArrayOf(
+            n, cIn, cOut, groups,
+            inDims[0], inDims[1], inDims[2], k[0], k[1], k[2], s[0], s[1], s[2],
+            p[0], p[1], p[2], d[0], d[1], d[2], outDims[0], outDims[1], outDims[2],
+        )
+        check(geo.size == WasmKernels.F32_CONV_GEO_INTS)
+        var io: Operand? = null
+        var wo: Operand? = null
+        var bo: Operand? = null
+        var colPtr = 0
+        var geoPtr = 0
+        try {
+            io = operand(input) ?: return null
+            wo = when (val wd = weight.data) {
+                is WasmLinearTensorData<*> -> operand(weight) ?: return null
+                is FloatArrayTensorData<*> -> Operand(WasmKernels.denseWeightHandle(wd.buffer), false)
+                else -> operand(weight) ?: return null
+            }
+            bo = bias?.let { operand(it) ?: return null }
+            colPtr = WasmKernels.alloc(colBytes.toInt())
+            geoPtr = WasmKernels.alloc(geo.size * 4)
+            WasmKernels.writeInts(geoPtr, geo, 0, geo.size)
+            val inPtr = io.ptr
+            val wPtr = wo.ptr
+            val bPtr = bo?.ptr ?: 0
+            val cPtr = colPtr
+            val gPtr = geoPtr
+            val inputs = listOfNotNull(input, weight, bias).toTypedArray()
+            return output(outShape, input.dtype, inputs) { out -> WasmKernels.f32Conv(inPtr, wPtr, bPtr, out, cPtr, gPtr) }
+        } finally {
+            if (geoPtr != 0) WasmKernels.free(geoPtr)
+            if (colPtr != 0) WasmKernels.free(colPtr)
+            release(bo)
+            release(wo)
+            release(io)
+        }
+    }
+
+    override fun <T : DType, V> conv1d(
+        input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?,
+        stride: Int, padding: Int, dilation: Int, groups: Int,
+    ): Tensor<T, V> =
+        conv(input, weight, bias, 1, intArrayOf(stride), intArrayOf(padding), intArrayOf(dilation), groups)
+            ?: super.conv1d(input, weight, bias, stride, padding, dilation, groups)
+
+    override fun <T : DType, V> conv2d(
+        input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?,
+        stride: Pair<Int, Int>, padding: Pair<Int, Int>, dilation: Pair<Int, Int>, groups: Int,
+    ): Tensor<T, V> =
+        conv(
+            input, weight, bias, 2,
+            intArrayOf(stride.first, stride.second), intArrayOf(padding.first, padding.second), intArrayOf(dilation.first, dilation.second), groups,
+        ) ?: super.conv2d(input, weight, bias, stride, padding, dilation, groups)
+
+    override fun <T : DType, V> conv3d(
+        input: Tensor<T, V>, weight: Tensor<T, V>, bias: Tensor<T, V>?,
+        stride: Triple<Int, Int, Int>, padding: Triple<Int, Int, Int>, dilation: Triple<Int, Int, Int>, groups: Int,
+    ): Tensor<T, V> =
+        conv(
+            input, weight, bias, 3,
+            intArrayOf(stride.first, stride.second, stride.third),
+            intArrayOf(padding.first, padding.second, padding.third),
+            intArrayOf(dilation.first, dilation.second, dilation.third),
+            groups,
+        ) ?: super.conv3d(input, weight, bias, stride, padding, dilation, groups)
 }
