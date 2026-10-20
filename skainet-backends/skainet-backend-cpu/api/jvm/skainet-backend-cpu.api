@@ -61,12 +61,14 @@ public final class sk/ainet/exec/kernel/PanamaVectorFp16MatmulKernel : sk/ainet/
 
 public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/backend/api/kernel/KernelProvider {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/PanamaVectorKernelProvider;
+	public fun attentionFp32 ()Lsk/ainet/backend/api/kernel/Fp32AttentionKernel;
 	public fun getName ()Ljava/lang/String;
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -74,17 +76,21 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProvider : sk/ainet/ba
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
 	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun normFp32 ()Lsk/ainet/backend/api/kernel/Fp32NormKernel;
+	public fun softmaxFp32 ()Lsk/ainet/backend/api/kernel/Fp32SoftmaxKernel;
 	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
 }
 
 public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/ainet/backend/api/kernel/KernelProvider {
 	public fun <init> ()V
+	public fun attentionFp32 ()Lsk/ainet/backend/api/kernel/Fp32AttentionKernel;
 	public fun getName ()Ljava/lang/String;
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -92,6 +98,8 @@ public final class sk/ainet/exec/kernel/PanamaVectorKernelProviderFactory : sk/a
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
 	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun normFp32 ()Lsk/ainet/backend/api/kernel/Fp32NormKernel;
+	public fun softmaxFp32 ()Lsk/ainet/backend/api/kernel/Fp32SoftmaxKernel;
 	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
 }
 
@@ -162,12 +170,14 @@ public final class sk/ainet/exec/kernel/ScalarFp16MatmulKernel : sk/ainet/backen
 
 public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/api/kernel/KernelProvider {
 	public static final field INSTANCE Lsk/ainet/exec/kernel/ScalarKernelProvider;
+	public fun attentionFp32 ()Lsk/ainet/backend/api/kernel/Fp32AttentionKernel;
 	public fun getName ()Ljava/lang/String;
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -175,17 +185,21 @@ public final class sk/ainet/exec/kernel/ScalarKernelProvider : sk/ainet/backend/
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
 	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun normFp32 ()Lsk/ainet/backend/api/kernel/Fp32NormKernel;
+	public fun softmaxFp32 ()Lsk/ainet/backend/api/kernel/Fp32SoftmaxKernel;
 	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
 }
 
 public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/backend/api/kernel/KernelProvider {
 	public fun <init> ()V
+	public fun attentionFp32 ()Lsk/ainet/backend/api/kernel/Fp32AttentionKernel;
 	public fun getName ()Ljava/lang/String;
 	public fun getPriority ()I
 	public fun isAvailable ()Z
 	public fun matmulBf16 ()Lsk/ainet/backend/api/kernel/Bf16MatmulKernel;
 	public fun matmulFp16 ()Lsk/ainet/backend/api/kernel/Fp16MatmulKernel;
 	public fun matmulFp32 ()Lsk/ainet/backend/api/kernel/Fp32MatmulKernel;
+	public fun matmulFp32Wt ()Lsk/ainet/backend/api/kernel/Fp32MatmulWtKernel;
 	public fun matmulQ4K ()Lsk/ainet/backend/api/kernel/Q4KMatmulKernel;
 	public fun matmulQ4_0 ()Lsk/ainet/backend/api/kernel/Q4_0MatmulKernel;
 	public fun matmulQ5K ()Lsk/ainet/backend/api/kernel/Q5KMatmulKernel;
@@ -193,6 +207,8 @@ public final class sk/ainet/exec/kernel/ScalarKernelProviderFactory : sk/ainet/b
 	public fun matmulQ5_1 ()Lsk/ainet/backend/api/kernel/Q5_1MatmulKernel;
 	public fun matmulQ6K ()Lsk/ainet/backend/api/kernel/Q6KMatmulKernel;
 	public fun matmulQ8_0 ()Lsk/ainet/backend/api/kernel/Q8_0MatmulKernel;
+	public fun normFp32 ()Lsk/ainet/backend/api/kernel/Fp32NormKernel;
+	public fun softmaxFp32 ()Lsk/ainet/backend/api/kernel/Fp32SoftmaxKernel;
 	public fun supports (Ljava/lang/String;Ljava/util/List;)Z
 }
 
@@ -337,10 +353,13 @@ public class sk/ainet/exec/tensor/ops/DefaultCpuOpsBase : sk/ainet/context/sched
 	public fun relayoutPackedWeightForKernels (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun relu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun requireSameDType (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)V
+	protected final fun requireSdpaOperands (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;II)V
 	public fun reshape (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Shape;)Lsk/ainet/lang/tensor/Tensor;
 	protected final fun rewrapFeedOrderWeight (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun rsubScalar (Ljava/lang/Number;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun scaledDotProductAttention (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FZLsk/ainet/lang/tensor/Tensor;II)Lsk/ainet/lang/tensor/Tensor;
+	protected final fun sdpaKeyLengths (Lsk/ainet/lang/tensor/Tensor;II)[I
+	protected final fun sdpaMaskDims (Lsk/ainet/lang/tensor/Tensor;IIIII)[I
 	public fun sigmoid (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun sign (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public fun silu (Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;

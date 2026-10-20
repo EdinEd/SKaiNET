@@ -13,6 +13,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.io.ByteArrayRandomAccessSource
 import sk.ainet.io.JvmRandomAccessSource
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.data.Bf16DenseTensorData
@@ -303,6 +304,48 @@ class ShardedSafeTensorsParametersLoaderJvmTest {
             }
             assertEquals(0, delivered, "fail-fast must fire before the first onTensorLoaded")
             assertTrue("ids.tokens" in (error.message ?: ""), "error must name the offending tensor")
+        } finally {
+            dir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `the provider constructor delivers what the path constructor delivers`() {
+        val dir = Files.createTempDirectory("sharded-loader-")
+        try {
+            val indexPath = writeTwoShardFixture(dir)
+            val (pathOrder, byPath) = loadAll(ShardedSafeTensorsParametersLoader(indexPath))
+
+            val indexJson = File(indexPath).readText()
+            val asked = mutableListOf<String>()
+            val (providerOrder, byProvider) = loadAll(
+                ShardedSafeTensorsParametersLoader(indexJson, { name ->
+                    asked += name
+                    JvmRandomAccessSource.open(dir.resolve(name).toString())
+                }),
+            )
+
+            assertEquals(pathOrder, providerOrder)
+            assertEquals(listOf("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"), asked)
+            for (name in pathOrder) {
+                assertContentEquals(
+                    byPath[name]!!.data.copyToFloatArray(),
+                    byProvider[name]!!.data.copyToFloatArray(),
+                    "$name through the provider",
+                )
+            }
+
+            // In-memory shards (what a fetch delivers) through the same constructor, with a policy.
+            val bytes = asked.associateWith { dir.resolve(it).toFile().readBytes() }
+            val (_, byBytes) = loadAll(
+                ShardedSafeTensorsParametersLoader.withPolicy(
+                    indexJson,
+                    { name -> bytes[name]?.let(::ByteArrayRandomAccessSource) },
+                    DTypePolicy.Prefer(FP32),
+                ),
+            )
+            assertContentEquals(alphaValues, byBytes["alpha.weight"]!!.data.copyToFloatArray())
+            assertContentEquals(zuluValues, byBytes["zulu.weight"]!!.data.copyToFloatArray())
         } finally {
             dir.toFile().deleteRecursively()
         }

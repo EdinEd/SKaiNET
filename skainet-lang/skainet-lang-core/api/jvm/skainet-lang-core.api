@@ -1551,6 +1551,7 @@ public final class sk/ainet/lang/memory/plan/AllocationResolver {
 public final class sk/ainet/lang/memory/plan/Budget {
 	public static final field Companion Lsk/ainet/lang/memory/plan/Budget$Companion;
 	public static final field RESERVE_ANDROID_JVM J
+	public static final field RESERVE_BROWSER J
 	public static final field RESERVE_NATIVE J
 	public fun <init> (JLjava/lang/String;)V
 	public final fun component1 ()J
@@ -1913,6 +1914,7 @@ public final class sk/ainet/lang/memory/plan/PlanVsActualLine {
 }
 
 public final class sk/ainet/lang/memory/plan/PlannerProfile {
+	public static final field BROWSER_AVAILABLE_BYTES J
 	public static final field Companion Lsk/ainet/lang/memory/plan/PlannerProfile$Companion;
 	public static final field MOBILE_RAM_CEILING J
 	public static final field OFF_HEAP_THRESHOLD J
@@ -1952,6 +1954,7 @@ public final class sk/ainet/lang/memory/plan/PlannerProfile {
 
 public final class sk/ainet/lang/memory/plan/PlannerProfile$Companion {
 	public final fun forDevice (Lsk/ainet/lang/memory/plan/DeviceMemory;)Lsk/ainet/lang/memory/plan/PlannerProfile;
+	public final fun getBROWSER ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getDESKTOP ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getEDGE ()Lsk/ainet/lang/memory/plan/PlannerProfile;
 	public final fun getMOBILE_2GB ()Lsk/ainet/lang/memory/plan/PlannerProfile;
@@ -6428,6 +6431,11 @@ public final class sk/ainet/lang/tensor/ops/FlattenOperation : sk/ainet/lang/ten
 	public fun execute (Ljava/util/List;)Ljava/util/List;
 	public fun inferOutputs (Ljava/util/List;)Ljava/util/List;
 	public fun validateInputs (Ljava/util/List;)Lsk/ainet/lang/tensor/ops/ValidationResult;
+}
+
+public abstract interface class sk/ainet/lang/tensor/ops/FusedNormOps {
+	public abstract fun layerNorm (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FI)Lsk/ainet/lang/tensor/Tensor;
+	public abstract fun rmsNorm (Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;FI)Lsk/ainet/lang/tensor/Tensor;
 }
 
 public final class sk/ainet/lang/tensor/ops/GeluOperation : sk/ainet/lang/tensor/ops/BaseOperation {

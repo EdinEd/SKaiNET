@@ -30,7 +30,8 @@ import kotlin.system.exitProcess
  * `--profile` (M2-F6, #1039) plans under a device profile instead of raw defaults: `mobile` is the
  * 2 GB phone (700 MB reserved, weights mapped, KV quantized automatically once the plan passes 80 %
  * of the budget), `desktop` keeps today's behaviour, `native` reserves the smaller Kotlin/Native
- * amount. The profile and every decision it made are printed above the table, so a plan can be read
+ * amount, `browser` is a tab (256 MB reserved, dense weights quantized to Q8_0 at load, nothing
+ * mapped). The profile and every decision it made are printed above the table, so a plan can be read
  * back later without guessing which rules produced it.
  */
 public fun main(args: Array<String>) {
@@ -104,6 +105,7 @@ internal fun profileFor(name: String): PlannerProfile? = when (name) {
     "mobile" -> PlannerProfile.MOBILE_2GB
     "desktop" -> PlannerProfile.DESKTOP
     "native" -> PlannerProfile.NATIVE
+    "browser" -> PlannerProfile.BROWSER
     else -> null
 }
 

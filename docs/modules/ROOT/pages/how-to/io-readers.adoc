@@ -9,7 +9,9 @@ SKaiNET provides two main I/O modules for reading AI model formats:
 * *skainet-io-gguf*: For reading GGUF (GPT-Generated Unified Format) files
 * *skainet-io-onnx*: For reading ONNX (Open Neural Network Exchange) files
 
-Both modules are built on Kotlin Multiplatform and support JVM, Android, iOS, JS, WASM, and Native platforms.
+Both modules are built on Kotlin Multiplatform and support JVM, Android, iOS, JS, WASM, and Native platforms;
+`skainet-io-safetensors` reads single-file and sharded SafeTensors checkpoints the same way. What a
+target cannot offer — a file system in a browser, memory mapping — is listed in <<_what_each_target_can_do>>.
 
 === Dependencies
 
@@ -413,6 +415,79 @@ fun readFromNativePath(pathString: String): Source {
     return SystemFileSystem.source(path).buffered()
 }
 ----
+
+==== Browser (Kotlin/JS, Kotlin/Wasm)
+
+There is no file system, so a model arrives as a `Blob` — a `File` from an `<input>`, a fetched body,
+a Cache API entry — and `JsBlobRandomAccessSource` (`skainet-io-core`) is the `RandomAccessSource`
+over it. Positions and sizes are `Long` (a shard over 2 GB is fine), bytes cross into Kotlin in bulk
+through linear memory, and the source serves two kinds of read:
+
+* the suspending `read()` works on any thread for any range;
+* the blocking `readAt()` — what the streaming readers call — is served from the preloaded window
+  (the first `preloadSize` bytes, 50 MB by default, enough for any header) and, **inside a Web
+  Worker**, from the Blob itself through `FileReaderSync`, the browser's only synchronous file read.
+  On the main thread a blocking read beyond the window throws with that explanation.
+
+So a whole model loads through the same blocking reader code the JVM uses when the load runs in a
+worker (`openSync` opens the Blob without preloading anything there); on the main thread, parse the
+header from the preload and fetch tensor payloads with the suspending read, or move the load to a
+worker.
+
+[source,kotlin]
+----
+// In a Web Worker: the same StreamingSafeTensorsReader the JVM runs, over a Blob
+val source = JsBlobRandomAccessSource.openSync(file)        // FileReaderSync is defined here
+StreamingSafeTensorsReader.open(source).use { reader ->
+    val bytes = reader.loadTensorData("model.embed_tokens.weight")
+}
+
+// On the main thread: header from the preload, payloads through the suspending read
+val source = JsBlobRandomAccessSource.open(file)            // preloads 50 MB
+val header = source.readAt(0, 8)                            // blocking, inside the window
+val payload = source.read(dataOffset, tensorBytes)          // suspending, anywhere in the Blob
+----
+
+A sharded checkpoint (`model.safetensors.index.json` + `model-NNNNN-of-NNNNN.safetensors`) has no
+path to resolve shards beside, so `ShardedSafeTensorsParametersLoader` takes the index as text and a
+provider that opens each shard by file name — a `Blob` per shard here, `ByteArrayRandomAccessSource`
+over fetched bytes elsewhere. The provider may suspend, is asked once per shard, and answers `null`
+for a shard that is not there:
+
+[source,kotlin]
+----
+val files: Map<String, File> = pickedFiles.associateBy { it.name }   // from an <input multiple>
+val indexJson = files.getValue("model.safetensors.index.json").text().await()
+
+val loader = ShardedSafeTensorsParametersLoader(indexJson, { shardName ->
+    files[shardName]?.let { JsBlobRandomAccessSource.open(it) }
+})
+loader.load(ctx, FP32::class) { name, tensor -> model.bind(name, tensor) }
+----
+
+The same two forms exist on `StreamingShardedSafeTensorsReader` (`openFromIndexContent`,
+`openFromParsedIndex`). Mapped loading (`loadTensorStorageMapped`) needs file-backed shards and
+throws for Blobs.
+
+=== What each target can do
+
+The IO layer is one code base; where a platform lacks the facility an entry point needs, the entry
+point says so rather than failing later, and a counterpart exists where one can. The remaining
+differences and their reasons:
+
+[cols="2,1,1,1,3",options="header"]
+|===
+| Capability | JVM / Android | Kotlin/Native | JS / wasmJs | Notes
+| `openRandomAccessSource(path)`, path-based loaders (`StreamingGgufParametersLoader(path)`, `SafeTensorsParametersLoader { JvmRandomAccessSource.open(path) }`, `ShardedSafeTensorsParametersLoader(indexPath)`) | yes | yes | returns `null` / unavailable | No file system in a browser. Use `JsBlobRandomAccessSource` (a `Blob`) or `ByteArrayRandomAccessSource` (fetched bytes) with the source-based constructors; sharded checkpoints through the `(indexJson, shardSource)` form.
+| Blocking reads from a `RandomAccessSource` | yes | yes | preloaded window; whole Blob inside a Web Worker | `FileReaderSync` exists on worker threads only. The suspending `read()` works everywhere.
+| Sources and reads over 2 GB | yes | yes | yes | `Long` positions throughout; one read is bounded by the 2 GB `ByteArray`, the planner splits above that (`ByteArrayRandomAccessSource` takes chunks).
+| Memory-mapped weights (`WeightResidency.MAPPED`, `PlatformStorage.mapFile`, `loadTensorStorageMapped`) | yes | yes | no | No `mmap` in a browser. The counterpart is a weight resident in the kernel sidecar's linear memory (`WasmSimd.install()`), which the kernel support matrix lists as *Resident serving*.
+| Off-heap storage (`MemoryDomain.HOST_OFFHEAP`) | FFM / direct buffers | native heap | the sidecar's linear memory once `WasmSimd.install()` ran, else the heap | `StorageCapabilities.current()` reports which; the planner records the fallback.
+| Writing files by path (GGUF writer, JSON export, IRPA `FileBacked`) | yes | yes | no | No file system; the `Sink`- and bytes-returning variants of the writers exist on every target — hand the bytes to a `Blob` and a download link.
+| `MemoryProbe` | RSS and page faults from `/proc` (Linux) | RSS | JS heap in use (Chromium), the module's linear memory and the sidecar's held bytes; no page faults | A tab has no process counters; the probe sums what the engine reports.
+| `PlannerProfile.forDevice()` | `MOBILE_2GB` / `DESKTOP` by RAM | `NATIVE` by hand | `BROWSER` | 256 MB reserved, dense weights quantized to `Q8_0` at load, nothing mapped; plans against `BROWSER_AVAILABLE_BYTES` (2 GB) unless told otherwise.
+| Parallel loading and compute | all cores (`CoroutineSchedule.hardware()`) | all cores | `Schedule.Sequential` in Kotlin; the sidecar's pthreads inside kernels on cross-origin-isolated pages | Kotlin/Wasm has no shared-memory threads; parallelism lives in the C kernels.
+|===
 
 === Performance Tips
 

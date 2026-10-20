@@ -55,6 +55,7 @@ class SkainetPlanTest {
         assertEquals(PlannerProfile.MOBILE_2GB, profileFor("mobile"))
         assertEquals(PlannerProfile.DESKTOP, profileFor("desktop"))
         assertEquals(PlannerProfile.NATIVE, profileFor("native"))
+        assertEquals(PlannerProfile.BROWSER, profileFor("browser"))
         assertEquals(null, profileFor("none"), "no profile means the plan's own defaults, as before")
     }
 

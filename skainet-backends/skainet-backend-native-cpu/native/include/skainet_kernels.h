@@ -426,6 +426,10 @@ SKAINET_API void skainet_q5_1_matmul(
  * unpacking, after which `sdot` accumulates sixteen products per instruction
  * where the core has ARMv8.2 dotprod.
  *
+ * The Emscripten sidecar runs the same block in SIMD128 (`i32x4.dot_i16x8_s` on
+ * widened halves). Output rows are split over the shared row pool once there
+ * are enough of them (#1195 pattern); bit-identical to a single thread.
+ *
  * @param activation        int8 codes of one token, `input_dim` of them
  * @param activation_scale  the token's absmax scale (`absmax / 127`)
  * @param weight            canonical TQ2_0 blocks, row-major per output row
@@ -454,9 +458,10 @@ SKAINET_API void skainet_bitnet_gemv_tq2_0(
  * input_dim must be a multiple of 4. Unlike the int8 `bitnet_gemv` path
  * there is no activation quantization: results are exact. Backed by the
  * vendored NeoGPU LUT kernel (baseline NEON, no dotprod — the fast path for
- * Cortex-A72/Pi-4 class cores); it threads internally with pthreads once
- * output_dim >= 512. A portable scalar build stands in where the vendored
- * file cannot compile (MSVC).
+ * Cortex-A72/Pi-4 class cores), driven from the shared row pool. Where the
+ * vendored file cannot compile (MSVC, the Emscripten sidecar) a portable
+ * mirror with the same compile-time LUT stands in — scalar on MSVC, SIMD128
+ * in the sidecar — threaded over output rows through the same pool.
  */
 SKAINET_API void skainet_ternary_f32_gemv(
     const float* input, int32_t input_offset,
@@ -477,7 +482,9 @@ SKAINET_API void skainet_ternary_f32_gemv(
  * plane_stride_bytes == output_dim * input_dim / 4. row_scale holds raw
  * little-endian IEEE binary16 bit patterns, one per output row (sign
  * ignored — encoders store max|row| >= 0). input_dim must be a multiple
- * of 4. Threads internally with pthreads at any output_dim.
+ * of 4. The vendored kernel threads internally with pthreads at any
+ * output_dim; the portable mirror (MSVC, Emscripten) threads over output
+ * rows through the shared row pool.
  */
 SKAINET_API void skainet_ternary_lmhead_stage1(
     const float* input, int32_t input_offset,
@@ -501,6 +508,75 @@ SKAINET_API void skainet_fp32_matmul_wt(
     const float* w, int32_t w_offset,
     float* out, int32_t out_offset,
     int32_t m, int32_t n, int32_t k
+);
+
+/*
+ * Dense FP32 elementwise, activation and reduction kernels (SKEEP-007 resident
+ * activations; see src/f32_ops.c for the contracts). Operands are contiguous.
+ *
+ *   skainet_f32_binary: out[i] = a[ia] op b[ib], op ∈ {0 add, 1 sub, 2 mul, 3 div};
+ *     a_mode / b_mode ∈ {0 full (ia = i), 1 scalar (ia = 0), 2 bias (ia = i % inner)}.
+ *   skainet_f32_unary: out[i] = f(in[i]), f ∈ {0 relu, 1 sigmoid, 2 silu,
+ *     3 gelu (tanh form), 4 gelu (erf form), 5 erf, 6 tanh}.
+ *   skainet_f32_reduce_all: *out = Σ in[0..n) (/ n when mean != 0).
+ *   skainet_f32_reduce_axis: out[o*inner + x] = Σ_k in[(o*red + k)*inner + x]
+ *     (/ red when mean != 0).
+ *
+ * Threaded over chunks of the output through the shared row pool; per-element
+ * results do not depend on the partition.
+ */
+SKAINET_API void skainet_f32_binary(
+    int32_t op,
+    const float* a, int32_t a_mode,
+    const float* b, int32_t b_mode,
+    float* out, int32_t n, int32_t inner
+);
+
+SKAINET_API void skainet_f32_unary(int32_t op, const float* in, float* out, int32_t n);
+
+SKAINET_API void skainet_f32_reduce_all(const float* in, int32_t n, int32_t mean, float* out);
+
+SKAINET_API void skainet_f32_reduce_axis(
+    const float* in, int32_t outer, int32_t red, int32_t inner, int32_t mean, float* out
+);
+
+/*
+ * Fused dense FP32 row kernels (SKEEP-007 resident activations, step 3; see
+ * src/f32_fused.c for the contracts). Operands are contiguous, row-major.
+ *
+ *   skainet_f32_softmax_rows: out[r, :] = softmax(in[r, :]) per row of `cols`,
+ *     or the log-softmax when log_form != 0.
+ *   skainet_f32_layer_norm: out[r, c] = (in[r, c] - mean_r) / sqrt(var_r + eps)
+ *     · gamma[c] + beta[c]; gamma / beta may be NULL.
+ *   skainet_f32_rms_norm: out[r, c] = in[r, c] / sqrt(mean(in[r, :]²) + eps)
+ *     · gamma[c]; gamma may be NULL.
+ *   skainet_f32_sdpa: softmax(q · kᵀ · scale + rules + mask) · v over
+ *     q [batch, heads, seq_q, head_dim], k / v [batch, kv_heads, seq_kv, head_dim]
+ *     (grouped-query heads), with the structural rules of the ops layer's
+ *     AttentionMask (causal, sliding window with right_context, per-batch key
+ *     lengths — NULL for none) and an optional dense additive mask broadcast
+ *     over the mask_* dims (NULL for none). `scale` is applied as given.
+ *
+ * Threaded over rows (query rows for attention) through the shared row pool.
+ */
+SKAINET_API void skainet_f32_softmax_rows(const float* in, float* out, int32_t rows, int32_t cols, int32_t log_form);
+
+SKAINET_API void skainet_f32_layer_norm(
+    const float* in, const float* gamma, const float* beta, float* out,
+    int32_t rows, int32_t cols, float eps
+);
+
+SKAINET_API void skainet_f32_rms_norm(
+    const float* in, const float* gamma, float* out, int32_t rows, int32_t cols, float eps
+);
+
+SKAINET_API void skainet_f32_sdpa(
+    const float* q, const float* k, const float* v, float* out,
+    int32_t batch, int32_t heads, int32_t kv_heads,
+    int32_t seq_q, int32_t seq_kv, int32_t head_dim,
+    float scale, int32_t causal, int32_t window, int32_t right_context,
+    const int32_t* lengths,
+    const float* mask, int32_t mask_b, int32_t mask_h, int32_t mask_q, int32_t mask_k
 );
 
 #ifdef __cplusplus

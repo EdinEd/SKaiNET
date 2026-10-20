@@ -3,6 +3,10 @@ package sk.ainet.exec.wasm
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.Fp32AttentionKernel
+import sk.ainet.backend.api.kernel.Fp32MatmulWtKernel
+import sk.ainet.backend.api.kernel.Fp32NormKernel
+import sk.ainet.backend.api.kernel.Fp32SoftmaxKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
 import sk.ainet.backend.api.kernel.Q4_0MatmulKernel
@@ -14,8 +18,12 @@ import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
 
 /**
  * The sidecar as a [KernelProvider] (SKEEP-007 §T1): the dense FP32 GEMM and the feed-order packed
- * kernels, so `KernelPacks.install()` and `chooseQuantizedMatmulHeap` serve from SIMD128 as well.
- * Priority 50 — above the scalar provider (0), the same tier the JVM's Panama provider sits at.
+ * kernels, so `KernelPacks.install()` and `chooseQuantizedMatmulHeap` serve from SIMD128 as well,
+ * plus the fused row kernels (softmax, the normalisations, attention — [WasmFp32SoftmaxKernel],
+ * [WasmFp32NormKernel], [WasmFp32AttentionKernel]) the JVM FFM provider exposes under the same
+ * accessors. Priority 50 — above the scalar provider (0), the same tier the JVM's Panama provider
+ * sits at. [WasmCpuOps] does not go through these heap faces: it hands the sidecar resident
+ * operands directly.
  */
 public object WasmKernelProvider : KernelProvider {
     override val name: String = "wasm-simd128"
@@ -23,8 +31,12 @@ public object WasmKernelProvider : KernelProvider {
     override fun isAvailable(): Boolean = WasmKernels.isReady
 
     override fun matmulFp32(): Fp32MatmulKernel = WasmFp32MatmulKernel
+    override fun matmulFp32Wt(): Fp32MatmulWtKernel = WasmFp32MatmulWtKernel
     override fun matmulBf16(): Bf16MatmulKernel = WasmBf16MatmulKernel
     override fun matmulFp16(): Fp16MatmulKernel = WasmFp16MatmulKernel
+    override fun softmaxFp32(): Fp32SoftmaxKernel = WasmFp32SoftmaxKernel
+    override fun normFp32(): Fp32NormKernel = WasmFp32NormKernel
+    override fun attentionFp32(): Fp32AttentionKernel = WasmFp32AttentionKernel
 
     override fun matmulQ8_0(): Q8_0MatmulKernel = object : Q8_0MatmulKernel {
         override fun matmul(input: FloatArray, inputOffset: Int, weight: ByteArray, weightByteOffset: Int, inputDim: Int, outputDim: Int, output: FloatArray, outputOffset: Int) =
@@ -162,6 +174,39 @@ public object WasmFp32MatmulKernel : Fp32MatmulKernel {
             WasmKernels.free(cPtr)
             WasmKernels.free(bPtr)
             WasmKernels.free(aPtr)
+        }
+    }
+}
+
+/**
+ * `out(m,n) = x(m,k) · w(n,k)ᵀ` in the sidecar (`skainet_fp32_matmul_wt`). A whole-array weight is a
+ * parameter and stays resident after its first call ([WasmKernels.denseWeightHandle]); a windowed
+ * weight is staged per call, as the activation always is.
+ */
+public object WasmFp32MatmulWtKernel : Fp32MatmulWtKernel {
+    override fun matmulWt(
+        x: FloatArray, xOffset: Int,
+        w: FloatArray, wOffset: Int,
+        out: FloatArray, outOffset: Int,
+        m: Int, n: Int, k: Int,
+    ) {
+        require(m >= 0 && n >= 0 && k >= 0) { "m, n, k must be non-negative; got m=$m n=$n k=$k" }
+        if (m == 0 || n == 0) return
+        val resident = wOffset == 0 && w.size == n * k
+        val inPtr = WasmKernels.alloc(maxOf(m * k, 1) * 4)
+        val wPtr = if (resident) WasmKernels.denseWeightHandle(w) else WasmKernels.alloc(maxOf(n * k, 1) * 4)
+        val outPtr = WasmKernels.alloc(m * n * 4)
+        try {
+            if (k > 0) {
+                WasmKernels.writeFloats(inPtr, x, xOffset, m * k)
+                if (!resident) WasmKernels.writeFloats(wPtr, w, wOffset, n * k)
+            }
+            WasmKernels.fp32MatmulWt(inPtr, wPtr, outPtr, m, n, k)
+            WasmKernels.readFloats(outPtr, out, outOffset, m * n)
+        } finally {
+            WasmKernels.free(outPtr)
+            if (!resident) WasmKernels.free(wPtr)
+            WasmKernels.free(inPtr)
         }
     }
 }

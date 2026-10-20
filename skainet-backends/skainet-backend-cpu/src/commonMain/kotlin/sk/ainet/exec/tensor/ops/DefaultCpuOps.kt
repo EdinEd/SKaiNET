@@ -3854,30 +3854,7 @@ public open class DefaultCpuOpsBase(
         window: Int,
         rightContext: Int
     ): Tensor<T, V> {
-        // Expected shapes: [batch, heads, seqQ, headDim] for Q, [batch, heads, seqKV, headDim] for K/V
-        require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
-        require(key.rank == 4) { "SDPA: expected rank-4 key, got rank ${key.rank}" }
-        require(value.rank == 4) { "SDPA: expected rank-4 value, got rank ${value.rank}" }
-        require(query.shape[0] == key.shape[0] && query.shape[0] == value.shape[0]) {
-            "SDPA: batch mismatch — Q=${query.shape[0]} K=${key.shape[0]} V=${value.shape[0]}"
-        }
-        require(key.shape[1] == value.shape[1]) {
-            "SDPA: K/V head count mismatch — K=${key.shape[1]} V=${value.shape[1]}"
-        }
-        require(key.shape[1] > 0 && query.shape[1] % key.shape[1] == 0) {
-            "SDPA: Q heads (${query.shape[1]}) must be a multiple of K/V heads (${key.shape[1]}) — " +
-                "grouped-query attention maps query head h onto K/V head h / (nHeads / nKVHeads)."
-        }
-        require(query.shape[3] == key.shape[3]) {
-            "SDPA: Q head_dim (${query.shape[3]}) does not match K head_dim (${key.shape[3]})"
-        }
-        require(query.shape[3] == value.shape[3]) {
-            "SDPA: Q head_dim (${query.shape[3]}) does not match V head_dim (${value.shape[3]})"
-        }
-        require(key.shape[2] == value.shape[2]) {
-            "SDPA: K seqKV (${key.shape[2]}) does not match V seqKV (${value.shape[2]})"
-        }
-        sk.ainet.lang.tensor.ops.AttentionMask.validate(window, rightContext)
+        requireSdpaOperands(query, key, value, window, rightContext)
 
         val batch = query.shape[0]
         val heads = query.shape[1]
@@ -3891,15 +3868,7 @@ public open class DefaultCpuOpsBase(
         // attended keys (the masked exp underflows to exactly 0 either way) and keeps a fully
         // masked row finite. `causal` folds into the range on this path. Without lengths or a
         // window the kernel below runs unchanged.
-        val lengths: IntArray? = keyLengths?.let { kl ->
-            require(kl.rank == 1 && kl.shape[0] == batch) { "SDPA: keyLengths must be [batch=$batch], got ${kl.shape}" }
-            val raw = kl.data.copyToFloatArray()
-            IntArray(batch) { b ->
-                val len = raw[b].toInt()
-                require(len in 0..seqKV) { "SDPA: keyLengths[$b] = $len is outside 0..$seqKV" }
-                len
-            }
-        }
+        val lengths: IntArray? = sdpaKeyLengths(keyLengths, batch, seqKV)
         val structured = lengths != null || window > 0
         // Grouped-query attention (SKEEP-005 phase 2): K/V are read in place through the
         // head-group index instead of being tiled to Q's head count upstream. Same loop
@@ -3920,16 +3889,7 @@ public open class DefaultCpuOpsBase(
         // Dense mask broadcast, trailing-aligned like the StableHLO lowering: [b | 1, H | nKV | 1, Sq | 1, Sk | 1].
         // (The former `i % size` read batch row 0 for every batch, so a [batch, 1, Sq, Sk] mask with batch > 1
         // was silently wrong; shapes that worked — [1, 1, Sq, Sk], [1, 1, 1, Sk], [Sq, Sk] — index identically here.)
-        val maskDims = mask?.let { m ->
-            require(m.rank in 1..4) { "SDPA: mask must have rank 1..4, got ${m.rank}" }
-            val d = IntArray(4) { 1 }
-            for (i in 0 until m.rank) d[4 - m.rank + i] = m.shape[i]
-            require(d[0] == 1 || d[0] == batch) { "SDPA: mask batch (${d[0]}) must be 1 or $batch" }
-            require(d[1] == 1 || d[1] == heads || d[1] == key.shape[1]) { "SDPA: mask heads (${d[1]}) must be 1, ${key.shape[1]} or $heads" }
-            require(d[2] == 1 || d[2] == seqQ) { "SDPA: mask seqQ (${d[2]}) must be 1 or $seqQ" }
-            require(d[3] == 1 || d[3] == seqKV) { "SDPA: mask seqKV (${d[3]}) must be 1 or $seqKV" }
-            d
-        }
+        val maskDims = sdpaMaskDims(mask, batch, heads, key.shape[1], seqQ, seqKV)
 
         val outBuf = FloatArray(batch * heads * seqQ * headDim)
 
@@ -4054,6 +4014,66 @@ public open class DefaultCpuOpsBase(
         @Suppress("UNCHECKED_CAST")
         val data = dataFactory.adoptFloatArray<T, Float>(shape, query.dtype, outBuf) as sk.ainet.lang.tensor.data.TensorData<T, V>
         return newTensor(data, query.dtype, query, key, value)
+    }
+
+    // ── scaledDotProductAttention contract, shared with the fused-kernel overrides ─────────────────
+
+    /** The operand and argument contract of [scaledDotProductAttention]; a platform override that hands the op to a fused kernel checks the same. */
+    protected fun requireSdpaOperands(query: Tensor<*, *>, key: Tensor<*, *>, value: Tensor<*, *>, window: Int, rightContext: Int) {
+        // Expected shapes: [batch, heads, seqQ, headDim] for Q, [batch, heads, seqKV, headDim] for K/V
+        require(query.rank == 4) { "SDPA: expected rank-4 query, got rank ${query.rank}" }
+        require(key.rank == 4) { "SDPA: expected rank-4 key, got rank ${key.rank}" }
+        require(value.rank == 4) { "SDPA: expected rank-4 value, got rank ${value.rank}" }
+        require(query.shape[0] == key.shape[0] && query.shape[0] == value.shape[0]) {
+            "SDPA: batch mismatch — Q=${query.shape[0]} K=${key.shape[0]} V=${value.shape[0]}"
+        }
+        require(key.shape[1] == value.shape[1]) {
+            "SDPA: K/V head count mismatch — K=${key.shape[1]} V=${value.shape[1]}"
+        }
+        require(key.shape[1] > 0 && query.shape[1] % key.shape[1] == 0) {
+            "SDPA: Q heads (${query.shape[1]}) must be a multiple of K/V heads (${key.shape[1]}) — " +
+                "grouped-query attention maps query head h onto K/V head h / (nHeads / nKVHeads)."
+        }
+        require(query.shape[3] == key.shape[3]) {
+            "SDPA: Q head_dim (${query.shape[3]}) does not match K head_dim (${key.shape[3]})"
+        }
+        require(query.shape[3] == value.shape[3]) {
+            "SDPA: Q head_dim (${query.shape[3]}) does not match V head_dim (${value.shape[3]})"
+        }
+        require(key.shape[2] == value.shape[2]) {
+            "SDPA: K seqKV (${key.shape[2]}) does not match V seqKV (${value.shape[2]})"
+        }
+        sk.ainet.lang.tensor.ops.AttentionMask.validate(window, rightContext)
+    }
+
+    /** The per-batch key-padding lengths of [scaledDotProductAttention] as ints, validated against [batch] and [seqKV]; `null` for none. */
+    protected fun sdpaKeyLengths(keyLengths: Tensor<DType, *>?, batch: Int, seqKV: Int): IntArray? {
+        return keyLengths?.let { kl ->
+            require(kl.rank == 1 && kl.shape[0] == batch) { "SDPA: keyLengths must be [batch=$batch], got ${kl.shape}" }
+            val raw = kl.data.copyToFloatArray()
+            IntArray(batch) { b ->
+                val len = raw[b].toInt()
+                require(len in 0..seqKV) { "SDPA: keyLengths[$b] = $len is outside 0..$seqKV" }
+                len
+            }
+        }
+    }
+
+    /**
+     * The dense additive mask's broadcast dims `[batch | 1, heads | kvHeads | 1, seqQ | 1, seqKV | 1]`,
+     * trailing-aligned like the StableHLO lowering and validated against the operand shapes; `null` for no mask.
+     */
+    protected fun sdpaMaskDims(mask: Tensor<*, *>?, batch: Int, heads: Int, kvHeads: Int, seqQ: Int, seqKV: Int): IntArray? {
+        return mask?.let { m ->
+            require(m.rank in 1..4) { "SDPA: mask must have rank 1..4, got ${m.rank}" }
+            val d = IntArray(4) { 1 }
+            for (i in 0 until m.rank) d[4 - m.rank + i] = m.shape[i]
+            require(d[0] == 1 || d[0] == batch) { "SDPA: mask batch (${d[0]}) must be 1 or $batch" }
+            require(d[1] == 1 || d[1] == heads || d[1] == kvHeads) { "SDPA: mask heads (${d[1]}) must be 1, $kvHeads or $heads" }
+            require(d[2] == 1 || d[2] == seqQ) { "SDPA: mask seqQ (${d[2]}) must be 1 or $seqQ" }
+            require(d[3] == 1 || d[3] == seqKV) { "SDPA: mask seqKV (${d[3]}) must be 1 or $seqKV" }
+            d
+        }
     }
 
 }

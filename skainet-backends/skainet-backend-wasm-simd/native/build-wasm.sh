@@ -11,8 +11,9 @@
 #
 # The sources are skainet-backend-native-cpu/native/src — the same files the JVM FFM and Android JNI
 # packs are built from — compiled with Emscripten. Only the portable (#else) kernel bodies and the
-# explicit __wasm_simd128__ bodies are used; NEON, Apple dispatch and the vendored ternary kernels
-# are not part of this build.
+# explicit __wasm_simd128__ bodies are used; NEON and Apple dispatch are not part of this build.
+# The ternary kernels come from the portable branch of skainet_ternary_f32.c (the compile-time LUT
+# with its SIMD128 body), not from the vendored NeoGPU file, which needs native pthreads and NEON.
 #
 # Toolchain: emsdk, pinned below. `EMSDK_PYTHON` must point at a Python >= 3.10 when the default
 # python3 is older (pyenv). Usage:
@@ -44,11 +45,18 @@ SOURCES=(
   "$NATIVE/src/q4k_matmul.c"
   "$NATIVE/src/q5k_matmul.c"
   "$NATIVE/src/q6k_matmul.c"
+  "$NATIVE/src/skainet_ternary_f32.c"
+  "$NATIVE/src/bitnet_gemv.c"
+  "$NATIVE/src/f32_ops.c"
+  "$NATIVE/src/f32_fused.c"
   "$NATIVE/src/skainet_row_threads.c"
   "$NATIVE/src/skainet_cpu_features.c"
 )
 
 EXPORTS='_malloc,_free,_skainet_fp32_matmul,_skainet_fp32_matmul_wt,_skainet_bf16_matmul,_skainet_fp16_matmul'
+EXPORTS="$EXPORTS,_skainet_ternary_f32_gemv,_skainet_ternary_lmhead_stage1,_skainet_bitnet_gemv_tq2_0"
+EXPORTS="$EXPORTS,_skainet_f32_binary,_skainet_f32_unary,_skainet_f32_reduce_all,_skainet_f32_reduce_axis"
+EXPORTS="$EXPORTS,_skainet_f32_softmax_rows,_skainet_f32_layer_norm,_skainet_f32_rms_norm,_skainet_f32_sdpa"
 for f in q4_0 q5_0 q5_1 q8_0 q4k q5k q6k; do
   EXPORTS="$EXPORTS,_skainet_${f}_matmul,_skainet_${f}_matmul_rm"
 done

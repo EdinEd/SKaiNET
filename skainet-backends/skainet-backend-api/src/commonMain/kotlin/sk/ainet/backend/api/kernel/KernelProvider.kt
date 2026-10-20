@@ -104,6 +104,34 @@ public interface KernelProvider {
     public fun matmulQ5_0(): Q5_0MatmulKernel? = null
 
     /**
+     * Dense `x · Wᵀ` over a row-major `[out, in]` FP32 weight ([Fp32MatmulWtKernel]), or `null`
+     * when this provider has no direct kernel for it and the caller should transpose once and use
+     * [matmulFp32]. Same fall-through pattern as [matmulQ4K].
+     */
+    public fun matmulFp32Wt(): Fp32MatmulWtKernel? = null
+
+    /**
+     * Row-wise softmax / log-softmax over dense FP32 ([Fp32SoftmaxKernel]), or `null` when this
+     * provider has no fused kernel for it and the ops layer keeps its common loop. Same
+     * fall-through pattern as [matmulQ4K]; reported by [supports] as `"softmax"` with `["Float32"]`.
+     */
+    public fun softmaxFp32(): Fp32SoftmaxKernel? = null
+
+    /**
+     * Fused layer norm and RMS norm over the last dimension of dense FP32 ([Fp32NormKernel]), or
+     * `null`. Reported by [supports] as `"layer_norm"` / `"rms_norm"` with `["Float32"]`.
+     */
+    public fun normFp32(): Fp32NormKernel? = null
+
+    /**
+     * Fused scaled dot-product attention over dense FP32 ([Fp32AttentionKernel]) with the ops
+     * layer's structural masks (causal, sliding window, key lengths) and grouped-query heads, or
+     * `null` when the ops layer runs its common kernel. Reported by [supports] as `"sdpa"` with
+     * `["Float32"]`.
+     */
+    public fun attentionFp32(): Fp32AttentionKernel? = null
+
+    /**
      * Capability query: does this provider carry a kernel for
      * [opName] with the given [dtypeKeys]?
      *
@@ -122,15 +150,29 @@ public interface KernelProvider {
      * - For ops that aren't matmul (future: SDPA, gather, RMSNorm…),
      *   providers can override this method to declare those kernels.
      *
-     * The default body covers the four matmul accessors that exist
-     * on this interface today. Providers that ship additional
-     * kernels override and chain through `super.supports(...)` for
-     * the matmul base cases.
+     * The default body covers the matmul accessors on this interface,
+     * plus `"matmul_wt"` with `["Float32", "Float32"]` for the direct
+     * `x · Wᵀ` kernel ([matmulFp32Wt]) and the fused row kernels with a
+     * single `["Float32"]` key — `"softmax"` ([softmaxFp32]),
+     * `"layer_norm"` / `"rms_norm"` ([normFp32]) and `"sdpa"`
+     * ([attentionFp32]). Providers that ship additional kernels override
+     * and chain through `super.supports(...)` for the base cases.
      */
     public fun supports(opName: String, dtypeKeys: List<String>): Boolean {
-        if (opName != "matmul" || dtypeKeys.size != 2) return false
+        if (dtypeKeys.size == 1) {
+            if (dtypeKeys[0] != "Float32") return false
+            return when (opName) {
+                "softmax" -> softmaxFp32() != null
+                "layer_norm", "rms_norm" -> normFp32() != null
+                "sdpa" -> attentionFp32() != null
+                else -> false
+            }
+        }
+        if (dtypeKeys.size != 2) return false
         val (input, weight) = dtypeKeys
         if (input != "Float32") return false
+        if (opName == "matmul_wt") return weight == "Float32" && matmulFp32Wt() != null
+        if (opName != "matmul") return false
         return when (weight) {
             "Float32" -> matmulFp32() != null
             "BFloat16" -> matmulBf16() != null

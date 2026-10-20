@@ -159,9 +159,38 @@ public data class PlannerProfile(
             reserveBytes = Budget.RESERVE_NATIVE,
         )
 
-        /** The profile a device's own numbers call for: mobile below [MOBILE_RAM_CEILING] of RAM. */
-        public fun forDevice(device: DeviceMemory): PlannerProfile =
-            if (device.totalRamBytes <= MOBILE_RAM_CEILING) MOBILE_2GB else DESKTOP
+        /**
+         * A browser tab (Kotlin/Wasm or Kotlin/JS): what the page, the JavaScript heap and the
+         * Kotlin runtime need is reserved ([Budget.RESERVE_BROWSER]), dense checkpoints are
+         * quantized to `Q8_0` at load — a Hugging Face FP32 checkpoint is held in a quarter of its
+         * bytes and served by the packed SIMD128 kernels — and the KV cache auto-quantizes past 80 %
+         * of the budget. Weights are never mapped: there is no file to map, a model arrives through
+         * a `Blob` or a fetch. Off-heap allocations ([domainFor]) go to the kernel sidecar's linear
+         * memory when `WasmSimd.install()` has bound it, else to the heap.
+         *
+         * The budget comes from [BROWSER_AVAILABLE_BYTES] unless the caller knows better
+         * (`navigator.deviceMemory` is coarse and rounds down): wasm32 addresses 4 GB per module
+         * and a single array holds 2 GB, so 2 GB is what a tab can count on.
+         */
+        public val BROWSER: PlannerProfile = PlannerProfile(
+            name = "browser",
+            reserveBytes = Budget.RESERVE_BROWSER,
+            kvAutoQuantizeAbove = 0.80,
+            quantizeDenseTo = sk.ainet.lang.tensor.storage.TensorEncoding.Q8_0,
+        )
+
+        /** What [BROWSER] plans against when the host reports nothing: 2 GB. */
+        public const val BROWSER_AVAILABLE_BYTES: Long = 2L * 1024 * MiB
+
+        /**
+         * The profile a device's own numbers call for: [BROWSER] on a web host (Kotlin/JS,
+         * Kotlin/Wasm), otherwise mobile below [MOBILE_RAM_CEILING] of RAM.
+         */
+        public fun forDevice(device: DeviceMemory): PlannerProfile = when {
+            isWebHost -> BROWSER
+            device.totalRamBytes <= MOBILE_RAM_CEILING -> MOBILE_2GB
+            else -> DESKTOP
+        }
 
         /** Devices with at most this much RAM get [MOBILE_2GB]. */
         public const val MOBILE_RAM_CEILING: Long = 3L * 1024 * MiB

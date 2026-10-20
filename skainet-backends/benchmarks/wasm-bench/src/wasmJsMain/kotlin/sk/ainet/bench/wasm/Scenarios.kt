@@ -4,9 +4,11 @@ import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelKey
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.exec.wasm.WasmCpuOps
 import sk.ainet.lang.memory.Scope
 import sk.ainet.lang.memory.Storage
 import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.nn.normalization.LayerNormalization
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.data.BitNetB158TensorData
 import sk.ainet.lang.types.FP32
@@ -47,6 +49,15 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val b = ctx.fromFloatArray<FP32, Float>(Shape(n, n), FP32::class, FloatArray(n * n) { ((it * 13 % 257) - 128).toFloat() / 127f })
         val flops = 2.0 * n * n * n;
         { flops / seconds { ctx.ops.matmul(a, b) } / 1e9 }
+    },
+    WasmScenario("engine-fp32-linear", "gflops", mapOf("m" to "16", "k" to "768", "n" to "3072"), reps = 10) {
+        val m = 16; val k = 768; val n = 3072
+        val ctx = DirectCpuExecutionContext()
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, FloatArray(m * k) { ((it % 251) - 125).toFloat() / 127f })
+        val w = ctx.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, FloatArray(n * k) { ((it * 13 % 257) - 128).toFloat() / 127f })
+        ctx.ops.matmulWeightTransposed(x, w) // the resident upload happens here, not in a measured run
+        val flops = 2.0 * m * n * k;
+        { flops / seconds { ctx.ops.matmulWeightTransposed(x, w) } / 1e9 }
     },
     WasmScenario("engine-kernel-matmul", "gflops", mapOf("size" to "1024"), reps = 3) {
         val n = 1024
@@ -123,6 +134,23 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val b = ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { 1f });
         { n / seconds { ctx.ops.add(a, b) } / 1e6 }
     },
+    // The same three ops on operands already resident in the sidecar (the shape a chain between two
+    // matmuls has); heap operands above stay on the common lane by design.
+    WasmScenario("engine-elementwise-add", "melems_per_sec", mapOf("elements" to "1000000", "operands" to "resident"), reps = 10) {
+        val n = 1_000_000
+        val ctx = DirectCpuExecutionContext()
+        val ops = ctx.ops as? WasmCpuOps ?: error("resident operands need the sidecar")
+        val a = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { it.toFloat() * 0.5f }))
+        val b = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { 1f }));
+        { n / seconds { ctx.ops.add(a, b) } / 1e6 }
+    },
+    WasmScenario("engine-reductions-sum", "melems_per_sec", mapOf("elements" to "1000000", "op" to "sum", "operands" to "resident"), reps = 10) {
+        val n = 1_000_000
+        val ctx = DirectCpuExecutionContext()
+        val ops = ctx.ops as? WasmCpuOps ?: error("resident operands need the sidecar")
+        val a = ops.toResident(ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { (it % 1024).toFloat() * 0.25f }));
+        { n / seconds { ctx.ops.sum(a).data.copyToFloatArray() } / 1e6 }
+    },
     WasmScenario("engine-reductions-sum", "melems_per_sec", mapOf("elements" to "1000000", "op" to "sum"), reps = 10) {
         val n = 1_000_000
         val ctx = DirectCpuExecutionContext()
@@ -134,6 +162,38 @@ internal fun engineScenarios(): List<WasmScenario> = listOf(
         val ctx = DirectCpuExecutionContext()
         val a = ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, FloatArray(n) { (it % 1024).toFloat() * 0.25f });
         { n / seconds { ctx.ops.mean(a) } / 1e6 }
+    },
+    // The fused row ops (softmax, a LayerNormalization layer, causal attention), the shapes of the JVM harness.
+    WasmScenario("engine-softmax", "melems_per_sec", mapOf("rows" to "1024", "cols" to "1024"), reps = 10) {
+        val rows = 1024; val cols = 1024
+        val ctx = DirectCpuExecutionContext()
+        val rnd = lcg(3)
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(rows, cols), FP32::class, FloatArray(rows * cols) { (rnd() - 0.5f) * 8f })
+        ctx.ops.softmax(x, -1);
+        { rows.toDouble() * cols / seconds { ctx.ops.softmax(x, -1) } / 1e6 }
+    },
+    WasmScenario("engine-layer-norm", "melems_per_sec", mapOf("rows" to "1024", "cols" to "768", "affine" to "true"), reps = 10) {
+        val rows = 1024; val cols = 768
+        val ctx = DirectCpuExecutionContext()
+        val rnd = lcg(5)
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(rows, cols), FP32::class, FloatArray(rows * cols) { (rnd() - 0.5f) * 4f })
+        val gamma = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, FloatArray(cols) { 0.5f + (it % 7) * 0.1f })
+        val beta = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, FloatArray(cols) { ((it % 5) - 2) * 0.05f })
+        val layer = LayerNormalization<FP32, Float>(intArrayOf(cols), eps = 1e-5, elementwiseAffine = true, name = "ln", initGamma = gamma, initBeta = beta)
+        layer.forward(x, ctx);
+        { rows.toDouble() * cols / seconds { layer.forward(x, ctx) } / 1e6 }
+    },
+    WasmScenario("engine-sdpa", "gflops", mapOf("batch" to "1", "heads" to "12", "seq" to "150", "head_dim" to "64", "causal" to "true"), reps = 5) {
+        val heads = 12; val seq = 150; val headDim = 64
+        val ctx = DirectCpuExecutionContext()
+        val rnd = lcg(7)
+        val n = heads * seq * headDim
+        val q = ctx.fromFloatArray<FP32, Float>(Shape(1, heads, seq, headDim), FP32::class, FloatArray(n) { rnd() - 0.5f })
+        val k = ctx.fromFloatArray<FP32, Float>(Shape(1, heads, seq, headDim), FP32::class, FloatArray(n) { rnd() - 0.5f })
+        val v = ctx.fromFloatArray<FP32, Float>(Shape(1, heads, seq, headDim), FP32::class, FloatArray(n) { rnd() - 0.5f })
+        ctx.ops.scaledDotProductAttention(q, k, v, causal = true)
+        val flops = 4.0 * heads * seq * seq * headDim;
+        { flops / seconds { ctx.ops.scaledDotProductAttention(q, k, v, causal = true) } / 1e9 }
     },
 )
 

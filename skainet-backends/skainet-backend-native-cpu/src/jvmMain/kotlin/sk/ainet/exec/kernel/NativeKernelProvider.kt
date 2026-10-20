@@ -3,6 +3,11 @@ package sk.ainet.exec.kernel
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.Fp32MatmulWtKernel
+import sk.ainet.backend.api.kernel.Fp32AttentionKernel
+import sk.ainet.backend.api.kernel.Fp32MemSegMatmulWtKernel
+import sk.ainet.backend.api.kernel.Fp32NormKernel
+import sk.ainet.backend.api.kernel.Fp32SoftmaxKernel
 import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.MemSegKernelProvider
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
@@ -82,6 +87,13 @@ import sk.ainet.backend.api.kernel.Q8_0MatmulKernel
  *    Every narrow-float accessor the SPI declares is wired here; a format
  *    served natively on one side and by the JVM fallback on the other looks
  *    like a slow kernel rather than a missing one.
+ *  - Now: the direct `x · Wᵀ` kernel (`skainet_fp32_matmul_wt`) in
+ *    [matmulFp32Wt] and its segment face [matmulFp32WtMemSeg], so a dense
+ *    `[out, in]` weight is multiplied in place instead of transposed and cached.
+ *  - Now: the fused row kernels (`f32_fused.c`) in [softmaxFp32], [normFp32] and
+ *    [attentionFp32] — softmax, layer norm / RMS norm and banded scaled dot-product
+ *    attention in one C pass each, the same symbols the wasm sidecar serves, so the
+ *    ops that were scalar Kotlin on the JVM (attention, the normalisations) run native.
  */
 public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
     override val name: String = "native-ffm"
@@ -91,6 +103,12 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulFp32(): Fp32MatmulKernel? =
         if (NativeFp32MatmulKernel.isAvailable()) NativeFp32MatmulKernel else null
+
+    override fun matmulFp32Wt(): Fp32MatmulWtKernel? =
+        if (NativeFp32MatmulWtKernel.isAvailable()) NativeFp32MatmulWtKernel else null
+
+    override fun matmulFp32WtMemSeg(): Fp32MemSegMatmulWtKernel? =
+        if (NativeFp32MatmulWtKernel.isAvailable()) NativeFp32MatmulWtKernel else null
 
     override fun matmulQ4K(): Q4KMatmulKernel? =
         if (NativeQ4KMatmulKernel.isAvailable()) NativeQ4KMatmulKernel else null
@@ -121,4 +139,13 @@ public object NativeKernelProvider : KernelProvider, MemSegKernelProvider {
 
     override fun matmulQ5_1(): Q5_1MatmulKernel? =
         if (NativeQ5_1MatmulKernel.isAvailable()) NativeQ5_1MatmulKernel else null
+
+    override fun softmaxFp32(): Fp32SoftmaxKernel? =
+        if (NativeFp32SoftmaxKernel.isAvailable()) NativeFp32SoftmaxKernel else null
+
+    override fun normFp32(): Fp32NormKernel? =
+        if (NativeFp32NormKernel.isAvailable()) NativeFp32NormKernel else null
+
+    override fun attentionFp32(): Fp32AttentionKernel? =
+        if (NativeFp32AttentionKernel.isAvailable()) NativeFp32AttentionKernel else null
 }

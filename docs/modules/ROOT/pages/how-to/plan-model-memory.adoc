@@ -30,7 +30,7 @@ Useful flags:
 | `--ctx N` | Plan for this context length (default: the model's trained length, or 2048)
 | `--budget 1.3G` | The memory available; without it, the JVM's own maximum is used
 | `--kv bf16\|turboquant` | KV cache format
-| `--profile mobile\|desktop\|native` | Plan under a device profile — see below
+| `--profile mobile\|desktop\|native\|browser` | Plan under a device profile — see below
 | `--list 'model.layers[3].*'` | List matching tensors with their `TensorId`, format and size
 | `--no-budget` | Print the plan without a fit check
 |===
@@ -56,7 +56,8 @@ profiled.requireFits()          // throws, naming the pool that ran out
 | `DESKTOP` | The same reserve, no automatic KV quantization, heap staging
 | `NATIVE` | The smaller 300 MB Kotlin/Native reserve
 | `EDGE` | An embedded device with limited memory and compute: **zero reserve** — the number you pass is the *usable* RAM, already net of what the OS holds — weights mapped, KV auto-quantized past 80 %
-| `PlannerProfile.forDevice(device)` | Picks `MOBILE_2GB` at or below 3 GB of RAM
+| `BROWSER` | A tab (Kotlin/Wasm or Kotlin/JS): 256 MB reserved for the page, the JavaScript heap and the Kotlin runtime; dense checkpoints quantized to `Q8_0` at load (`quantizeDenseTo`) so a Hugging Face FP32 checkpoint is held in a quarter of its bytes and served by the SIMD128 kernels; KV auto-quantized past 80 %; nothing mapped — there is no file. Off-heap allocations go to the kernel sidecar's linear memory once `WasmSimd.install()` has bound it. Plan against `PlannerProfile.BROWSER_AVAILABLE_BYTES` (2 GB) unless the host tells you more.
+| `PlannerProfile.forDevice(device)` | `BROWSER` on a web host; otherwise `MOBILE_2GB` at or below 3 GB of RAM, `DESKTOP` above
 |===
 
 A `ProfiledPlan` records what the profile decided — the KV switch appears as a note, not a silent

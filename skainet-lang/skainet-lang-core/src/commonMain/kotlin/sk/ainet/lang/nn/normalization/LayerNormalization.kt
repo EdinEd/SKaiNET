@@ -86,7 +86,20 @@ public class LayerNormalization<T : DType, V>(
             require(normDims.contentEquals(normalizedShape)) {
                 "Input shape ${normDims.contentToString()} doesn't match normalized shape ${normalizedShape.contentToString()}"
             }
-            
+
+            // A backend with a one-pass kernel (SKEEP-007 fused ops: the wasm sidecar, the JVM FFM
+            // provider) serves the FP32 layer in one call through the optional FusedNormOps hook.
+            // Any other op set — including recording and differentiating ones — never implements
+            // it and runs the decomposition below unchanged.
+            if (input.dtype == FP32::class) {
+                val fused = input.ops as? sk.ainet.lang.tensor.ops.FusedNormOps
+                if (fused != null) {
+                    val gamma = if (elementwiseAffine) params[0].value else null
+                    val beta = if (elementwiseAffine) params[1].value else null
+                    fused.layerNorm(input, gamma, beta, eps.toFloat(), normalizedShape.size)?.let { return@withForwardHooks it }
+                }
+            }
+
             // Compute the numerically-sensitive normalization (mean / variance /
             // std / divide) in f32, regardless of the model dtype. This is standard
             // LayerNorm practice — PyTorch and JAX upcast fp16/bf16 LayerNorm to f32

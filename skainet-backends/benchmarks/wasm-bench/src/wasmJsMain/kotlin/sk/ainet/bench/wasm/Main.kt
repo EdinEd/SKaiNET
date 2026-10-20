@@ -1,6 +1,7 @@
 package sk.ainet.bench.wasm
 
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.exec.wasm.WasmCpuOps
 import sk.ainet.exec.wasm.WasmKernels
 import sk.ainet.exec.wasm.WasmSimd
 import sk.ainet.lang.tensor.Shape
@@ -90,8 +91,15 @@ private fun report(tier: String, case: Case, form: String, ms: Double) {
 /**
  * Three passes: the scalar lane, then the SIMD128 sidecar single-threaded, then with pthreads when
  * the runtime allows them (Node, or a cross-origin-isolated page). Each line carries `tier=`.
+ *
+ * `SKAINET_WASM_RESIDENT=0` in the environment (Node) runs the sidecar passes with
+ * `WasmSimd.residentBudgetBytes = 0`, i.e. every op output read back to the heap — the A/B for the
+ * resident-activation step.
  */
 suspend fun main() {
+    val resident = envVar("SKAINET_WASM_RESIDENT") != "0"
+    if (!resident) WasmSimd.residentBudgetBytes = 0L
+    println("[SKAINET_PERF_WASM] residentActivations=$resident")
     runPass("scalar")
     WasmSimd.install(threads = false)
     runPass(WasmKernels.mode)
@@ -122,4 +130,39 @@ private fun runPass(tier: String) {
         report(tier, case, "dense", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, dense) })
         report(tier, case, "q8_0", timeMedianMs(reps) { ctx.ops.matmulWeightTransposed(x, packed) })
     }
+    runChain(tier, ctx)
 }
+
+/**
+ * The resident-activation case: one Laya MLP block's shape of ops between two matmuls —
+ * `x · Wᵢᵀ`, GELU, a gated multiply, a bias add, then a reduction that reads the result back —
+ * timed end to end. On the scalar lane every op allocates and walks a heap array; on the sidecar
+ * the intermediates stay in linear memory and only the final scalar crosses the boundary.
+ *
+ * `[SKAINET_PERF_WASM] tier=<tier> laya.chain m=150 n=2304 k=768 ops=matmulWt+gelu+mul+add+sum residentBudget=<bytes> ms=<median>`
+ */
+private fun runChain(tier: String, ctx: DirectCpuExecutionContext) {
+    val m = 150; val n = 2304; val k = 768
+    val x = ctx.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, pseudo(m * k, 3))
+    val w = ctx.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, pseudo(n * k, 7))
+    val bias = ctx.fromFloatArray<FP32, Float>(Shape(n), FP32::class, pseudo(n, 11))
+    fun chain(): Float {
+        val h = ctx.ops.matmulWeightTransposed(x, w)
+        val g = ctx.ops.gelu(h)
+        val s = ctx.ops.multiply(g, h)
+        val o = ctx.ops.add(s, bias)
+        return ctx.ops.sum(o).data.copyToFloatArray()[0]
+    }
+    chain()
+    val ms = timeMedianMs(5) { chain() }
+    val msText = ((ms * 100).roundToInt() / 100.0).toString()
+    val budget = if (ctx.ops is WasmCpuOps) WasmSimd.residentBudgetBytes else 0L
+    println("[SKAINET_PERF_WASM] tier=$tier laya.chain m=$m n=$n k=$k ops=matmulWt+gelu+mul+add+sum residentBudget=$budget ms=$msText")
+}
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun envVar(name: String): String? = jsEnvVar(name)?.toString()
+
+@OptIn(kotlin.js.ExperimentalWasmJsInterop::class)
+private fun jsEnvVar(name: String): JsString? =
+    js("(typeof process !== 'undefined' && process.env && process.env[name] != null) ? process.env[name] : null")

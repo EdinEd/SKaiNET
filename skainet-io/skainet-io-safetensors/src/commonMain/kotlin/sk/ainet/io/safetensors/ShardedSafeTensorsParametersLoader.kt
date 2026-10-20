@@ -2,6 +2,7 @@ package sk.ainet.io.safetensors
 
 import sk.ainet.context.ExecutionContext
 import sk.ainet.io.ParametersLoader
+import sk.ainet.io.RandomAccessSource
 import sk.ainet.lang.memory.plan.WeightForm
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.Tensor
@@ -31,13 +32,15 @@ import kotlin.reflect.KClass
  * them all — a 40-shard load should not die on tensor 900 (mirrors the
  * GGUF loader's fail-fast contract, #919).
  *
- * Platform note: this loader resolves shard files by path
- * (`openRandomAccessSource`), which yields no sources on js/wasm/
- * androidNativeArm32. A provider-per-shard factory
- * (`(shardFilename) -> RandomAccessSource`) for those platforms is a
- * planned follow-up and needs an
- * `openFromParsedIndex(index, shardProvider)` companion on
- * [StreamingShardedSafeTensorsReader].
+ * Two ways to name the checkpoint: the [indexPath] constructor resolves
+ * the shards beside the index file through `openRandomAccessSource`,
+ * which is how a JVM, Android or Kotlin/Native host loads; the
+ * `(indexJson, shardSource)` constructor takes the index as text and a
+ * provider that opens each shard by file name — the form for a browser
+ * or Wasm host, where there is no file system and a shard is a `Blob`
+ * (`JsBlobRandomAccessSource`) or fetched bytes
+ * (`ByteArrayRandomAccessSource`). Both deliver identical tensors for
+ * identical bytes.
  *
  * @param indexPath Path to `model.safetensors.index.json`.
  * @param onProgress Optional progress callback (current, total, tensorName);
@@ -54,16 +57,65 @@ import kotlin.reflect.KClass
  *   family-side skip policy (size guards, name allowlists) — dtype/policy
  *   handling stays engine-side. `null` loads everything.
  */
-public class ShardedSafeTensorsParametersLoader(
-    private val indexPath: String,
-    private val onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
-    private val bf16Policy: Bf16LoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
-    private val fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
-    private val allowPartial: Boolean = false,
-    private val tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
-    private val weightForm: WeightForm? = null,
-    private val weightFormFor: ((String) -> WeightForm?)? = null,
+public class ShardedSafeTensorsParametersLoader private constructor(
+    private val openReader: suspend (allowPartial: Boolean) -> StreamingShardedSafeTensorsReader,
+    private val onProgress: (current: Long, total: Long, message: String?) -> Unit,
+    private val bf16Policy: Bf16LoadPolicy,
+    private val fp16Policy: NarrowFloatLoadPolicy,
+    private val allowPartial: Boolean,
+    private val tensorFilter: ((ShardedTensorInfo) -> Boolean)?,
+    private val weightForm: WeightForm?,
+    private val weightFormFor: ((String) -> WeightForm?)?,
 ) : ParametersLoader {
+
+    /** The checkpoint by the path of its index file; shards are resolved beside it. */
+    public constructor(
+        indexPath: String,
+        onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+        bf16Policy: Bf16LoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+        fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+        allowPartial: Boolean = false,
+        tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
+        weightForm: WeightForm? = null,
+        weightFormFor: ((String) -> WeightForm?)? = null,
+    ) : this(
+        openReader = { partial -> StreamingShardedSafeTensorsReader.openFromIndex(indexPath, partial) },
+        onProgress = onProgress,
+        bf16Policy = bf16Policy,
+        fp16Policy = fp16Policy,
+        allowPartial = allowPartial,
+        tensorFilter = tensorFilter,
+        weightForm = weightForm,
+        weightFormFor = weightFormFor,
+    )
+
+    /**
+     * The checkpoint by the content of its index file and a provider that opens each shard by
+     * file name (`model-00001-of-00003.safetensors`, …), answering `null` for a missing one. The
+     * provider may suspend — a browser opens a `Blob` per shard inside it — and is asked once per
+     * shard; the sources it returns are closed when `load` returns. See
+     * [StreamingShardedSafeTensorsReader.openFromIndexContent].
+     */
+    public constructor(
+        indexJson: String,
+        shardSource: suspend (shardFilename: String) -> RandomAccessSource?,
+        onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+        bf16Policy: Bf16LoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+        fp16Policy: NarrowFloatLoadPolicy = NarrowFloatLoadPolicy.DEQUANT_TO_FP32,
+        allowPartial: Boolean = false,
+        tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
+        weightForm: WeightForm? = null,
+        weightFormFor: ((String) -> WeightForm?)? = null,
+    ) : this(
+        openReader = { partial -> StreamingShardedSafeTensorsReader.openFromIndexContent(indexJson, shardSource, partial) },
+        onProgress = onProgress,
+        bf16Policy = bf16Policy,
+        fp16Policy = fp16Policy,
+        allowPartial = allowPartial,
+        tensorFilter = tensorFilter,
+        weightForm = weightForm,
+        weightFormFor = weightFormFor,
+    )
 
     init {
         weightForm?.let { SafeTensorsWeightForms.validate(it, "weightForm") }
@@ -81,7 +133,7 @@ public class ShardedSafeTensorsParametersLoader(
         dtype: KClass<T>,
         onTensorLoaded: (String, Tensor<T, V>) -> Unit
     ) {
-        StreamingShardedSafeTensorsReader.openFromIndex(indexPath, allowPartial).use { reader ->
+        openReader(allowPartial).use { reader ->
             val tensors = tensorFilter?.let { filter -> reader.tensors.filter(filter) }
                 ?: reader.tensors
 
@@ -130,6 +182,24 @@ public class ShardedSafeTensorsParametersLoader(
             tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
         ): ShardedSafeTensorsParametersLoader = ShardedSafeTensorsParametersLoader(
             indexPath = indexPath,
+            onProgress = onProgress,
+            bf16Policy = SafeTensorsMaterializer.mapPolicyToBf16(policy),
+            fp16Policy = SafeTensorsMaterializer.mapPolicyToFp16(policy),
+            allowPartial = allowPartial,
+            tensorFilter = tensorFilter,
+        )
+
+        /** [withPolicy] for the `(indexJson, shardSource)` form. */
+        public fun withPolicy(
+            indexJson: String,
+            shardSource: suspend (shardFilename: String) -> RandomAccessSource?,
+            policy: DTypePolicy,
+            onProgress: (current: Long, total: Long, message: String?) -> Unit = { _, _, _ -> },
+            allowPartial: Boolean = false,
+            tensorFilter: ((ShardedTensorInfo) -> Boolean)? = null,
+        ): ShardedSafeTensorsParametersLoader = ShardedSafeTensorsParametersLoader(
+            indexJson = indexJson,
+            shardSource = shardSource,
             onProgress = onProgress,
             bf16Policy = SafeTensorsMaterializer.mapPolicyToBf16(policy),
             fp16Policy = SafeTensorsMaterializer.mapPolicyToFp16(policy),

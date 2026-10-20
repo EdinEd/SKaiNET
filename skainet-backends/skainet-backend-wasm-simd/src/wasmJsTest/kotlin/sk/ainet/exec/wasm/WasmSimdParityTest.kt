@@ -1,11 +1,32 @@
 package sk.ainet.exec.wasm
 
 import kotlinx.coroutines.test.runTest
+import sk.ainet.backend.api.kernel.BitNetGemvKernel
 import sk.ainet.backend.api.kernel.KernelDispatch
 import sk.ainet.backend.api.kernel.KernelRegistry
 import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.NoSuchKernelException
+import sk.ainet.backend.api.kernel.TernaryF32GemvKernel
+import sk.ainet.backend.api.kernel.TernaryPlanesMatmulKernel
 import sk.ainet.context.DirectCpuExecutionContext
+import sk.ainet.context.ScopedExecutionContext
+import sk.ainet.lang.memory.ForwardScope
+import sk.ainet.lang.memory.PlatformStorage
+import sk.ainet.lang.memory.StorageClosedException
+import sk.ainet.lang.memory.plan.StorageCapabilities
+import sk.ainet.lang.tensor.data.DenseFloatArrayTensorData
+import sk.ainet.lang.tensor.storage.MemoryDomain
+import sk.ainet.lang.memory.I8Absmax
+import sk.ainet.lang.memory.Scope
+import sk.ainet.lang.memory.Storage
+import sk.ainet.lang.memory.TensorView
+import sk.ainet.lang.memory.TernaryBlockDecoder
+import sk.ainet.lang.memory.TernaryCodec
+import sk.ainet.lang.memory.trace.RecordingTraceSink
+import sk.ainet.lang.memory.trace.TraceEvent
+import sk.ainet.lang.tensor.data.BitNetB158TensorData
+import sk.ainet.lang.tensor.data.BitNetPlanesTensorData
+import sk.ainet.lang.tensor.storage.TensorEncoding
 import sk.ainet.exec.kernel.ScalarBf16MatmulKernel
 import sk.ainet.exec.kernel.ScalarFp16MatmulKernel
 import sk.ainet.exec.kernel.ScalarQ4_KMatmulKernel
@@ -23,7 +44,12 @@ import sk.ainet.lang.tensor.data.Q8_0BlockTensorData
 import sk.ainet.lang.tensor.data.Q8_0Quantizer
 import sk.ainet.lang.tensor.data.TensorData
 import sk.ainet.lang.tensor.matmulWeightTransposed
+import sk.ainet.lang.types.DType
 import sk.ainet.lang.types.FP32
+import sk.ainet.lang.types.Int32
+import sk.ainet.lang.nn.normalization.LayerNormalization
+import sk.ainet.lang.tensor.ops.AttentionMask
+import sk.ainet.lang.tensor.ops.FusedNormOps
 import kotlin.math.abs
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -36,8 +62,8 @@ import kotlin.test.assertTrue
 
 /**
  * SKEEP-007 §T1: the SIMD128 sidecar agrees with the common scalar lane on every path it takes
- * over — row-major packed matmuls (Q8_0, Q4_0, Q4_K via the pack), dense `x · Wᵀ`, and the dense
- * GEMM — and the wiring makes a freshly built context use [WasmCpuOps].
+ * over — row-major packed matmuls (Q8_0, Q4_0, Q4_K via the pack), dense `x · Wᵀ`, the dense GEMM
+ * and the three ternary kernels — and the wiring makes a freshly built context use [WasmCpuOps].
  *
  * Runs on Node (`wasmJsNodeTest`): the sidecar is loaded from the module's own resources. Lane
  * sums differ from the sequential scalar accumulation in the last bits, so comparisons are
@@ -69,6 +95,8 @@ class WasmSimdParityTest {
     fun tearDown() {
         WasmSimd.uninstall()
     }
+
+    private fun heapFloats(view: TensorView): FloatArray = checkNotNull((view.storage as Storage.Heap).floats)
 
     @Suppress("UNCHECKED_CAST")
     private fun q8(ctx: DirectCpuExecutionContext, n: Int, k: Int, seed: Int): Tensor<FP32, Float> =
@@ -282,5 +310,312 @@ class WasmSimdParityTest {
         val direct = FloatArray(m * n)
         WasmFp32MatmulKernel.matmul(x, 0, k, b, 0, n, direct, 0, n, m, n, k)
         assertClose(refMm, direct, "provider gemm")
+        // The direct `x · Wᵀ` provider kernel: whole-array weight (resident) and a windowed one (staged).
+        val provider = checkNotNull(KernelRegistry.bestAvailable())
+        val wt = checkNotNull(provider.matmulFp32Wt())
+        assertTrue(provider.supports("matmul_wt", listOf("Float32", "Float32")))
+        val directWt = FloatArray(m * n)
+        wt.matmulWt(x, 0, w, 0, directWt, 0, m, n, k)
+        assertClose(refWt, directWt, "provider x·Wᵀ")
+        val window = FloatArray(1 + n * k + 3).also { w.copyInto(it, 1) }
+        val windowed = FloatArray(2 + m * n)
+        wt.matmulWt(x, 0, window, 1, windowed, 2, m, n, k)
+        assertClose(refWt, windowed.copyOfRange(2, 2 + m * n), "windowed x·Wᵀ")
+    }
+
+    /**
+     * The ternary kernels reach the sidecar through the same `KernelDispatch` keys the JVM FFM and
+     * Android JNI packs serve, and agree with the Kotlin reference kernels. Row counts above the row
+     * pool's threshold (512) so the mt sidecar splits the rows over its workers.
+     */
+    @Test
+    fun `ternary weights run on the sidecar and match the reference kernels`() = runTest {
+        WasmSimd.install()
+        val rng = Random(31)
+
+        // BITNET_B1_58, exact FP32 activations, two rows so the pack's row loop runs.
+        run {
+            val k = 256; val n = 600; val rows = 2
+            val values = FloatArray(n * k) { (rng.nextInt(3) - 1) * 0.5f }
+            val w = BitNetB158TensorData.fromFloats(Shape(n, k), values).packedView
+            val a = TensorView.dense(Storage.Heap.wrap(FloatArray(rows * k) { rng.nextFloat() - 0.5f }), Shape(rows, k), FP32)
+            val out = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("ternary_f32_gemv/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(rows * n), Shape(rows, n), FP32)
+            TernaryF32GemvKernel(TernaryF32GemvKernel.keyFor()).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "ternary f32 gemv", rel = 1e-4f)
+        }
+
+        // BITNET_PLANES: the fused four-plane lm_head, two calls per row, against the 8-plane reference.
+        run {
+            val k = 64; val n = 520
+            val values = FloatArray(n * k) { (rng.nextFloat() - 0.5f) * 2f }
+            val w = BitNetPlanesTensorData.fromFloats(Shape(n, k), values).packedView
+            val a = TensorView.dense(Storage.Heap.wrap(FloatArray(k) { rng.nextFloat() - 0.5f }), Shape(1, k), FP32)
+            val out = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("ternary_planes_matmul/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            TernaryPlanesMatmulKernel(TernaryPlanesMatmulKernel.keyFor()).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "ternary planes lm_head", rel = 1e-4f)
+        }
+
+        // TQ2_0 with int8 activations: integer block sums, so the match is exact up to the scale products.
+        run {
+            val k = 768; val n = 600
+            val values = FloatArray(n * k) { (rng.nextInt(3) - 1) * 0.5f }
+            val w = TensorView.packed(
+                Storage.Heap.wrap(TernaryCodec.encode(TensorEncoding.TQ2_0, values)), Shape(n, k),
+                TensorEncoding.TQ2_0, TernaryBlockDecoder(TensorEncoding.TQ2_0),
+            )
+            val a = I8Absmax.requantize(
+                TensorView.dense(Storage.Heap.wrap(FloatArray(k) { rng.nextFloat() - 0.5f }), Shape(1, k), FP32), Scope.Ambient,
+            )
+            val out = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            val sink = RecordingTraceSink()
+            KernelDispatch.matmul(a, w, out, Scope.Ambient, sink)
+            assertEquals("bitnet_gemv/wasm-simd128", sink.eventsOf<TraceEvent.KernelRun>().single().kernel)
+            val ref = TensorView.dense(Storage.Heap.floats(n), Shape(1, n), FP32)
+            BitNetGemvKernel(BitNetGemvKernel.keyFor(w.format)).run(listOf(a, w), ref)
+            assertClose(heapFloats(ref), heapFloats(out), "bitnet gemv tq2_0")
+        }
+        assertTrue(WasmKernels.residentWeightBytes() > 0, "the ternary weights stay resident")
+    }
+
+    /**
+     * Resident activations: a matmul's output stays in the sidecar, the elementwise ops, activations
+     * and reductions that follow read it in place and leave their result there too, and every value
+     * agrees with the common scalar lane. Only the final read materialises a heap mirror.
+     */
+    @Test
+    fun `an activation chain stays resident in the sidecar and matches the scalar lane`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        val m = 7; val n = 40; val k = 24
+        val x = pseudo(m * k, 41)
+        val w = pseudo(n * k, 43)
+        val bias = pseudo(n, 47)
+        val xs = scalar.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x)
+        val ws = scalar.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, w)
+        val bs = scalar.fromFloatArray<FP32, Float>(Shape(n), FP32::class, bias)
+        val two = scalar.fromFloatArray<FP32, Float>(Shape(1), FP32::class, floatArrayOf(2f))
+        fun chain(ctx: DirectCpuExecutionContext, x: Tensor<FP32, Float>, w: Tensor<FP32, Float>, b: Tensor<FP32, Float>, c: Tensor<FP32, Float>, probe: (String, Tensor<FP32, Float>) -> Unit): Map<String, FloatArray> {
+            val ops = ctx.ops
+            val out = LinkedHashMap<String, FloatArray>()
+            fun keep(name: String, t: Tensor<FP32, Float>) { probe(name, t); out[name] = t.data.copyToFloatArray() }
+            val h = ops.matmulWeightTransposed(x, w); probe("h", h)
+            val g = ops.gelu(h); probe("gelu", g)
+            val ge = ops.gelu(h, approximate = false); keep("geluExact", ge)
+            val s = ops.multiply(g, h); probe("mul", s)
+            val o = ops.add(s, b); probe("addBias", o)
+            keep("biasAdd", ops.add(b, s))
+            keep("subScalar", ops.subtract(o, c))
+            keep("scalarSub", ops.subtract(c, o))
+            keep("div", ops.divide(o, ops.add(ops.relu(o), c)))
+            keep("relu", ops.relu(o))
+            keep("sigmoid", ops.sigmoid(o))
+            keep("silu", ops.silu(o))
+            keep("tanh", ops.tanh(o))
+            keep("erf", ops.erf(o))
+            keep("sumAll", ops.sum(o))
+            keep("meanAll", ops.mean(o))
+            keep("sumLast", ops.sum(o, -1))
+            keep("meanFirst", ops.mean(o, 0))
+            keep("out", o)
+            return out
+        }
+        val ref = chain(scalar, xs, ws, bs, two) { _, _ -> }
+
+        WasmSimd.install()
+        val fast = DirectCpuExecutionContext()
+        val xf = fast.fromFloatArray<FP32, Float>(Shape(m, k), FP32::class, x)
+        val wf = fast.fromFloatArray<FP32, Float>(Shape(n, k), FP32::class, w)
+        val bf = fast.fromFloatArray<FP32, Float>(Shape(n), FP32::class, bias)
+        val cf = fast.fromFloatArray<FP32, Float>(Shape(1), FP32::class, floatArrayOf(2f))
+        val before = WasmKernels.residentActivationBytes()
+        val got = chain(fast, xf, wf, bf, cf) { name, t ->
+            val d = t.data
+            assertIs<WasmLinearTensorData<*>>(d, "$name should be resident")
+            assertTrue(d.isResident, "$name alive")
+            if (name == "h" || name == "gelu" || name == "mul" || name == "addBias") assertTrue(!d.isMirrored, "$name was not downloaded")
+        }
+        assertTrue(WasmKernels.residentActivationBytes() > before, "resident bytes grew")
+        for ((name, values) in ref) {
+            assertClose(values, checkNotNull(got[name]) { name }, name)
+        }
+        // Shapes of the reductions follow the common lane.
+        assertEquals(m, got.getValue("sumLast").size)
+        assertEquals(n, got.getValue("meanFirst").size)
+        assertEquals(1, got.getValue("sumAll").size)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun lengthsTensor(ctx: DirectCpuExecutionContext, lengths: IntArray): Tensor<DType, *> =
+        ctx.fromIntArray<Int32, Int>(Shape(lengths.size), Int32::class, lengths) as Tensor<DType, *>
+
+    @Test
+    fun `softmax, the normalisations and attention run fused in the sidecar and match the scalar lane`() = runTest {
+        val scalar = DirectCpuExecutionContext()
+        val rows = 16; val cols = 96
+        val xArr = pseudo(rows * cols, 51, 3f)
+        val gArr = FloatArray(cols) { 0.5f + (it % 7) * 0.1f }
+        val bArr = FloatArray(cols) { ((it % 5) - 2) * 0.05f }
+        val batch = 2; val heads = 4; val kvHeads = 2; val seqQ = 5; val seqKV = 9; val headDim = 16
+        val qArr = pseudo(batch * heads * seqQ * headDim, 53)
+        val kArr = pseudo(batch * kvHeads * seqKV * headDim, 55)
+        val vArr = pseudo(batch * kvHeads * seqKV * headDim, 57)
+        val lengths = intArrayOf(seqKV, 4)
+        val maskArr = pseudo(seqQ * seqKV, 59)
+        val wqArr = pseudo(cols * cols, 61)
+
+        fun run(ctx: DirectCpuExecutionContext, probe: (String, Tensor<FP32, Float>) -> Unit): Map<String, FloatArray> {
+            val ops = ctx.ops
+            val out = LinkedHashMap<String, FloatArray>()
+            fun keep(name: String, t: Tensor<FP32, Float>) { probe(name, t); out[name] = t.data.copyToFloatArray() }
+            val x = ctx.fromFloatArray<FP32, Float>(Shape(rows, cols), FP32::class, xArr)
+            keep("softmax", ops.softmax(x, -1))
+            keep("logSoftmax", ops.logSoftmax(x, -1))
+            keep("softmaxDim0", ops.softmax(x, 0))
+            val gamma = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, gArr)
+            val beta = ctx.fromFloatArray<FP32, Float>(Shape(cols), FP32::class, bArr)
+            val ln = LayerNormalization<FP32, Float>(intArrayOf(cols), eps = 1e-5, elementwiseAffine = true, name = "ln", initGamma = gamma, initBeta = beta)
+            keep("layerNorm", ln.forward(x, ctx))
+            val lnPlain = LayerNormalization<FP32, Float>(intArrayOf(cols), eps = 1e-5, elementwiseAffine = false, name = "lnPlain")
+            keep("layerNormPlain", lnPlain.forward(x, ctx))
+            (ops as? FusedNormOps)?.rmsNorm(x, gamma, 1e-6f, 1)?.let { keep("rmsNorm", it) }
+            // On the sidecar the operands are made resident first (as a projection's output is), so
+            // attention reads them in place: the probe checks they were never downloaded.
+            val wasm = ops as? WasmCpuOps
+            fun resident(t: Tensor<FP32, Float>) = wasm?.toResident(t) ?: t
+            val q = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, heads, seqQ, headDim), FP32::class, qArr))
+            val k = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, kvHeads, seqKV, headDim), FP32::class, kArr))
+            val v = resident(ctx.fromFloatArray<FP32, Float>(Shape(batch, kvHeads, seqKV, headDim), FP32::class, vArr))
+            keep("sdpa", ops.scaledDotProductAttention(q, k, v))
+            probe("q", q); probe("k", k); probe("v", v)
+            keep("sdpaCausal", ops.scaledDotProductAttention(q, k, v, causal = true))
+            keep("sdpaLengths", ops.scaledDotProductAttention(q, k, v, causal = true, keyLengths = lengthsTensor(ctx, lengths)))
+            keep("sdpaWindow", ops.scaledDotProductAttention(q, k, v, keyLengths = lengthsTensor(ctx, lengths), window = 3, rightContext = 1))
+            val mask = ctx.fromFloatArray<FP32, Float>(Shape(seqQ, seqKV), FP32::class, maskArr)
+            keep("sdpaMask", ops.scaledDotProductAttention(q, k, v, mask = mask, scale = 0.3f))
+            val dense = ctx.fromFloatArray<FP32, Float>(Shape(batch, 1, seqQ, seqKV), FP32::class, AttentionMask.additive(batch, seqQ, seqKV, true, 3, 1, lengths))
+            keep("sdpaDense", ops.scaledDotProductAttention(q, k, v, mask = dense))
+            keep("sdpaStructured", ops.scaledDotProductAttention(q, k, v, causal = true, keyLengths = lengthsTensor(ctx, lengths), window = 3, rightContext = 1))
+            keep("sdpaPadded", ops.scaledDotProductAttention(q, k, v, keyLengths = lengthsTensor(ctx, intArrayOf(0, seqKV))))
+            // A projection's output goes straight into the normalisation without a download.
+            val wq = ctx.fromFloatArray<FP32, Float>(Shape(cols, cols), FP32::class, wqArr)
+            val proj = ops.matmulWeightTransposed(x, wq)
+            keep("projNorm", lnPlain.forward(proj, ctx))
+            probe("proj", proj)
+            return out
+        }
+        val ref = run(scalar) { _, _ -> }
+        assertTrue(ref.containsKey("rmsNorm").not() || scalar.ops !is FusedNormOps, "the scalar lane has no fused-norm hook")
+
+        WasmSimd.install()
+        val fast = DirectCpuExecutionContext()
+        assertIs<FusedNormOps>(fast.ops)
+        val got = run(fast) { name, t ->
+            if (name == "softmaxDim0") return@run
+            val d = t.data
+            assertIs<WasmLinearTensorData<*>>(d, "$name should be resident")
+            if (name == "proj" || name == "q" || name == "k" || name == "v") assertTrue(!d.isMirrored, "$name was not downloaded")
+        }
+        for ((name, values) in ref) {
+            val (rel, abs) = if (name.startsWith("sdpa") || name.contains("Norm")) 1e-4f to 1e-5f else 1e-5f to 1e-6f
+            val actual = checkNotNull(got[name]) { name }
+            assertEquals(values.size, actual.size, "$name size")
+            var maxAbs = 0f
+            for (v in values) maxAbs = maxOf(maxAbs, kotlin.math.abs(v))
+            val tol = maxAbs * rel + abs
+            for (i in values.indices) assertTrue(kotlin.math.abs(values[i] - actual[i]) <= tol, "$name[$i]: ${actual[i]} vs ${values[i]} (tol $tol)")
+        }
+        assertTrue(got.containsKey("rmsNorm"), "rmsNorm served by the sidecar")
+        // The structured rules equal the dense -1e30 mask on the sidecar kernel.
+        val a = got.getValue("sdpaStructured"); val b = got.getValue("sdpaDense")
+        for (i in a.indices) assertTrue(abs(a[i] - b[i]) <= 1e-6f, "structured vs dense [$i]")
+        assertTrue(got.getValue("sdpaPadded").all { it.isFinite() }, "fully padded row is finite")
+    }
+
+    @Test
+    fun `heap operands keep the common path while transcendental activations and matmul outputs go resident`() = runTest {
+        WasmSimd.install()
+        val ctx = DirectCpuExecutionContext()
+        assertIs<WasmCpuOps>(ctx.ops)
+        val a = ctx.fromFloatArray<FP32, Float>(Shape(3, 5), FP32::class, pseudo(15, 1))
+        val b = ctx.fromFloatArray<FP32, Float>(Shape(3, 5), FP32::class, pseudo(15, 2))
+        // Two heap operands: no upload, the common scalar lane answers on the heap.
+        assertIs<DenseFloatArrayTensorData<*>>(ctx.ops.add(a, b).data)
+        assertIs<DenseFloatArrayTensorData<*>>(ctx.ops.relu(a).data)
+        assertIs<DenseFloatArrayTensorData<*>>(ctx.ops.sum(a).data)
+        // A transcendental on a heap operand is worth the upload; its output is resident.
+        val g = ctx.ops.gelu(a)
+        assertIs<WasmLinearTensorData<*>>(g.data)
+        // ... and from there the chain is resident, including a heap partner.
+        assertIs<WasmLinearTensorData<*>>(ctx.ops.add(g, b).data)
+        assertIs<WasmLinearTensorData<*>>(ctx.ops.relu(g).data)
+        assertIs<WasmLinearTensorData<*>>(ctx.ops.sum(g).data)
+        // Explicit upload once.
+        val r = (ctx.ops as WasmCpuOps).toResident(a)
+        assertIs<WasmLinearTensorData<*>>(r.data)
+        assertClose(a.data.copyToFloatArray(), r.data.copyToFloatArray(), "toResident")
+        assertIs<WasmLinearTensorData<*>>(ctx.ops.add(r, b).data)
+        // A resident tensor reads like a heap one: elements, the view, and a common op that has no override.
+        val gd = g.data as WasmLinearTensorData<*>
+        val expected = DirectCpuExecutionContext().let { s -> s.ops.gelu(s.fromFloatArray<FP32, Float>(Shape(3, 5), FP32::class, pseudo(15, 1))).data.copyToFloatArray() }
+        assertClose(expected, g.data.copyToFloatArray(), "gelu via mirror")
+        assertEquals(expected[7], gd.get(1, 2))
+        assertTrue(gd.isMirrored)
+        assertClose(expected, ctx.ops.transpose(ctx.ops.transpose(g)).data.copyToFloatArray(), "common op on a resident tensor")
+    }
+
+    @Test
+    fun `scoped resident outputs are freed at reset and the budget falls back to the heap`() = runTest {
+        WasmSimd.install()
+        assertTrue(StorageCapabilities.current().supportsOffHeap, "the hook binds HOST_OFFHEAP while installed")
+        val scope = ForwardScope(slabFloats = 0)
+        val ctx = ScopedExecutionContext(DirectCpuExecutionContext(), scope)
+        val x = ctx.fromFloatArray<FP32, Float>(Shape(4, 8), FP32::class, pseudo(32, 9))
+        val before = WasmKernels.residentActivationBytes()
+        val y = ctx.ops.gelu(x)
+        val yd = assertIs<WasmLinearTensorData<*>>(y.data)
+        assertEquals(sk.ainet.lang.memory.ScopeKind.FORWARD, yd.storage.scope)
+        assertEquals(before + 32 * 4, WasmKernels.residentActivationBytes())
+        val values = y.data.copyToFloatArray()
+        scope.reset()
+        assertEquals(before, WasmKernels.residentActivationBytes(), "reset freed the sidecar bytes")
+        assertTrue(!yd.isResident)
+        assertFailsWith<StorageClosedException> { y.data.copyToFloatArray() }
+        assertEquals(32, values.size)
+
+        // Budget: the kernel still runs in the sidecar, the result comes back to the heap.
+        val saved = WasmSimd.residentBudgetBytes
+        try {
+            WasmSimd.residentBudgetBytes = 0L
+            val plain = DirectCpuExecutionContext()
+            val h = plain.fromFloatArray<FP32, Float>(Shape(4, 8), FP32::class, pseudo(32, 9))
+            val z = plain.ops.gelu(h)
+            assertIs<DenseFloatArrayTensorData<*>>(z.data)
+            assertClose(values, z.data.copyToFloatArray(), "budget fallback")
+        } finally {
+            WasmSimd.residentBudgetBytes = saved
+        }
+
+        // The storage itself: zeroed allocation, byte round trip, slice, close.
+        val s = assertIs<WasmLinearStorage>(PlatformStorage.allocate(64, MemoryDomain.HOST_OFFHEAP))
+        val zeros = ByteArray(64) { 1 }
+        s.copyInto(zeros)
+        assertTrue(zeros.all { it == 0.toByte() }, "allocated zeroed")
+        val bytes = ByteArray(64) { it.toByte() }
+        s.copyFrom(bytes)
+        val back = ByteArray(16)
+        s.slice(8, 16).copyInto(back)
+        assertTrue(back.contentEquals(bytes.copyOfRange(8, 24)), "slice reads the sub-range")
+        val held = WasmKernels.residentActivationBytes()
+        s.close()
+        assertEquals(held - 64, WasmKernels.residentActivationBytes())
+        WasmSimd.uninstall()
+        assertTrue(!StorageCapabilities.current().supportsOffHeap, "heap only once uninstalled")
     }
 }

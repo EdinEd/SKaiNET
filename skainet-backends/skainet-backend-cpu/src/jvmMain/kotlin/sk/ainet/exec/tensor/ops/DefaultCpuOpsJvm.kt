@@ -6,7 +6,13 @@ import jdk.incubator.vector.VectorOperators
 import sk.ainet.backend.api.kernel.Bf16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp16MatmulKernel
 import sk.ainet.backend.api.kernel.Fp32MatmulKernel
+import sk.ainet.backend.api.kernel.Fp32MemSegMatmulWtKernel
+import sk.ainet.backend.api.kernel.Fp32AttentionKernel
+import sk.ainet.backend.api.kernel.Fp32NormKernel
+import sk.ainet.backend.api.kernel.Fp32SoftmaxKernel
+import sk.ainet.backend.api.kernel.KernelProvider
 import sk.ainet.backend.api.kernel.KernelRegistry
+import sk.ainet.backend.api.kernel.MemSegKernelProvider
 import sk.ainet.backend.api.kernel.KernelServiceLoader
 import sk.ainet.backend.api.kernel.KernelStrictness
 import sk.ainet.backend.api.kernel.Q4KMatmulKernel
@@ -45,7 +51,7 @@ import kotlin.math.max
 internal class DefaultCpuOpsJvm(
     dataFactory: TensorDataFactory,
     schedule: sk.ainet.context.schedule.Schedule = sk.ainet.context.schedule.Schedule.Sequential,
-) : DefaultCpuOpsBase(dataFactory, schedule) {
+) : DefaultCpuOpsBase(dataFactory, schedule), sk.ainet.lang.tensor.ops.FusedNormOps {
 
     override fun withSchedule(schedule: sk.ainet.context.schedule.Schedule): sk.ainet.lang.tensor.ops.TensorOps =
         if (schedule === this.schedule) this else DefaultCpuOpsJvm(dataFactory, schedule)
@@ -196,12 +202,19 @@ internal class DefaultCpuOpsJvm(
      * tensor nothing could decode correctly (#1124). Here the kernels do exist, so the relayout
      * pays: once per weight, cached by the identity of its bytes.
      */
-    /** The JVM keeps the cached transpose: its vectorised `[k, n]` kernels are the fast path (SKEEP-007 §T0.2). */
+    /**
+     * The common row-dot is not this tier's direct path: a dense weight goes to the native `x · Wᵀ`
+     * kernel ([matmulDenseWeightTransposedNative]) when the FFM provider is loaded, and to the cached
+     * transpose plus the vectorised `[k, n]` kernels otherwise (SKEEP-007 §T0.2).
+     */
     override fun preferDirectWeightTransposed(): Boolean = false
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : DType, V> matmulWeightTransposed(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V> {
         if (weight.shape.rank != 2 || !isHeapPackedWeightForJvm(weight.data)) {
+            // Dense FP32 `[out, in]` weight with a native direct kernel: multiplied in place, no
+            // transposed copy made or cached (the weight is made resident off-heap once instead).
+            matmulDenseWeightTransposedNative(x, weight)?.let { return it }
             // Packed weights OUTSIDE the JVM relayout list (the ternary formats, #1136) go to the
             // common views→KernelDispatch path — whose kernels and reference are commonMain and
             // cannot read a MemorySegment-backed activation (SKEEP-004 forbids element access over
@@ -264,6 +277,225 @@ internal class DefaultCpuOpsJvm(
     /** Relayouted weights keyed by the identity of the bytes they came from (#1096). */
     private val prepackedWeightsJvm: MutableList<Pair<ByteArray, Tensor<*, *>>> = mutableListOf()
     private val PREPACK_CACHE_LIMIT_JVM: Int = 64
+
+    /**
+     * The direct `x · Wᵀ` kernel over an off-heap weight (`skainet_fp32_matmul_wt` through FFM), from
+     * the highest-priority available provider that carries one; `null` on a JVM without the native
+     * library, where the cached-transpose path below still serves.
+     */
+    private val fp32WtKernel: Fp32MemSegMatmulWtKernel? by lazy {
+        ensureKernelProviders()
+        KernelRegistry.providers().asSequence()
+            .filter { it.isAvailable() }
+            .mapNotNull { (it as? MemSegKernelProvider)?.matmulFp32WtMemSeg() }
+            .firstOrNull()
+    }
+
+    /**
+     * Dense weights made resident off-heap for [fp32WtKernel], keyed by the identity of their
+     * `TensorData` — the counterpart of the transposed-weight cache this path replaces, holding the
+     * same bytes untransposed where a downcall can read them without a per-call copy. Bounded like
+     * that cache; an evicted weight is simply copied again on its next use. Segments come from
+     * `Arena.ofAuto()`, so a dropped entry is reclaimed with the tensor that owned it.
+     */
+    private val residentDenseWeights: MutableList<Pair<Any, java.lang.foreign.MemorySegment>> = mutableListOf()
+    private val RESIDENT_DENSE_CACHE_LIMIT: Int = 256
+
+    /**
+     * `x · Wᵀ` for a dense FP32 `[out, in]` weight through the native direct kernel — the JVM-side
+     * half of SKEEP-007 §T0.2: no transposed copy of the weight is made, the weight is read where it
+     * lies (a segment-backed weight as is, a heap one after a single off-heap copy), and the C kernel
+     * threads over output rows. `null` when the kernel is not available or the operands are not
+     * dense FP32 the kernel can take, in which case the caller continues to the cached transpose.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : DType, V> matmulDenseWeightTransposedNative(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
+        if (weight.shape.rank != 2 || x.rank < 1 || x.dtype != FP32::class || weight.dtype != FP32::class) return null
+        val kernel = fp32WtKernel ?: return null
+        val n = weight.shape[0]
+        val k = weight.shape[1]
+        if (x.shape.dimensions.last() != k) return null
+        val resident = residentDenseWeight(weight, n.toLong() * k) ?: return null
+        val activation = heapActivation(x) ?: return null
+        val m = if (k == 0) 0 else x.shape.volume / k
+        val out = FloatArray(m * n)
+        if (m > 0 && n > 0) kernel.matmulWt(activation.first, activation.second, resident.first, resident.second, out, 0, m, n, k)
+        val outShape = if (x.rank == 1) Shape(n) else Shape(*(x.shape.dimensions.copyOf(x.rank - 1) + n))
+        val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, out) as TensorData<T, V>
+        return newTensor(outData, x.dtype, x, weight)
+    }
+
+    /**
+     * The activation's floats and their offset on the heap; a dense segment-backed activation is
+     * copied (it is `m × k`, small). `MemorySegmentTensorData` specifically, not the marker
+     * interface: the Q4/Q8 segment types implement that too and hold packed bytes, not floats.
+     */
+    private fun heapActivation(x: Tensor<*, *>): Pair<FloatArray, Int>? = when (val d = x.data) {
+        is FloatArrayTensorData<*> -> d.buffer to 0
+        is MemorySegmentTensorData<*> -> {
+            val count = x.shape.volume
+            val arr = FloatArray(count)
+            java.lang.foreign.MemorySegment.copy(d.segment, java.lang.foreign.ValueLayout.JAVA_FLOAT, d.segmentByteOffset, arr, 0, count)
+            arr to 0
+        }
+        else -> null
+    }
+
+    /** The weight's `floats` floats as an off-heap segment and byte offset: its own segment, or the resident copy of its heap array. */
+    private fun residentDenseWeight(weight: Tensor<*, *>, floats: Long): Pair<java.lang.foreign.MemorySegment, Long>? {
+        val bytes = floats * java.lang.Float.BYTES
+        when (val d = weight.data) {
+            is MemorySegmentTensorData<*> -> {
+                if (d.segmentByteOffset + bytes > d.segment.byteSize()) return null
+                return d.segment to d.segmentByteOffset
+            }
+            is FloatArrayTensorData<*> -> {
+                if (d.buffer.size.toLong() < floats) return null
+                synchronized(residentDenseWeights) {
+                    residentDenseWeights.firstOrNull { it.first === d }?.let { return it.second to 0L }
+                    val seg = Arena.ofAuto().allocate(maxOf(bytes, 4L), 64L)
+                    if (floats > 0) {
+                        java.lang.foreign.MemorySegment.copy(d.buffer, 0, seg, java.lang.foreign.ValueLayout.JAVA_FLOAT, 0L, floats.toInt())
+                    }
+                    if (residentDenseWeights.size >= RESIDENT_DENSE_CACHE_LIMIT) residentDenseWeights.removeAt(0)
+                    residentDenseWeights.add(Pair(d, seg))
+                    return seg to 0L
+                }
+            }
+            else -> return null
+        }
+    }
+
+    // ── fused row kernels (SKEEP-007 fused ops): softmax, the normalisations, attention ──────────
+
+    /** The highest-priority available provider's kernel from [pick], or `null` (the common path serves). */
+    private fun <K : Any> fusedKernel(pick: (KernelProvider) -> K?): K? {
+        ensureKernelProviders()
+        return KernelRegistry.providers().asSequence().filter { it.isAvailable() }.mapNotNull(pick).firstOrNull()
+    }
+
+    private val softmaxKernel: Fp32SoftmaxKernel? by lazy { fusedKernel { it.softmaxFp32() } }
+    private val normKernel: Fp32NormKernel? by lazy { fusedKernel { it.normFp32() } }
+    private val attentionKernel: Fp32AttentionKernel? by lazy { fusedKernel { it.attentionFp32() } }
+
+    /**
+     * Below this many elements a row kernel is not worth the downcall and its two staging copies:
+     * the common loop over a few hundred floats finishes before the segments are allocated.
+     */
+    private val FUSED_MIN_ELEMENTS: Int = 1024
+
+    /** A dense FP32 tensor's floats and the offset of element 0: the array itself, a slab window, or a copy of a segment. */
+    private fun denseWindow(t: Tensor<*, *>): Pair<FloatArray, Int>? = when (val d = t.data) {
+        is FloatArrayTensorData<*> -> d.buffer to 0
+        is sk.ainet.lang.tensor.data.StorageFloatTensorData<*> -> {
+            val s = d.storage
+            s.checkAlive()
+            s.floats!! to s.arrayOffset
+        }
+        is MemorySegmentTensorData<*> -> heapActivation(t)
+        else -> null
+    }
+
+    /** A dense FP32 tensor as one whole array from index 0 — its own buffer when it is one, a copy otherwise. */
+    private fun wholeFloats(t: Tensor<*, *>): FloatArray = when (val d = t.data) {
+        is FloatArrayTensorData<*> -> if (d.buffer.size == t.shape.volume) d.buffer else d.buffer.copyOf(t.shape.volume)
+        else -> t.data.copyToFloatArray()
+    }
+
+    private fun <T : DType, V> softmaxNative(tensor: Tensor<T, V>, dim: Int, log: Boolean): Tensor<T, V>? {
+        val kernel = softmaxKernel ?: return null
+        if (tensor.dtype != FP32::class) return null
+        val rank = tensor.rank
+        if (rank == 0) return null
+        val nd = if (dim < 0) dim + rank else dim
+        if (nd != rank - 1) return null
+        val cols = tensor.shape[nd]
+        val n = tensor.shape.volume
+        if (cols <= 0 || n < FUSED_MIN_ELEMENTS) return null
+        val src = denseWindow(tensor) ?: return null
+        val out = FloatArray(n)
+        kernel.softmaxRows(src.first, src.second, out, 0, n / cols, cols, log)
+        return floatResult(tensor.shape, tensor.dtype, out, tensor)
+    }
+
+    override fun <T : DType, V> softmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> =
+        softmaxNative(tensor, dim, log = false) ?: super.softmax(tensor, dim)
+
+    override fun <T : DType, V> logSoftmax(tensor: Tensor<T, V>, dim: Int): Tensor<T, V> =
+        softmaxNative(tensor, dim, log = true) ?: super.logSoftmax(tensor, dim)
+
+    /** `cols` values of a norm parameter as one array, or `null` when its size does not match. */
+    private fun normParam(t: Tensor<*, *>, cols: Int): FloatArray? {
+        if (t.shape.volume != cols) return null
+        return wholeFloats(t)
+    }
+
+    private fun <T : DType, V> normNative(
+        input: Tensor<T, V>, gamma: Tensor<T, V>?, beta: Tensor<T, V>?, eps: Float, normalizedRank: Int, rms: Boolean,
+    ): Tensor<T, V>? {
+        val kernel = normKernel ?: return null
+        if (input.dtype != FP32::class) return null
+        val rank = input.rank
+        if (normalizedRank !in 1..rank) return null
+        var cols = 1
+        for (i in rank - normalizedRank until rank) cols *= input.shape[i]
+        val n = input.shape.volume
+        if (cols == 0 || n == 0) return null
+        val src = denseWindow(input) ?: return null
+        val g = gamma?.let { normParam(it, cols) ?: return null }
+        val b = beta?.let { normParam(it, cols) ?: return null }
+        val out = FloatArray(n)
+        if (rms) kernel.rmsNorm(src.first, src.second, g, out, 0, n / cols, cols, eps)
+        else kernel.layerNorm(src.first, src.second, g, b, out, 0, n / cols, cols, eps)
+        return floatResult(input.shape, input.dtype, out, input)
+    }
+
+    override fun <T : DType, V> layerNorm(input: Tensor<T, V>, gamma: Tensor<T, V>?, beta: Tensor<T, V>?, eps: Float, normalizedRank: Int): Tensor<T, V>? =
+        normNative(input, gamma, beta, eps, normalizedRank, rms = false)
+
+    override fun <T : DType, V> rmsNorm(input: Tensor<T, V>, gamma: Tensor<T, V>?, eps: Float, normalizedRank: Int): Tensor<T, V>? =
+        normNative(input, gamma, null, eps, normalizedRank, rms = true)
+
+    /**
+     * Attention through the fused native kernel when the FFM provider carries it: the same operand
+     * contract and mask rules as the common implementation (which validates them here), the
+     * `q · k` dot products vectorised, rows threaded in the native row pool rather than through the
+     * schedule. Without the kernel, or for non-FP32 operands, the common implementation serves.
+     */
+    override fun <T : DType, V> scaledDotProductAttention(
+        query: Tensor<T, V>,
+        key: Tensor<T, V>,
+        value: Tensor<T, V>,
+        mask: Tensor<T, V>?,
+        scale: Float,
+        causal: Boolean,
+        keyLengths: Tensor<DType, *>?,
+        window: Int,
+        rightContext: Int,
+    ): Tensor<T, V> {
+        val kernel = attentionKernel
+        if (kernel == null || query.dtype != FP32::class || key.dtype != FP32::class || value.dtype != FP32::class) {
+            return super.scaledDotProductAttention(query, key, value, mask, scale, causal, keyLengths, window, rightContext)
+        }
+        requireSdpaOperands(query, key, value, window, rightContext)
+        val batch = query.shape[0]
+        val heads = query.shape[1]
+        val seqQ = query.shape[2]
+        val headDim = query.shape[3]
+        val kvHeads = key.shape[1]
+        val seqKV = key.shape[2]
+        val lengths = sdpaKeyLengths(keyLengths, batch, seqKV)
+        val maskDims = sdpaMaskDims(mask, batch, heads, kvHeads, seqQ, seqKV)
+        val effectiveScale = if (scale == 0f) (1.0 / kotlin.math.sqrt(headDim.toDouble())).toFloat() else scale
+        val out = FloatArray(batch * heads * seqQ * headDim)
+        kernel.sdpa(
+            wholeFloats(query), wholeFloats(key), wholeFloats(value), out,
+            batch, heads, kvHeads, seqQ, seqKV, headDim,
+            effectiveScale, causal, window, rightContext,
+            lengths, mask?.let { wholeFloats(it) }, maskDims,
+        )
+        return floatResult(Shape(batch, heads, seqQ, headDim), query.dtype, out, query, key, value)
+    }
 
     /**
      * Below this many multiply-accumulates a dense FP32 matmul is faster done directly than handed

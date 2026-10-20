@@ -128,6 +128,37 @@ abstract class GenerateKernelMatrixTask : DefaultTask() {
                 appendLine("|===")
                 appendLine("")
             }
+            if (module.packs.isNotEmpty()) {
+                appendLine("== Kernel packs (view dispatch)")
+                appendLine("")
+                appendLine(
+                    "Kernels that are not reached through the `matmul` accessors above: the ternary formats " +
+                        "are served by `ViewKernelPack`s keyed in `KernelDispatch` (`BitNet-b1.58` with exact " +
+                        "FP32 activations, the fused multi-plane `BitNet-planes` lm_head, `TQ2_0` with int8 " +
+                        "activations), and the dense `x · Wᵀ` of a `Linear` layer by the `matmulFp32Wt` " +
+                        "accessor, which multiplies a row-major `[out, in]` weight in place instead of " +
+                        "transposing and caching a copy. The fused row kernels — softmax / log-softmax, layer " +
+                        "norm / RMS norm and scaled dot-product attention with its structural masks and " +
+                        "grouped-query heads (`softmaxFp32`, `normFp32`, `attentionFp32`) — run those ops in one " +
+                        "pass where the ops layer otherwise runs its scalar loops or the normalisation's " +
+                        "decomposition. The scalar reference kernels serve every cell that is empty here (`—`), " +
+                        "at reference speed; the common row-dot serves `x · Wᵀ` there.",
+                )
+                appendLine("")
+                appendLine("[cols=\"$colSpec\", options=\"header\"]")
+                appendLine("|===")
+                append("| Kernel ")
+                module.platforms.forEach { append("| $it ") }
+                appendLine("")
+                appendLine("")
+                module.packs.forEach { fmt ->
+                    append("| `${fmt.name}` ")
+                    module.platforms.forEach { p -> append("| ${fmt.byPlatform[p] ?: "—"} ") }
+                    appendLine("")
+                }
+                appendLine("|===")
+                appendLine("")
+            }
             appendLine(
                 "See also the eager backends & kernels mindmap " +
                     "(xref:explanation/eager-execution.adoc[]) for the narrative overview and gaps.",
