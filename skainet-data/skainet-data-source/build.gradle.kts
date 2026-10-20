@@ -4,7 +4,9 @@ plugins {
     id("sk.ainet.dokka")
 }
 
-// JVM-only; see skainet.targets in this module's gradle.properties.
+// Targets: jvm, js, wasmJs — see skainet.targets in this module's gradle.properties. The two web
+// targets share `webMain` / `webTest` (the default hierarchy's shared source set for js + wasmJs):
+// the Ktor JS engine over `fetch` and an in-memory cache, since a tab has no file system.
 
 kotlin {
     sourceSets {
@@ -26,6 +28,11 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.plugins)
             implementation(libs.kotlinx.coroutines.core.jvm)
+        }
+
+        webMain.dependencies {
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.js)
         }
     }
 }

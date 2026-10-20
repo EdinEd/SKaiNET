@@ -37,6 +37,11 @@ dependencies {
 }
 ----
 
+The source module also publishes Kotlin/JS and Kotlin/Wasm variants
+(`skainet-data-source-js`, `skainet-data-source-wasm-js`; a multiplatform
+consumer depends on `sk.ainet.core:skainet-data-source` and Gradle picks the
+variant). See <<_in_a_browser>> for what changes there.
+
 === Resolve one artifact
 
 `JvmDataSourceResolver` materializes remote artifacts into a cache and returns
@@ -97,6 +102,47 @@ val resolver = JvmDataSourceResolver(
 )
 ----
 
+[#_in_a_browser]
+=== In a browser
+
+`WebDataSourceResolver` is the Kotlin/JS and Kotlin/Wasm resolver: the same
+URIs, cache policies, checksum verification and token handling, over the
+browser's `fetch` (the Ktor JS engine). Three things a tab imposes:
+
+* *No file system.* Remote artifacts are cached in memory for the life of the
+  resolver (`InMemoryDataSourceArtifactStore`), so a second `resolve` of the
+  same URI fetches nothing, and a resolved artifact has no `localPath`. A
+  `file:` URI resolves only to bytes the page registered under that path —
+  what it received from a file picker or a drop — and fails otherwise. For a
+  persistent cache, pass your own `DataSourceArtifactStore` over the Cache API,
+  IndexedDB or OPFS as `store`.
+* *No environment.* A Hugging Face token comes from the request or from the
+  resolver's `huggingFaceToken`; there is no `HF_TOKEN` to read.
+* *CORS.* The host must allow the page's origin. Hugging Face does; a server
+  of your own has to send the `Access-Control-Allow-Origin` header.
+
+[source,kotlin]
+----
+import sk.ainet.data.source.DataSourceAuthToken
+import sk.ainet.data.source.DataSourceRequest
+import sk.ainet.data.source.WebDataSourceResolver
+
+val resolver = WebDataSourceResolver(
+    huggingFaceToken = DataSourceAuthToken.from("hf_..."),
+    localArtifacts = mapOf("/picked/tokenizer.json" to pickedBytes)
+)
+val remote = resolver.resolve(
+    DataSourceRequest("hf://Qwen/Qwen2.5-0.5B-Instruct@main/tokenizer.json")
+)
+val local = resolver.resolve(DataSourceRequest("file:///picked/tokenizer.json"))
+val bytes = remote.readBytes()
+----
+
+The checksum is computed by `Sha256DataSourceChecksum`, a SHA-256 in common
+Kotlin that every target may use (`crypto.subtle` is asynchronous and cannot
+serve the resolver's incremental hash). The response body is read whole:
+`fetch` hands the page the bytes, and the store keeps them in memory anyway.
+
 === Use sources with built-in loaders
 
 MNIST and Fashion-MNIST expose per-file URI overrides. CIFAR-10 exposes an
@@ -140,6 +186,8 @@ Use `CachePolicy.Use` for normal operation, `Refresh` to re-download,
 `Offline` to require a cached copy, and `Bypass` to avoid writing the cache.
 Built-in JVM loaders map `useCache = true` to `Use` and `useCache = false`
 to `Refresh`.
+In a browser the cache is the resolver's memory: `Use` and `Offline` see what
+this resolver fetched earlier, nothing survives the page.
 
 [source,kotlin]
 ----
