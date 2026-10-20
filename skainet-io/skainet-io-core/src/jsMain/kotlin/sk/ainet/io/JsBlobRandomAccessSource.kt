@@ -3,7 +3,6 @@ package sk.ainet.io
 import kotlinx.coroutines.await
 import org.khronos.webgl.ArrayBuffer
 import org.khronos.webgl.Int8Array
-import org.khronos.webgl.get
 import org.w3c.files.Blob
 import kotlin.js.Promise
 
@@ -53,12 +52,11 @@ public class JsBlobRandomAccessSource private constructor(
 
         if (length == 0) return ByteArray(0)
 
-        val pos = position.toInt()
-        val requestedEnd = pos + length
-
-        // If within preloaded buffer, return from cache
-        if (requestedEnd <= preloadedBuffer.size) {
-            return preloadedBuffer.copyOfRange(pos, requestedEnd)
+        // Within the preloaded window: served from the heap. Compared as Long — a position past
+        // 2 GB must not be truncated into the window.
+        if (position + length <= preloadedBuffer.size) {
+            val pos = position.toInt()
+            return preloadedBuffer.copyOfRange(pos, pos + length)
         }
 
         // Beyond preloaded data - throw helpful error
@@ -120,16 +118,15 @@ public class JsBlobRandomAccessSource private constructor(
 
         if (length == 0) return ByteArray(0)
 
-        val pos = position.toInt()
-        val requestedEnd = pos + length
-
-        // If within preloaded buffer, return from cache (fast path)
-        if (requestedEnd <= preloadedBuffer.size) {
-            return preloadedBuffer.copyOfRange(pos, requestedEnd)
+        // Within the preloaded window: served from the heap (fast path), compared as Long.
+        if (position + length <= preloadedBuffer.size) {
+            val pos = position.toInt()
+            return preloadedBuffer.copyOfRange(pos, pos + length)
         }
 
-        // Read from blob using slice + arrayBuffer
-        val slice = blob.slice(pos, requestedEnd)
+        // Beyond it: slice + arrayBuffer. `Blob.slice` takes JavaScript numbers (53 bits), so a Blob
+        // over 2 GB is addressed as a Double, not through the stdlib's Int overload.
+        val slice = blob.asDynamic().slice(position.toDouble(), (position + length).toDouble()) as Blob
         val arrayBuffer = (slice.asDynamic().arrayBuffer() as Promise<ArrayBuffer>).await()
         return arrayBufferToByteArray(arrayBuffer)
     }
@@ -152,19 +149,15 @@ public class JsBlobRandomAccessSource private constructor(
          * @return JsBlobRandomAccessSource ready for use
          */
         public suspend fun open(blob: Blob, preloadSize: Int = DEFAULT_PRELOAD_SIZE): JsBlobRandomAccessSource {
-            val actualPreloadSize = minOf(preloadSize, blob.size.toInt())
+            val actualPreloadSize = minOf(preloadSize.toLong(), blob.size.toLong()).toInt()
             val slice = blob.slice(0, actualPreloadSize)
             val arrayBuffer = (slice.asDynamic().arrayBuffer() as Promise<ArrayBuffer>).await()
             val bytes = arrayBufferToByteArray(arrayBuffer)
             return JsBlobRandomAccessSource(blob, bytes)
         }
 
-        /**
-         * Convert JavaScript ArrayBuffer to Kotlin ByteArray.
-         */
-        private fun arrayBufferToByteArray(buffer: ArrayBuffer): ByteArray {
-            val int8Array = Int8Array(buffer)
-            return ByteArray(int8Array.length) { int8Array[it] }
-        }
+        /** A Kotlin/JS `ByteArray` *is* an `Int8Array`: no copy, no per-element loop. */
+        private fun arrayBufferToByteArray(buffer: ArrayBuffer): ByteArray =
+            Int8Array(buffer).unsafeCast<ByteArray>()
     }
 }

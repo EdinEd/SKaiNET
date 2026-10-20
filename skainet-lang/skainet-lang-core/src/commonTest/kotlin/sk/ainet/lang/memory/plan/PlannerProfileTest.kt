@@ -179,9 +179,39 @@ class PlannerProfileTest {
             totalRamBytes = ramMb * mb, availableRamBytes = ramMb * mb / 2,
             heapMaxBytes = 512 * mb,
         )
+        if (isWebHost) {
+            // A tab's RAM figure says nothing about what the tab may use: the web profile applies regardless.
+            assertEquals(PlannerProfile.BROWSER, PlannerProfile.forDevice(device(2048)))
+            assertEquals(PlannerProfile.BROWSER, PlannerProfile.forDevice(device(16384)))
+            return
+        }
         assertEquals(PlannerProfile.MOBILE_2GB, PlannerProfile.forDevice(device(2048)))
         assertEquals(PlannerProfile.MOBILE_2GB, PlannerProfile.forDevice(device(3072)), "3 GB phones are still phones")
         assertEquals(PlannerProfile.DESKTOP, PlannerProfile.forDevice(device(16384)))
+    }
+
+    // --- browser -----------------------------------------------------------------------------
+
+    @Test
+    fun theBrowserProfileQuantizesDenseWeightsAndNeverMapsThem() {
+        val p = PlannerProfile.BROWSER
+        assertEquals("browser", p.name)
+        assertEquals(Budget.RESERVE_BROWSER, p.reserveBytes)
+        assertEquals(TensorEncoding.Q8_0, p.quantizeDenseTo, "a Hugging Face FP32 checkpoint is served packed in a tab")
+        assertFalse(p.weightsMapped, "there is no file to map in a browser")
+        assertFalse(p.strict, "a tab would rather load slowly than not at all")
+        assertEquals(0.80, p.kvAutoQuantizeAbove)
+        assertEquals(PlannerProfile.OFF_HEAP_THRESHOLD, p.offHeapThresholdBytes, "off-heap means the kernel sidecar's memory when installed")
+        assertEquals(MemoryDomain.HOST_OFFHEAP, p.domainFor(1024L * 1024))
+        assertEquals(2048 * mb, PlannerProfile.BROWSER_AVAILABLE_BYTES)
+    }
+
+    @Test
+    fun theBrowserProfilePlansAgainstTheTwoGigabyteDefault() {
+        val profiled = PlannerProfile.BROWSER.plan(input(), PlannerProfile.BROWSER_AVAILABLE_BYTES)
+        assertEquals((2048 - 256) * mb, profiled.plan.budget!!.bytes)
+        assertTrue(profiled.render().contains("profile browser"), profiled.render())
+        assertFalse(profiled.notes.any { it.contains("mapped") }, profiled.notes.toString())
     }
 
     @Test

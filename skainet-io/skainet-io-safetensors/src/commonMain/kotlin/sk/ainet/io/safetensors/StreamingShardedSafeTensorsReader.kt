@@ -2,6 +2,7 @@ package sk.ainet.io.safetensors
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import sk.ainet.io.RandomAccessSource
 import sk.ainet.io.model.LoadingProgress
 import sk.ainet.io.model.LoadingStage
 import sk.ainet.io.model.ProgressReportingLoader
@@ -35,11 +36,19 @@ import sk.ainet.lang.tensor.storage.TensorStorage
  *
  * progressJob.cancel()
  * ```
+ *
+ * Where there is no file system — a browser, a Wasm host — the shards come from wherever the caller
+ * keeps them, through [openFromIndexContent]: the index as text and one [RandomAccessSource] per
+ * shard name (a `JsBlobRandomAccessSource` over a `File` input, a `ByteArrayRandomAccessSource` over
+ * fetched bytes). Both entry points open every shard exactly once and keep it open until [close].
  */
 public class StreamingShardedSafeTensorsReader private constructor(
     /** The parsed index file */
     public val index: SafeTensorsIndex,
-    private val basePath: String
+    /** Opens the shard with this file name, or returns `null` when it is missing. */
+    private val openShard: suspend (shardFilename: String) -> RandomAccessSource?,
+    /** The file path a shard name resolves to, when the shards are files; `null` otherwise. */
+    private val pathOf: (shardFilename: String) -> String?,
 ) : ProgressReportingLoader, AutoCloseable {
 
     private val _progress = MutableSharedFlow<LoadingProgress>(replay = 0, extraBufferCapacity = 64)
@@ -63,6 +72,9 @@ public class StreamingShardedSafeTensorsReader private constructor(
 
     /** Map of shard filename to its reader (for tensor data access) */
     private val shardReaders: MutableMap<String, StreamingSafeTensorsReader> = mutableMapOf()
+
+    /** The file behind each loaded shard, when it has one ([pathOf], else the source's own `filePath`). */
+    private val shardPaths: MutableMap<String, String?> = mutableMapOf()
 
     /** Whether all shards were loaded successfully */
     public val isComplete: Boolean get() = _missingShards.isEmpty()
@@ -120,6 +132,8 @@ public class StreamingShardedSafeTensorsReader private constructor(
      * @throws IllegalStateException if the containing shard was not
      *   loaded, or if the per-shard reader does not surface the
      *   tensor (consistency check).
+     * @throws UnsupportedOperationException if the shard did not come
+     *   from a file (a Blob or in-memory source has nothing to map).
      */
     public fun loadTensorStorageMapped(tensor: ShardedTensorInfo): TensorStorage {
         val reader = shardReaders[tensor.shardFilename]
@@ -128,7 +142,10 @@ public class StreamingShardedSafeTensorsReader private constructor(
             ?: throw IllegalStateException(
                 "Tensor '${tensor.name}' not found in shard '${tensor.shardFilename}'",
             )
-        val path = resolveShardPath(tensor.shardFilename)
+        val path = shardPaths[tensor.shardFilename]
+            ?: throw UnsupportedOperationException(
+                "Shard '${tensor.shardFilename}' is not a file (its source has no filePath): mapped loading needs file-backed shards",
+            )
         return reader.loadTensorStorageMapped(streamingTensor, path)
     }
 
@@ -164,15 +181,24 @@ public class StreamingShardedSafeTensorsReader private constructor(
         _progress.emit(LoadingProgress.StageStarted(discoverStage, "Checking shard files"))
         val discoverStart = currentTimeMillis()
 
-        val availableShards = mutableListOf<String>()
+        // Each shard is opened once, here, and the source is handed to its reader below; a shard
+        // whose opener answers `null` (or throws, under allowPartial) is missing.
+        val openedShards = LinkedHashMap<String, RandomAccessSource>()
         val missingShardFiles = mutableListOf<String>()
 
         for (shardFilename in shardFiles) {
-            val shardPath = resolveShardPath(shardFilename)
-            val source = createRandomAccessSource(shardPath)
+            val source = try {
+                openShard(shardFilename)
+            } catch (e: Exception) {
+                if (!allowPartial) {
+                    openedShards.values.forEach { it.close() }
+                    _progress.emit(LoadingProgress.Failed(discoverStage, e, "Failed to open shard: $shardFilename"))
+                    throw e
+                }
+                null
+            }
             if (source != null) {
-                source.close()
-                availableShards.add(shardFilename)
+                openedShards[shardFilename] = source
             } else {
                 missingShardFiles.add(shardFilename)
             }
@@ -181,25 +207,20 @@ public class StreamingShardedSafeTensorsReader private constructor(
         _missingShards.addAll(missingShardFiles)
 
         if (missingShardFiles.isNotEmpty() && !allowPartial) {
-            _progress.emit(LoadingProgress.Failed(
-                discoverStage,
-                SafeTensorsShardException.IncompleteShard(
-                    availableShards.size,
-                    shardFiles.size,
-                    missingShardFiles
-                ),
-                "Missing shards: ${missingShardFiles.joinToString()}"
-            ))
-            throw SafeTensorsShardException.IncompleteShard(
-                availableShards.size,
+            openedShards.values.forEach { it.close() }
+            val incomplete = SafeTensorsShardException.IncompleteShard(
+                openedShards.size,
                 shardFiles.size,
                 missingShardFiles
             )
+            _progress.emit(LoadingProgress.Failed(discoverStage, incomplete, "Missing shards: ${missingShardFiles.joinToString()}"))
+            throw incomplete
         }
 
         _progress.emit(LoadingProgress.StageCompleted(discoverStage, currentTimeMillis() - discoverStart))
 
         // Load each shard
+        val availableShards = openedShards.keys.toList()
         for ((shardIndex, shardFilename) in availableShards.withIndex()) {
             val stageId = "load_shard_${shardIndex + 1}"
             val stageName = "Loading shard ${shardIndex + 1}/${availableShards.size}"
@@ -208,13 +229,11 @@ public class StreamingShardedSafeTensorsReader private constructor(
             _progress.emit(LoadingProgress.StageStarted(stage, shardFilename))
             val shardStart = currentTimeMillis()
 
+            val source = openedShards.getValue(shardFilename)
             try {
-                val shardPath = resolveShardPath(shardFilename)
-                val source = createRandomAccessSource(shardPath)
-                    ?: throw SafeTensorsShardException.ShardNotFound(shardFilename, shardPath)
-
                 val reader = StreamingSafeTensorsReader.open(source)
                 shardReaders[shardFilename] = reader
+                shardPaths[shardFilename] = pathOf(shardFilename) ?: source.filePath
 
                 // Add tensors with shard info
                 val shardInfo = SafeTensorsIndexParser.parseShardFilename(shardFilename)
@@ -244,7 +263,11 @@ public class StreamingShardedSafeTensorsReader private constructor(
                 _progress.emit(LoadingProgress.StageCompleted(stage, currentTimeMillis() - shardStart))
 
             } catch (e: Exception) {
+                source.close()
                 if (!allowPartial) {
+                    // Release what was opened: this reader is never returned to the caller.
+                    close()
+                    availableShards.drop(shardIndex + 1).forEach { openedShards.getValue(it).close() }
                     _progress.emit(LoadingProgress.Failed(stage, e, "Failed to load shard: $shardFilename"))
                     throw e
                 }
@@ -266,15 +289,6 @@ public class StreamingShardedSafeTensorsReader private constructor(
         val totalDuration = currentTimeMillis() - startTime
         val summary = "Loaded ${_tensors.size} tensors from ${_loadedShards.size}/${shardFiles.size} shards"
         _progress.emit(LoadingProgress.Completed(totalDuration, summary))
-    }
-
-    private fun resolveShardPath(shardFilename: String): String {
-        // basePath is the directory containing the index file
-        return if (basePath.endsWith("/")) {
-            basePath + shardFilename
-        } else {
-            "$basePath/$shardFilename"
-        }
     }
 
     // ========== Companion ==========
@@ -299,14 +313,56 @@ public class StreamingShardedSafeTensorsReader private constructor(
 
             val index = SafeTensorsIndexParser.parse(indexContent)
 
-            // Get base directory
+            // Shards live beside the index file
             val basePath = indexPath.substringBeforeLast("/")
+            val resolve = { shardFilename: String -> resolveShardPath(basePath, shardFilename) }
 
-            val reader = StreamingShardedSafeTensorsReader(index, basePath)
+            return open(index, indexPath, allowPartial, openShard = { createRandomAccessSource(resolve(it)) }, pathOf = resolve)
+        }
+
+        /**
+         * Open a sharded SafeTensors model whose index is already in hand as text and whose shards
+         * the caller provides — the entry point for hosts without a file system (#1246 follow-up).
+         *
+         * [shardSource] is asked once per shard name in the index (`model-00001-of-00003.safetensors`,
+         * …) and answers with an open [RandomAccessSource] the reader owns from then on, or `null` for
+         * a shard that is not there. It may suspend, so a browser can open a `Blob` per shard inside
+         * it. Mapped loading ([loadTensorStorageMapped]) is available only for sources that carry a
+         * [RandomAccessSource.filePath].
+         *
+         * @param indexJson The content of `model.safetensors.index.json`
+         * @param shardSource Opens a shard by file name; `null` when it is missing
+         * @param allowPartial If true, continue loading even if some shards are missing
+         * @throws SafeTensorsIndexParseException if the index is invalid
+         * @throws SafeTensorsShardException if shards cannot be read
+         */
+        public suspend fun openFromIndexContent(
+            indexJson: String,
+            shardSource: suspend (shardFilename: String) -> RandomAccessSource?,
+            allowPartial: Boolean = false,
+        ): StreamingShardedSafeTensorsReader =
+            openFromParsedIndex(SafeTensorsIndexParser.parse(indexJson), shardSource, allowPartial)
+
+        /** [openFromIndexContent] for an index the caller has parsed already. */
+        public suspend fun openFromParsedIndex(
+            index: SafeTensorsIndex,
+            shardSource: suspend (shardFilename: String) -> RandomAccessSource?,
+            allowPartial: Boolean = false,
+        ): StreamingShardedSafeTensorsReader =
+            open(index, "<index>", allowPartial, openShard = shardSource, pathOf = { null })
+
+        private suspend fun open(
+            index: SafeTensorsIndex,
+            indexLabel: String,
+            allowPartial: Boolean,
+            openShard: suspend (String) -> RandomAccessSource?,
+            pathOf: (String) -> String?,
+        ): StreamingShardedSafeTensorsReader {
+            val reader = StreamingShardedSafeTensorsReader(index, openShard, pathOf)
 
             // Emit parse_index stage (already done, but emit for consistency)
             val parseStage = LoadingStage("parse_index", "Parsing index", 0, 2 + index.shardCount + 1)
-            reader._progress.emit(LoadingProgress.StageStarted(parseStage, indexPath))
+            reader._progress.emit(LoadingProgress.StageStarted(parseStage, indexLabel))
             reader._progress.emit(LoadingProgress.StageCompleted(parseStage, 0))
 
             // Load shards
@@ -314,6 +370,9 @@ public class StreamingShardedSafeTensorsReader private constructor(
 
             return reader
         }
+
+        private fun resolveShardPath(basePath: String, shardFilename: String): String =
+            if (basePath.endsWith("/")) basePath + shardFilename else "$basePath/$shardFilename"
 
         /**
          * Open a sharded SafeTensors model from any shard file.

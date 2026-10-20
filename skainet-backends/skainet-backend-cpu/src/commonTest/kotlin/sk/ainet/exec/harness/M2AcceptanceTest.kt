@@ -102,8 +102,9 @@ class M2AcceptanceTest {
             println("[m2] faults: 4 steps → $short, ${steps * 4} steps → $long  (after: $afterLong)")
 
             if (short == null || long == null) {
-                // a browser or Wasm host cannot answer; the structural assertions above still hold
-                assertTrue(afterLong.rssBytes == null, "a platform that knows its RSS should know its faults too")
+                // A browser or Wasm host has no fault counters: it reports what the engine holds for the
+                // tab (JS heap, linear memory, sidecar bytes) but nothing about paging, so RSS may be
+                // known while the faults are not. The structural assertions above still hold.
                 return
             }
             assertTrue(short >= 0 && long >= 0, "fault counters only move forward: $short, $long")

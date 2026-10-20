@@ -128,6 +128,8 @@ public data class Budget(val bytes: Long, val description: String) {
         public const val RESERVE_ANDROID_JVM: Long = 700L * MiB
         /** Reserve on Kotlin/Native targets (decision #11). */
         public const val RESERVE_NATIVE: Long = 300L * MiB
+        /** Reserve in a browser tab: the page, the JavaScript heap and the Kotlin/Wasm runtime. */
+        public const val RESERVE_BROWSER: Long = 256L * MiB
 
         public fun of(bytes: Long): Budget = Budget(bytes, "explicit")
         public fun available(availableBytes: Long, reserve: Long = RESERVE_ANDROID_JVM): Budget =

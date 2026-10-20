@@ -188,7 +188,10 @@ breakdown, adapter cost, and *effective memory bandwidth* — bytes a decode ste
 divided by how long it took. Rates are `null` rather than infinite when a span is too short for
 the platform clock.
 * `MemoryProbe` reads RSS and page faults from the OS, so "the resident set is flat" and "nothing
-paged in during decode" are measurements rather than inferences.
+paged in during decode" are measurements rather than inferences. A browser has no process
+counters: there the probe sums the JavaScript heap in use (Chromium reports it), the module's
+linear memory and the bytes the kernel sidecar holds for resident weights and activations, and the
+fault counters stay `null`.
 
 `SKAINET_MEMORY_DEBUG=1` adds allocation-site tags, use-after-close reporting with the closing
 stack, and a leak check at every forward-scope reset.

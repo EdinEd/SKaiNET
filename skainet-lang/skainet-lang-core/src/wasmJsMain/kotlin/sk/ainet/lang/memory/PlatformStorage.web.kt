@@ -14,6 +14,13 @@ import sk.ainet.lang.tensor.storage.MemoryDomain
 public fun interface OffHeapAllocator {
     /** Allocate [bytes] zeroed bytes off the Kotlin heap, owned by a scope of kind [scope]. */
     public fun allocate(bytes: Long, scope: ScopeKind, origin: TensorId?, sink: TraceSink): Storage
+
+    /**
+     * Bytes this allocator's memory currently holds — what [MemoryProbe.rssBytes] adds for the
+     * off-heap domain, since a browser has no process counter that would see them. `null` when the
+     * backend cannot say.
+     */
+    public fun heldBytes(): Long? = null
 }
 
 /**

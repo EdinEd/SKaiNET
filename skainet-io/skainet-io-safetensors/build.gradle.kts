@@ -66,6 +66,15 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(libs.kotlin.test)
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+        // The browser-side sharded load end to end: Blobs through io-core's JsBlobRandomAccessSource
+        // into the loader, materialised on the common CPU context.
+        val wasmJsTest by getting {
+            dependencies {
+                implementation(libs.kotlinx.browser)
+                implementation(project(":skainet-backends:skainet-backend-cpu"))
             }
         }
         val jvmTest by getting {

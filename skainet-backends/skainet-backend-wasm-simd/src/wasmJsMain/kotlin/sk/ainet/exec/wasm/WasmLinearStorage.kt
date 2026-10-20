@@ -84,6 +84,10 @@ public class WasmLinearStorage private constructor(
     public object Allocator : OffHeapAllocator {
         override fun allocate(bytes: Long, scope: ScopeKind, origin: TensorId?, sink: TraceSink): Storage =
             WasmLinearStorage.allocate(bytes, scope, origin, sink)
+
+        /** Resident weights plus resident activations in the sidecar — the bytes `MemoryProbe` cannot see otherwise. */
+        override fun heldBytes(): Long? =
+            if (WasmKernels.isReady) WasmKernels.residentWeightBytes() + WasmKernels.residentActivationBytes() else 0L
     }
 
     public companion object {
