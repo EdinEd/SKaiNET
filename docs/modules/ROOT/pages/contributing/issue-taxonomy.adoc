@@ -202,6 +202,29 @@ DRY_RUN=1 .github/scripts/sync-labels.sh
 The script only creates and updates; it never deletes a label that is
 not in `labels.txt`. To add a label, add a line to the file and re-run.
 
+[[marked-gaps]]
+== From a marked gap to an issue
+
+Known gaps live in source, not only in the tracker, so the
+xref:reference/ops-status-matrix.adoc[operator coverage matrix] can
+show them:
+
+* A missing `TensorOps` function, a backend override that still
+  throws, or an `nn` layer whose `forward` throws carries
+  `@NotImplemented(reason = "…", issue = "#NNN")`. The matrix renders
+  it as ❌ linked to the issue; the NN-layers table does the same for
+  layers.
+* Other stubs (format loaders, platform `actual`s, DSL corners) are
+  listed in `config/stub-allowlist.txt` with their issue.
+* `./gradlew checkUnmarkedStubs` (CI leg `stub-markers`) fails on any
+  `NotImplementedError` / `TODO(` in production code that is neither
+  marked nor allowlisted. The docs workflow fails when the committed
+  matrix is stale.
+
+The lane PR that closes a gap removes the annotation (or lowers the
+allowlist count) and commits the regenerated matrix, so the ❌ turns ✅
+in the same change.
+
 == Lane task anatomy
 
 A good sub-issue answers, in this order, without the reader opening

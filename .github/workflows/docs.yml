@@ -25,14 +25,20 @@ on:
       - '.github/workflows/docs.yml'
       - 'build.gradle.kts'
       - 'build-logic/**'
-      - 'skainet-lang/skainet-lang-core/**'
+      - 'skainet-lang/**'
+      - 'skainet-backends/skainet-backend-cpu/**'
+      - 'skainet-compile/skainet-compile-hlo/**'
+      - 'skainet-compile/skainet-compile-dag/**'
   pull_request:
     paths:
       - 'docs/**'
       - '.github/workflows/docs.yml'
       - 'build.gradle.kts'
       - 'build-logic/**'
-      - 'skainet-lang/skainet-lang-core/**'
+      - 'skainet-lang/**'
+      - 'skainet-backends/skainet-backend-cpu/**'
+      - 'skainet-compile/skainet-compile-hlo/**'
+      - 'skainet-compile/skainet-compile-dag/**'
   workflow_dispatch:
 
 concurrency:
@@ -81,8 +87,25 @@ jobs:
       # bundle it; running both here means commit 6 is a pure
       # workflow-step + Gradle-task-registration change with no
       # Gradle re-run cost.
+      # The StableHLO / Backward matrix columns come from two jvmTest dumps
+      # (HloCoverageDumpTest, BackwardCoverageDumpTest); run just those first.
       - name: Generate operator docs and Dokka
-        run: ./gradlew --no-daemon generateDocs dokkaGenerate
+        run: >-
+          ./gradlew --no-daemon
+          :skainet-compile:skainet-compile-hlo:jvmTest --tests '*HloCoverageDumpTest'
+          :skainet-compile:skainet-compile-dag:jvmTest --tests '*BackwardCoverageDumpTest'
+          generateDocs dokkaGenerate
+
+      # The committed coverage matrix and operator pages must match the code:
+      # a new @NotImplemented, a new backend override or a new StableHLO
+      # converter has to land together with the regenerated page. The
+      # "Generated from … on <date>" stamp is ignored.
+      - name: Check generated docs are up to date
+        run: |
+          if ! git diff --exit-code -I 'Generated from' -- docs/modules/ROOT/pages/reference/; then
+            echo "::error::Generated operator docs are stale. Run the generateDocs command from build.gradle.kts (documentation block) and commit docs/modules/ROOT/pages/reference/."
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0

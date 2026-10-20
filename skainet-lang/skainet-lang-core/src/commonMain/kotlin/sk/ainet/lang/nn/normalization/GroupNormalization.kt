@@ -4,6 +4,7 @@ import sk.ainet.context.ExecutionContext
 import sk.ainet.lang.nn.Module
 import sk.ainet.lang.nn.topology.ModuleParameter
 import sk.ainet.lang.nn.topology.ModuleParameters
+import sk.ainet.lang.ops.NotImplemented
 import sk.ainet.lang.tensor.Tensor
 import sk.ainet.lang.tensor.Shape
 import sk.ainet.lang.tensor.*
@@ -22,6 +23,7 @@ import kotlin.reflect.KClass
  * @param initGamma Initial gamma (scale) parameter
  * @param initBeta Initial beta (shift) parameter
  */
+@NotImplemented(reason = "forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied", issue = "#1379")
 public class GroupNormalization<T : DType, V>(
     private val numGroups: Int,
     private val numChannels: Int,

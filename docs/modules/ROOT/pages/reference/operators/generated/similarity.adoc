@@ -30,5 +30,5 @@ fun cosineDistance(other:Tensor, dim:Int, eps:Double): Tensor
 
 === Notes
 
-TIP: *all*: 
+TIP: *all*: Calculates the cosine distance between two tensors along a given dimension (1 - cosine similarity).
 

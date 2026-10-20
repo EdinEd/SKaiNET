@@ -37,6 +37,9 @@ public class StableHloConverter @kotlin.jvm.JvmOverloads constructor(
     private val errorPolicy: ConversionErrorPolicy = ConversionErrorPolicy.STRICT
 ) {
 
+    /** Op names this converter can lower. Consumed by the docs coverage dump (HloCoverageDumpTest). */
+    internal val supportedOperationNames: Set<String> get() = registry.getSupportedOperations()
+
     /**
      * Convert a ComputeGraph to StableHLO MLIR format
      */

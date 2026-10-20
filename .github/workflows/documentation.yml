@@ -62,7 +62,8 @@ jobs:
         with:
           name: operator-documentation
           path: |
-            docs/modules/operators/_generated_/**
+            docs/modules/ROOT/pages/reference/operators/generated/**
+            docs/modules/ROOT/pages/reference/ops-status-matrix.adoc
             skainet-lang/skainet-lang-core/build/generated/ksp/metadata/commonMain/resources/operators.json
           retention-days: 30
           

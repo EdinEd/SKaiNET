@@ -36,6 +36,7 @@ public abstract interface class sk/ainet/lang/dag/GraphDslOps : sk/ainet/lang/te
 }
 
 public final class sk/ainet/lang/dag/GraphDslOps$DefaultImpls {
+	public static fun convTranspose2d (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;Lkotlin/Pair;I)Lsk/ainet/lang/tensor/Tensor;
 	public static fun matmulWeightTransposed (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 	public static fun relayoutPackedWeightForKernels (Lsk/ainet/lang/dag/GraphDslOps;Lsk/ainet/lang/tensor/Tensor;)Lsk/ainet/lang/tensor/Tensor;
 }

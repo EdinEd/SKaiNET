@@ -1,82 +1,133 @@
 = Operator Coverage Matrix
 :description: Cross-backend status for every operator function in SKaiNET.
 
-Generated from `operators.json` version `0.61.0` on 2026-10-16.
+Generated from `operators.json` version `0.61.0` on 2026-10-19.
 
-Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). The `Lowering` column lists the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared. Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as "unknown", not "not supported").
+Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.
 
-[cols="2,1,1,1,1,1", options="header"]
+* *Validated* — whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]).
+* *Lowering* — the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared.
+* *StableHLO* — ✅ the StableHLO converter can lower the op; ❌ export fails with "No converter found".
+* *Backward* — for `@Diff` ops: ✅ a backward rule is wired; ❌ the rule is missing or a stub returning null gradients; `—` the op is not differentiable.
+* *Backend columns* — ✅ the backend overrides the function; ↪ the backend relies on the `TensorOps` default; 🚧 in progress; ❌ not implemented; `—` the backend makes no claim (unknown, not "unsupported").
+
+[cols="2,1,1,1,1,1,1,1", options="header"]
 |===
-| Operator.function | Validated | Lowering | apple | cpu | wasm 
+| Operator.function | Validated | Lowering | StableHLO | Backward | apple | cpu | wasm 
 
-| `TensorOps.add` | ✖ | — | — | — | — 
-| `TensorOps.subtract` | ✖ | — | — | — | — 
-| `TensorOps.multiply` | ✖ | — | — | — | — 
-| `TensorOps.divide` | ✖ | — | — | — | — 
-| `TensorOps.addScalar` | ✖ | — | — | — | — 
-| `TensorOps.subScalar` | ✖ | — | — | — | — 
-| `TensorOps.mulScalar` | ✖ | — | — | — | — 
-| `TensorOps.divScalar` | ✖ | — | — | — | — 
-| `TensorOps.rsubScalar` | ✖ | — | — | — | — 
-| `TensorOps.rdivScalar` | ✖ | — | — | — | — 
-| `TensorOps.matmul` | ✅ | — | — | — | — 
-| `TensorOps.matmulWeightTransposed` | ✖ | — | — | — | — 
-| `TensorOps.relayoutPackedWeightForKernels` | ✖ | — | — | — | — 
-| `TensorOps.transpose` | ✖ | — | — | — | — 
-| `TensorOps.permute` | ✖ | — | — | — | — 
-| `TensorOps.conv1d` | ✖ | — | — | — | — 
-| `TensorOps.conv2d` | ✖ | — | — | — | — 
-| `TensorOps.conv3d` | ✖ | — | — | — | — 
-| `TensorOps.convTranspose1d` | ✖ | — | — | — | — 
-| `TensorOps.maxPool2d` | ✖ | — | — | — | — 
-| `TensorOps.avgPool2d` | ✖ | — | — | — | — 
-| `TensorOps.upsample2d` | ✖ | — | — | — | — 
-| `TensorOps.reshape` | ✖ | — | — | — | — 
-| `TensorOps.flatten` | ✖ | — | — | — | — 
-| `TensorOps.concat` | ✖ | — | — | — | — 
-| `TensorOps.split` | ✖ | — | — | — | — 
-| `TensorOps.squeeze` | ✖ | — | — | — | — 
-| `TensorOps.unsqueeze` | ✖ | — | — | — | — 
-| `TensorOps.relu` | ✖ | — | — | — | — 
-| `TensorOps.leakyRelu` | ✖ | — | — | — | — 
-| `TensorOps.elu` | ✖ | — | — | — | — 
-| `TensorOps.softmax` | ✖ | — | — | — | — 
-| `TensorOps.logSoftmax` | ✖ | — | — | — | — 
-| `TensorOps.sigmoid` | ✖ | — | — | — | — 
-| `TensorOps.tanh` | ✖ | — | — | — | — 
-| `TensorOps.silu` | ✖ | — | — | — | — 
-| `TensorOps.gelu` | ✖ | composite · decompose | — | — | — 
-| `TensorOps.sum` | ✖ | — | — | — | — 
-| `TensorOps.mean` | ✖ | — | — | — | — 
-| `TensorOps.variance` | ✖ | — | — | — | — 
-| `TensorOps.argMax` | ⚠ | — | — | — | — 
-| `TensorOps.sqrt` | ✖ | — | — | — | — 
-| `TensorOps.pow` | ✖ | — | — | — | — 
-| `TensorOps.powScalar` | ✖ | — | — | — | — 
-| `TensorOps.log` | ✖ | — | — | — | — 
-| `TensorOps.log2` | ✖ | — | — | — | — 
-| `TensorOps.log10` | ✖ | — | — | — | — 
-| `TensorOps.abs` | ✖ | — | — | — | — 
-| `TensorOps.sign` | ✖ | — | — | — | — 
-| `TensorOps.clamp` | ✖ | — | — | — | — 
-| `TensorOps.narrow` | ✖ | — | — | — | — 
-| `TensorOps.pad2d` | ✖ | — | — | — | — 
-| `TensorOps.unfold` | ✖ | — | — | — | — 
-| `TensorOps.lt` | ✖ | — | — | — | — 
-| `TensorOps.ge` | ✖ | — | — | — | — 
-| `TensorOps.tril` | ✖ | — | — | — | — 
-| `TensorOps.convert` | ✖ | — | — | — | — 
-| `TensorOps.gather` | ✖ | — | — | — | — 
-| `TensorOps.indexSelect` | ✖ | — | — | — | — 
-| `TensorOps.exp` | ✖ | — | — | — | — 
-| `TensorOps.expm1` | ✖ | — | — | — | — 
-| `TensorOps.erf` | ✖ | composite · decompose | — | — | — 
-| `TensorOps.sin` | ✖ | — | — | — | — 
-| `TensorOps.cos` | ✖ | — | — | — | — 
-| `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | — | — | — 
-| `Similarity.cosineDistance` | ✖ | — | ✅ | ✅ | ✅ 
+| `TensorOps.add` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.subtract` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.multiply` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.divide` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.addScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.subScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.mulScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.divScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.rsubScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.rdivScalar` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.matmul` | ✅ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.matmulWeightTransposed` | ✖ | — | ❌ | — | — | ✅ | — 
+| `TensorOps.relayoutPackedWeightForKernels` | ✖ | — | ❌ | — | — | ✅ | — 
+| `TensorOps.transpose` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.permute` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.conv1d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.conv2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.conv3d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.convTranspose1d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.convTranspose2d` | ✖ | — | ❌ | — | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] | ❌ https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371] 
+| `TensorOps.maxPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.avgPool2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.upsample2d` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.reshape` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.flatten` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.concat` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.split` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.squeeze` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.unsqueeze` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.relu` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.leakyRelu` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.elu` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.softmax` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.logSoftmax` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.sigmoid` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.tanh` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.silu` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.gelu` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.sum` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.mean` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.variance` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.argMax` | ⚠ | — | ✅ | — | — | ✅ | — 
+| `TensorOps.sqrt` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.pow` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.powScalar` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.log` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.log2` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.log10` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.abs` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.sign` | ✖ | — | ✅ | — | — | ✅ | — 
+| `TensorOps.clamp` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.narrow` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.pad2d` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.unfold` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.lt` | ✖ | — | ❌ | — | — | ✅ | — 
+| `TensorOps.ge` | ✖ | — | ❌ | — | — | ✅ | — 
+| `TensorOps.tril` | ✖ | — | ❌ | ✅ | — | ✅ | — 
+| `TensorOps.convert` | ✖ | — | ✅ | — | — | ✅ | — 
+| `TensorOps.gather` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.indexSelect` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.exp` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.expm1` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.erf` | ✖ | composite · decompose | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.sin` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.cos` | ✖ | — | ✅ | ✅ | — | ✅ | — 
+| `TensorOps.scaledDotProductAttention` | ✖ | composite · decompose | ✅ | ❌ stub | — | ✅ | — 
+| `Similarity.cosineDistance` | ✖ | — | ❌ | — | ✅ | ✅ | ✅ 
 
-| *Done* | *1 / 66* | *3 / 66* | *1 / 66* | *1 / 66* | *1 / 66* 
+| *Done* | *1 / 67* | *3 / 67* | *50 / 67* | *57 / 58* | *1 / 67* | *66 / 67* | *1 / 67* 
 |===
 
 Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].
+
+== NN layers
+
+Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forward` throws today; the class carries `@NotImplemented`.
+
+[cols="2,3,1,3", options="header"]
+|===
+| Layer | Package | Status | Missing
+
+| `AvgPool2d` | `sk.ainet.lang.nn` | ✅ | —
+| `Conv1d` | `sk.ainet.lang.nn` | ✅ | —
+| `Conv2d` | `sk.ainet.lang.nn` | ✅ | —
+| `Conv3d` | `sk.ainet.lang.nn` | ✅ | —
+| `DepthwiseSeparableConv2d` | `sk.ainet.lang.nn` | ✅ | —
+| `DilatedConv2d` | `sk.ainet.lang.nn` | ✅ | —
+| `Flatten` | `sk.ainet.lang.nn` | ✅ | —
+| `GroupedConv2d` | `sk.ainet.lang.nn` | ✅ | —
+| `Gru` | `sk.ainet.lang.nn` | ✅ | —
+| `Input` | `sk.ainet.lang.nn` | ✅ | —
+| `LayerScale` | `sk.ainet.lang.nn` | ✅ | —
+| `Linear` | `sk.ainet.lang.nn` | ✅ | —
+| `Lstm` | `sk.ainet.lang.nn` | ✅ | —
+| `MaxPool2d` | `sk.ainet.lang.nn` | ✅ | —
+| `TransposedConv1d` | `sk.ainet.lang.nn` | ✅ | —
+| `TransposedConv2d` | `sk.ainet.lang.nn` | ❌ | forward needs TensorOps.convTranspose2d, which no backend implements yet — https://github.com/SKaiNET-developers/SKaiNET/issues/1371[#1371]
+| `Upsample2d` | `sk.ainet.lang.nn` | ✅ | —
+| `ActivationsWrapperModule` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `ELU` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `GELU` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `LeakyReLU` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `ReLU` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `SiLU` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `Sigmoid` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `Snake` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `Softmax` | `sk.ainet.lang.nn.activations` | ✅ | —
+| `Dropout` | `sk.ainet.lang.nn.layers` | ✅ | —
+| `LossModule` | `sk.ainet.lang.nn.loss` | ✅ | —
+| `BatchNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
+| `GroupNormalization` | `sk.ainet.lang.nn.normalization` | ❌ | forward helpers (group reshape, mean, variance) are TODO(); eps and gamma/beta are not applied — https://github.com/SKaiNET-developers/SKaiNET/issues/1379[#1379]
+| `LayerNormalization` | `sk.ainet.lang.nn.normalization` | ✅ | —
+| `MLP` | `sk.ainet.lang.nn.topology` | ✅ | —
+
+| *Done* | | *30 / 32* |
+|===

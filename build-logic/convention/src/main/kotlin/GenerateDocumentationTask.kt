@@ -1,6 +1,7 @@
 import models.*
 import kotlinx.serialization.json.Json
 import org.gradle.api.DefaultTask
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
@@ -34,6 +35,28 @@ abstract class GenerateDocumentationTask : DefaultTask() {
     @get:Input
     @get:Optional
     abstract val generateIndex: Property<Boolean>
+
+    /** Backend-module operators.json files whose `statusByBackend` maps are merged in. */
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val backendStatusFiles: ConfigurableFileCollection
+
+    /** Op names the StableHLO converter lowers; drives the StableHLO column when present. */
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val hloCoverageFile: RegularFileProperty
+
+    /** Op name → implemented / stubbed / missing; drives the Backward column when present. */
+    @get:InputFiles
+    @get:Optional
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val backwardCoverageFile: RegularFileProperty
+
+    @get:Input
+    @get:Optional
+    abstract val issueBaseUrl: Property<String>
     
     @TaskAction
     fun generateDocumentation() {
@@ -45,7 +68,7 @@ abstract class GenerateDocumentationTask : DefaultTask() {
         
         val jsonContent = input.readText()
         val json = Json { ignoreUnknownKeys = true }
-        val module = json.decodeFromString<OperatorDocModule>(jsonContent)
+        val module = expandAllBackends(mergeBackendStatus(json.decodeFromString<OperatorDocModule>(jsonContent), json))
         
         when (format.get()) {
             DocumentationFormat.ASCIIDOC -> generateAsciidoc(module, output)
@@ -63,6 +86,75 @@ abstract class GenerateDocumentationTask : DefaultTask() {
         }
     }
     
+    /**
+     * Merge `statusByBackend` and notes from backend-module operators.json files. Backend
+     * modules see `TensorOps` only as a library class, so their SOURCE-retained annotations
+     * (`@Diff`, `@DarcValidated`, `@Lowering`) are lost there — only status is taken from them.
+     */
+    private fun mergeBackendStatus(module: OperatorDocModule, json: Json): OperatorDocModule {
+        val fragments = backendStatusFiles.files.filter { it.isFile }
+        if (fragments.isEmpty()) return module
+        val byFunction = mutableMapOf<Pair<String, String>, FunctionDoc>()
+        fragments.forEach { file ->
+            logger.lifecycle("🔗 Merging backend status from: ${file.absolutePath}")
+            json.decodeFromString<OperatorDocModule>(file.readText()).operators.forEach { op ->
+                op.functions.forEach { fn -> byFunction[op.name to fn.name] = fn }
+            }
+        }
+        return module.copy(operators = module.operators.map { op ->
+            op.copy(functions = op.functions.map { fn ->
+                val extra = byFunction[op.name to fn.name] ?: return@map fn
+                val status = fn.statusByBackend.toMutableMap()
+                extra.statusByBackend.forEach { (backend, value) -> status[backend] = mergeStatus(status[backend], value) }
+                fn.copy(statusByBackend = status, notes = fn.notes + extra.notes)
+            })
+        })
+    }
+
+    /** Expand a `"*"` status (marker without a backend list) onto every backend column. */
+    private fun expandAllBackends(module: OperatorDocModule): OperatorDocModule {
+        val backends = module.operators.flatMap { op -> op.functions.flatMap { it.statusByBackend.keys } }.toSet() - "*"
+        return module.copy(operators = module.operators.map { op ->
+            op.copy(functions = op.functions.map { fn ->
+                val all = fn.statusByBackend["*"] ?: return@map fn
+                val status = fn.statusByBackend.toMutableMap()
+                status.remove("*")
+                backends.forEach { backend -> status[backend] = mergeStatus(status[backend], all) }
+                fn.copy(statusByBackend = status)
+            })
+        })
+    }
+
+    /** Status precedence: not_implemented > in_progress > implemented > inherited. */
+    private fun mergeStatus(current: String?, incoming: String): String {
+        val rank = listOf("not_implemented", "in_progress", "implemented", "inherited")
+        if (current == null) return incoming
+        val a = rank.indexOf(current).let { if (it < 0) rank.size else it }
+        val b = rank.indexOf(incoming).let { if (it < 0) rank.size else it }
+        return if (b < a) incoming else current
+    }
+
+    private fun readHloCoverage(): Set<String>? {
+        val file = hloCoverageFile.orNull?.asFile?.takeIf { it.isFile } ?: return null
+        return Json.decodeFromString<List<String>>(file.readText()).map { it.lowercase() }.toSet()
+    }
+
+    private fun readBackwardCoverage(): Map<String, String>? {
+        val file = backwardCoverageFile.orNull?.asFile?.takeIf { it.isFile } ?: return null
+        return Json.decodeFromString<Map<String, String>>(file.readText())
+    }
+
+    /** Render an issue reference (`#123`, a URL, or free text) as an AsciiDoc link. */
+    private fun issueLink(issue: String): String {
+        val trimmed = issue.trim()
+        return when {
+            trimmed.startsWith("http") -> "$trimmed[${trimmed.substringAfterLast('/').let { if (it.all(Char::isDigit)) "#$it" else "issue" }}]"
+            trimmed.startsWith("#") && trimmed.drop(1).all(Char::isDigit) ->
+                "${issueBaseUrl.getOrElse("https://github.com/SKaiNET-developers/SKaiNET/issues/")}${trimmed.drop(1)}[$trimmed]"
+            else -> trimmed
+        }
+    }
+
     private fun generateAsciidoc(module: OperatorDocModule, outputDir: File) {
         outputDir.mkdirs()
 
@@ -105,8 +197,11 @@ abstract class GenerateDocumentationTask : DefaultTask() {
         // column order is stable across runs.
         val allBackends: List<String> = module.operators
             .flatMap { op -> op.functions.flatMap { it.statusByBackend.keys } }
+            .filter { it != "*" }
             .toSortedSet()
             .toList()
+        val hloOps = readHloCoverage()
+        val backward = readBackwardCoverage()
 
         // Row view carries the per-function status plus DARC validation
         // signal so the matrix can render both in one pass.
@@ -130,7 +225,13 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("")
             appendLine("Generated from `operators.json` version `${module.version}` on ${formatTimestamp(module.timestamp)}.")
             appendLine("")
-            appendLine("Rows are `Operator.function` pairs. The `Validated` column shows whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]). The `Lowering` column lists the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared. Remaining columns are backends that appear in any function's `statusByBackend` map — a missing entry means the backend makes no claim about the function (treat it as \"unknown\", not \"not supported\").")
+            appendLine("Rows are `Operator.function` pairs. A gap is marked in source with `@NotImplemented(reason = …, issue = …)` (or `@InProgress`) and shows up here as ❌ (or 🚧) linked to its tracking issue; the PR that closes the gap removes the annotation. See xref:contributing/issue-taxonomy.adoc[Issue taxonomy] to pick one up.")
+            appendLine("")
+            appendLine("* *Validated* — whether the function's documentation has been DARC-validated by a reviewer (see xref:contributing/darc-workflow.adoc[DARC workflow]).")
+            appendLine("* *Lowering* — the compile-path forms the function declares with `@Lowering` (`composite` = a `stablehlo.composite` when a target keeps it fused, `decompose` = StableHLO/CHLO primitives, `native` = a 1:1 target op); `—` means undeclared.")
+            if (hloOps != null) appendLine("* *StableHLO* — ✅ the StableHLO converter can lower the op; ❌ export fails with \"No converter found\".")
+            if (backward != null) appendLine("* *Backward* — for `@Diff` ops: ✅ a backward rule is wired; ❌ the rule is missing or a stub returning null gradients; `—` the op is not differentiable.")
+            appendLine("* *Backend columns* — ✅ the backend overrides the function; ↪ the backend relies on the `TensorOps` default; 🚧 in progress; ❌ not implemented; `—` the backend makes no claim (unknown, not \"unsupported\").")
             appendLine("")
             if (rows.isEmpty() || allBackends.isEmpty()) {
                 appendLine("NOTE: No backend status information found in the source data.")
@@ -139,10 +240,12 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             }
 
             // Header: row label, validation column, then one column per backend.
-            val colSpec = (listOf("2", "1", "1") + List(allBackends.size) { "1" }).joinToString(",")
+            val extraCols = listOfNotNull(hloOps?.let { "StableHLO" }, backward?.let { "Backward" })
+            val colSpec = (listOf("2", "1", "1") + List(extraCols.size + allBackends.size) { "1" }).joinToString(",")
             appendLine("[cols=\"$colSpec\", options=\"header\"]")
             appendLine("|===")
             append("| Operator.function | Validated | Lowering ")
+            extraCols.forEach { append("| $it ") }
             allBackends.forEach { append("| $it ") }
             appendLine("")
             appendLine("")
@@ -151,10 +254,14 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 append("| `${row.operator}.${row.function.name}` ")
                 append("| ${darcCell(row.function, row.hasPartial)} ")
                 append("| ${row.function.lowering.ifEmpty { "—" }} ")
+                if (hloOps != null) append("| ${if (row.function.name.lowercase() in hloOps) "✅" else "❌"} ")
+                if (backward != null) append("| ${backwardCell(row.function, backward)} ")
                 allBackends.forEach { backend ->
                     val raw = row.function.statusByBackend[backend]
                     val cell = if (raw == null) "—" else shortStatus(raw)
-                    append("| $cell ")
+                    val issue = row.function.notes.firstOrNull { it.type == "issue" && (it.backend == backend || it.backend == "*") }
+                    val link = if (issue != null && raw != null && !isDone(raw)) " ${issueLink(issue.message)}" else ""
+                    append("| $cell$link ")
                 }
                 appendLine("")
             }
@@ -164,6 +271,11 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             val validatedCount = rows.count { it.function.validated }
             val loweringCount = rows.count { it.function.lowering.isNotEmpty() }
             append("| *Done* | *$validatedCount / ${rows.size}* | *$loweringCount / ${rows.size}* ")
+            if (hloOps != null) append("| *${rows.count { it.function.name.lowercase() in hloOps }} / ${rows.size}* ")
+            if (backward != null) {
+                val diffRows = rows.filter { it.function.isDifferentiable }
+                append("| *${diffRows.count { backward[it.function.name] == "implemented" }} / ${diffRows.size}* ")
+            }
             allBackends.forEach { backend ->
                 val n = rows.count { isDone(it.function.statusByBackend[backend]) }
                 append("| *$n / ${rows.size}* ")
@@ -172,7 +284,42 @@ abstract class GenerateDocumentationTask : DefaultTask() {
             appendLine("|===")
             appendLine("")
             appendLine("Per-function detail including notes lives in xref:reference/operators/generated/index.adoc[Operator reference].")
+            appendLayersTable(module.layers)
         })
+    }
+
+    private fun backwardCell(function: FunctionDoc, backward: Map<String, String>): String {
+        if (!function.isDifferentiable) return "—"
+        return when (backward[function.name]) {
+            "implemented" -> "✅"
+            "stubbed" -> "❌ stub"
+            else -> "❌"
+        }
+    }
+
+    /** `nn` layer table: one row per concrete `Module` subclass, ❌ when `@NotImplemented`. */
+    private fun StringBuilder.appendLayersTable(layers: List<LayerDoc>) {
+        if (layers.isEmpty()) return
+        appendLine("")
+        appendLine("== NN layers")
+        appendLine("")
+        appendLine("Every concrete `sk.ainet.lang.nn` `Module` subclass. ❌ means the layer's `forward` throws today; the class carries `@NotImplemented`.")
+        appendLine("")
+        appendLine("[cols=\"2,3,1,3\", options=\"header\"]")
+        appendLine("|===")
+        appendLine("| Layer | Package | Status | Missing")
+        appendLine("")
+        layers.forEach { layer ->
+            val missing = listOf(layer.reason, layer.issue.takeIf { it.isNotBlank() }?.let { issueLink(it) }.orEmpty())
+                .filter { it.isNotBlank() }
+                .joinToString(" — ")
+                .ifEmpty { "—" }
+            appendLine("| `${layer.name}` | `${layer.packageName}` | ${shortStatus(layer.status)} | $missing")
+        }
+        appendLine("")
+        val done = layers.count { isDone(it.status) }
+        appendLine("| *Done* | | *$done / ${layers.size}* |")
+        appendLine("|===")
     }
 
     /**
@@ -225,7 +372,8 @@ abstract class GenerateDocumentationTask : DefaultTask() {
     private fun shortStatus(status: String): String = when (status.lowercase()) {
         "supported", "implemented", "done" -> "✅"
         "partial" -> "⚠️"
-        "not_supported", "missing", "unsupported" -> "❌"
+        "not_supported", "not_implemented", "missing", "unsupported" -> "❌"
+        "inherited" -> "↪"
         "planned" -> "⏳"
         "in_progress", "wip" -> "🚧"
         else -> status
@@ -415,7 +563,9 @@ abstract class GenerateDocumentationTask : DefaultTask() {
                 appendLine("=== Notes")
                 appendLine("")
                 function.notes.forEach { note ->
-                    appendLine("TIP: *${note.backend}*: ${note.message}")
+                    val who = if (note.backend == "*") "all backends" else note.backend
+                    val text = if (note.type == "issue") issueLink(note.message) else note.message
+                    appendLine("TIP: *$who*: $text")
                     appendLine("")
                 }
             }

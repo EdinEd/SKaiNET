@@ -1,6 +1,7 @@
 package sk.ainet.lang.ops.ksp
 
 import com.google.devtools.ksp.getClassDeclarationByName
+import com.google.devtools.ksp.getAllSuperTypes
 import com.google.devtools.ksp.getDeclaredFunctions
 import com.google.devtools.ksp.processing.*
 import com.google.devtools.ksp.symbol.*
@@ -14,7 +15,18 @@ data class OperatorDocModule(
     val commit: String,
     val timestamp: String,
     val module: String,
-    val operators: List<OperatorDoc>
+    val operators: List<OperatorDoc>,
+    // nn `Module` subclasses visible in this compilation unit, with their
+    // implementation status (`implemented` / `not_implemented`).
+    val layers: List<LayerDoc> = emptyList(),
+)
+
+data class LayerDoc(
+    val name: String,
+    val packageName: String,
+    val status: String,
+    val reason: String = "",
+    val issue: String = "",
 )
 
 data class OperatorDoc(
@@ -112,7 +124,10 @@ class OperatorDocProcessor(
         logger.info("Found ${allSymbols.size} annotated symbols (dropped ${rawSymbols.size - allSymbols.size} on @Backend classes)")
 
         // Group annotation-discovered symbols by their containing class/package to create operators
-        val annotationOps = if (allSymbols.isNotEmpty()) groupSymbolsByOperator(allSymbols) else emptyList()
+        // Class-level markers on nn layers land in `layers`, not as empty operators.
+        val annotationOps = if (allSymbols.isNotEmpty()) {
+            groupSymbolsByOperator(allSymbols).filter { it.functions.isNotEmpty() }
+        } else emptyList()
 
         // Additionally discover the full TensorOps surface by walking the interface
         // and any `@Backend`-tagged implementors visible in this compilation unit.
@@ -135,8 +150,9 @@ class OperatorDocProcessor(
             version = extractVersion(),
             commit = extractCommitSha(),
             timestamp = Instant.now().toString(),
-            module = "skainet-lang-core", // TODO: Extract from module info
-            operators = operatorDocs
+            module = options["skainet.module"]?.takeIf { it.isNotBlank() } ?: "skainet-lang-core",
+            operators = operatorDocs,
+            layers = discoverLayers(resolver),
         )
 
         // Generate JSON output
@@ -187,12 +203,32 @@ class OperatorDocProcessor(
 
         val functionDocs = interfaceFunctions.map { fn ->
             val statusByBackend = mutableMapOf<String, String>()
+            val notes = mutableListOf<Note>()
             for ((backendId, backendClass) in backendClasses) {
-                val overrides = backendClass.getAllFunctions().any { candidate ->
+                val override = backendClass.getAllFunctions().firstOrNull { candidate ->
                     candidate.simpleName.asString() == fn.simpleName.asString() &&
                         candidate.findOverridee()?.simpleName?.asString() == fn.simpleName.asString()
                 }
-                statusByBackend[backendId] = if (overrides) "implemented" else "inherited"
+                // A status marker on the override itself (method level only —
+                // a class-level marker would blanket the whole backend) wins
+                // over the plain "overrides it" signal.
+                val marker = override?.let { statusMarker(it) }?.takeIf { it.appliesTo(backendId) }
+                statusByBackend[backendId] = when {
+                    marker != null -> marker.status
+                    override != null -> "implemented"
+                    else -> "inherited"
+                }
+                marker?.let { notes += it.notes(backendId) }
+            }
+            // A marker on the interface function applies across backends. An
+            // empty backend list is recorded under "*" and expanded to every
+            // backend column when the matrix is rendered.
+            statusMarker(fn)?.let { marker ->
+                val targets = marker.backends.ifEmpty { backendClasses.map { it.first } + "*" }
+                targets.forEach { backend ->
+                    statusByBackend[backend] = mergeStatus(statusByBackend[backend], marker.status)
+                    notes += marker.notes(backend)
+                }
             }
             val validation = extractDarcValidation(fn)
             FunctionDoc(
@@ -201,7 +237,7 @@ class OperatorDocProcessor(
                 parameters = extractParameters(fn),
                 returnType = extractReturnType(fn),
                 statusByBackend = statusByBackend,
-                notes = emptyList(),
+                notes = notes,
                 isDifferentiable = extractDiffRule(fn) != null,
                 diffRuleName = extractDiffRule(fn).orEmpty(),
                 validated = validation.validated,
@@ -467,7 +503,107 @@ class OperatorDocProcessor(
                 statusMap[backend] = "in_progress"
             }
         }
+
+        // @NotImplemented wins over @DslOp and @InProgress.
+        declaration.annotations.find {
+            it.shortName.asString() == "NotImplemented"
+        }?.let {
+            val marker = statusMarker(declaration) ?: return@let
+            marker.backends.ifEmpty { listOf("*") }.forEach { backend ->
+                statusMap[backend] = "not_implemented"
+            }
+        }
         return statusMap
+    }
+
+    /**
+     * A `@NotImplemented` or `@InProgress` marker read off a declaration.
+     * When both are present `@NotImplemented` wins.
+     */
+    private data class StatusMarker(
+        val status: String,
+        val backends: List<String>,
+        val reason: String,
+        val owner: String,
+        val issue: String,
+    ) {
+        fun appliesTo(backend: String): Boolean = backends.isEmpty() || backends.any { it.equals(backend, ignoreCase = true) }
+
+        fun notes(backend: String): List<Note> = buildList {
+            if (reason.isNotEmpty()) add(Note("reason", backend, reason))
+            if (owner.isNotEmpty()) add(Note("owner", backend, owner))
+            if (issue.isNotEmpty()) add(Note("issue", backend, issue))
+        }
+    }
+
+    private fun statusMarker(declaration: KSDeclaration): StatusMarker? {
+        val annotation = declaration.annotations.find { it.shortName.asString() == "NotImplemented" }
+            ?: declaration.annotations.find { it.shortName.asString() == "InProgress" }
+            ?: return null
+        fun arg(name: String): String =
+            annotation.arguments.find { it.name?.asString() == name }?.value?.toString().orEmpty()
+        val backendsArg = annotation.arguments.find { it.name?.asString() == "backends" }
+            ?: annotation.arguments.firstOrNull()
+        // KSP can hand back the first named argument in the vararg slot when
+        // the vararg is left empty (`@NotImplemented(reason = "...")`), so a
+        // bare String that equals another argument is not a backend id.
+        val otherValues = setOf(arg("reason"), arg("owner"), arg("issue"))
+        val backends = when (val value = backendsArg?.value) {
+            is List<*> -> value.map { it.toString() }
+            is String -> if (value in otherValues) emptyList() else listOf(value)
+            else -> emptyList()
+        }.filter { it.isNotBlank() }
+        return StatusMarker(
+            status = if (annotation.shortName.asString() == "NotImplemented") "not_implemented" else "in_progress",
+            backends = backends,
+            reason = arg("reason"),
+            owner = arg("owner"),
+            issue = arg("issue"),
+        )
+    }
+
+    /** Status precedence: not_implemented > in_progress > implemented > inherited. */
+    private fun mergeStatus(current: String?, incoming: String): String {
+        val rank = listOf("not_implemented", "in_progress", "implemented", "inherited")
+        if (current == null) return incoming
+        val a = rank.indexOf(current).let { if (it < 0) rank.size else it }
+        val b = rank.indexOf(incoming).let { if (it < 0) rank.size else it }
+        return if (b < a) incoming else current
+    }
+
+    /**
+     * Every concrete `sk.ainet.lang.nn.Module` subclass declared in this
+     * compilation unit, with `not_implemented` when the class carries
+     * `@NotImplemented` (its `forward` throws) and `implemented` otherwise.
+     */
+    private fun discoverLayers(resolver: Resolver): List<LayerDoc> {
+        val moduleName = "sk.ainet.lang.nn.Module"
+        fun KSClassDeclaration.allClasses(): Sequence<KSClassDeclaration> =
+            sequenceOf(this) + declarations.filterIsInstance<KSClassDeclaration>().flatMap { it.allClasses() }
+        return resolver.getAllFiles()
+            .flatMap { it.declarations.filterIsInstance<KSClassDeclaration>() }
+            .flatMap { it.allClasses() }
+            .filter { cls ->
+                cls.classKind == ClassKind.CLASS &&
+                    Modifier.ABSTRACT !in cls.modifiers &&
+                    Modifier.PRIVATE !in cls.modifiers &&
+                    Modifier.INTERNAL !in cls.modifiers &&
+                    cls.packageName.asString().startsWith("sk.ainet.lang.nn") &&
+                    cls.getAllSuperTypes().any { it.declaration.qualifiedName?.asString() == moduleName }
+            }
+            .map { cls ->
+                val marker = statusMarker(cls)
+                LayerDoc(
+                    name = cls.simpleName.asString(),
+                    packageName = cls.packageName.asString(),
+                    status = marker?.status ?: "implemented",
+                    reason = marker?.reason.orEmpty(),
+                    issue = marker?.issue.orEmpty(),
+                )
+            }
+            .distinctBy { it.packageName + "." + it.name }
+            .sortedWith(compareBy({ it.packageName }, { it.name }))
+            .toList()
     }
 
     private fun deriveNotes(declaration: KSDeclaration): List<Note> {
@@ -508,6 +644,11 @@ class OperatorDocProcessor(
                     notes.add(Note("issue", backend, issue))
                 }
             }
+        }
+
+        // Extract reason/issue from @NotImplemented
+        statusMarker(declaration)?.takeIf { it.status == "not_implemented" }?.let { marker ->
+            marker.backends.ifEmpty { listOf("*") }.forEach { backend -> notes += marker.notes(backend) }
         }
 
         return notes
@@ -643,8 +784,22 @@ class OperatorDocProcessor(
                     append("\n")
                 }
 
-                append("  ]\n")
-                append("}")
+                append("  ]")
+                if (module.layers.isNotEmpty()) {
+                    append(",\n  \"layers\": [\n")
+                    module.layers.forEachIndexed { index, layer ->
+                        append("    {\"name\": \"${escapeJson(layer.name)}\", ")
+                        append("\"packageName\": \"${escapeJson(layer.packageName)}\", ")
+                        append("\"status\": \"${escapeJson(layer.status)}\"")
+                        if (layer.reason.isNotEmpty()) append(", \"reason\": \"${escapeJson(layer.reason)}\"")
+                        if (layer.issue.isNotEmpty()) append(", \"issue\": \"${escapeJson(layer.issue)}\"")
+                        append("}")
+                        if (index < module.layers.size - 1) append(",")
+                        append("\n")
+                    }
+                    append("  ]")
+                }
+                append("\n}")
             }
 
             val file = codeGenerator.createNewFile(
