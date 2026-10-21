@@ -17,7 +17,8 @@ For how the eager path picks kernels, see xref:explanation/eager-execution.adoc[
 
 == The four stages and their knobs
 
-image::compile-stage-seams.svg[Four compile stages with the knobs at each stage, who turns them, and which target plugin hooks are wired]
+image::compile-stage-seams-light.svg["Four compile stages with the knobs at each stage, who turns them, and which target plugin hooks are wired",role=only-light]
+image::compile-stage-seams-dark.svg["Four compile stages with the knobs at each stage, who turns them, and which target plugin hooks are wired",role=only-dark]
 
 [cols="1,2,1",options="header"]
 |===
@@ -74,7 +75,8 @@ graph is lowered. The tape and StableHLO phases are declared but have no call si
 | Tanh (`approximate = true`) | `0.5 · x · (1 + tanh(√(2/π) · (x + 0.044715 · x³)))`
 |===
 
-image::gelu-exact-vs-tanh-error.svg[Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-4 near |x| = 2.70]
+image::gelu-exact-vs-tanh-error-light.svg["Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-4 near |x| = 2.70",role=only-light]
+image::gelu-exact-vs-tanh-error-dark.svg["Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-4 near |x| = 2.70",role=only-dark]
 
 The two forms differ by at most 4.73e-4, at |x| ≈ 2.70. That sounds harmless, but encoders
 trained with `hidden_act = "gelu"` (BERT-class models, the Laya decision models) mean the
@@ -107,7 +109,8 @@ and #1346):
 
 == One op, four ways down
 
-image::gelu-lowering-paths.svg[One exact GELU call lowered four ways: CPU, NPU with fused GELU, target without erf, and eager JVM]
+image::gelu-lowering-paths-light.svg["One exact GELU call lowered four ways: CPU, NPU with fused GELU, target without erf, and eager JVM",role=only-light]
+image::gelu-lowering-paths-dark.svg["One exact GELU call lowered four ways: CPU, NPU with fused GELU, target without erf, and eager JVM",role=only-dark]
 
 All four start from the same traced node, `gelu {approximate = false}`. What differs is which
 knobs the target turns.

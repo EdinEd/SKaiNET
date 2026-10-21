@@ -25,3 +25,13 @@ window.MathJax = {
 };
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+{{!--
+  Theme-paired diagrams: a page includes one image with role=only-light and one
+  with role=only-dark, and the copy that does not match the UI bundle's
+  data-theme toggle is hidden. Without the attribute (no JS), the light copy shows.
+--}}
+<style>
+[data-theme=dark] .only-light,
+[data-theme=light] .only-dark,
+html:not([data-theme]) .only-dark { display: none; }
+</style>

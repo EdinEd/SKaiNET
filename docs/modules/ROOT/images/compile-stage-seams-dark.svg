@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 650" width="1040" height="650" role="img" aria-label="Four compile stages (Kotlin DSL trace, tape to DAG, DAG to StableHLO, IREE) with the knobs at each stage, who turns them, and which target plugin hooks are wired (dagPasses, granularity) or only declared (TAPE, STABLE_HLO).">
-<rect x="0" y="0" width="1040" height="650" rx="14" fill="#0A0B0D"/>
+<rect x="0.5" y="0.5" width="1039" height="649" rx="14" fill="#0A0B0D" stroke="#2A3038"/>
 <text x="28.0" y="38.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="18" fill="#F2F2F2" text-anchor="start" font-weight="700">What can change at each compile stage</text>
 <rect x="28" y="48" width="56" height="3" fill="#DC2626"/>
 <text x="64.0" y="84.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="10.5" fill="#8B929D" text-anchor="start" font-weight="600">STAGE</text>

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600" width="1080" height="600" role="img" aria-label="One exact GELU call lowered four ways: CPU emits an inline chlo.erf chain that IREE expands; an NPU with keepFused gets a stablehlo.composite with a private decomposition; a target without erf runs the legalization pass and gets the tanh chain with a recorded 4.8e-4 bound; eager JVM computes it directly with an Abramowitz-Stegun erf.">
-<rect x="0" y="0" width="1080" height="600" rx="14" fill="#0A0B0D"/>
+<rect x="0.5" y="0.5" width="1079" height="599" rx="14" fill="#0A0B0D" stroke="#2A3038"/>
 <text x="28.0" y="38.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="18" fill="#F2F2F2" text-anchor="start" font-weight="700">One gelu(x, approximate = false), four ways down</text>
 <rect x="28" y="48" width="56" height="3" fill="#DC2626"/>
 <rect x="390.0" y="64" width="300" height="38" rx="8" fill="#2A1214" stroke="#DC2626" stroke-width="2"/>

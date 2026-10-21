@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 430" width="760" height="430" role="img" aria-label="Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-04 near |x| = 2.70, below the 4.8e-4 bound the legalization pass records">
-<rect x="0" y="0" width="760" height="430" rx="14" fill="#0A0B0D"/>
+<rect x="0.5" y="0.5" width="759" height="429" rx="14" fill="#0A0B0D" stroke="#2A3038"/>
 <text x="28.0" y="38.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="18" fill="#F2F2F2" text-anchor="start" font-weight="700">Exact vs tanh GELU: absolute difference</text>
 <rect x="28" y="48" width="56" height="3" fill="#DC2626"/>
 <line x1="78" x2="736" y1="378.0" y2="378.0" stroke="#2A3038" stroke-width="1"/>
