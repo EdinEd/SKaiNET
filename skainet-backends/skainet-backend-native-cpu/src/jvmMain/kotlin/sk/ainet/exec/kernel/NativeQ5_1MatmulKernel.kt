@@ -80,7 +80,10 @@ internal object NativeQ5_1MatmulKernel : Q5_1MatmulKernel {
                 outputSeg, outputOffset,
             )
 
-            MemorySegment.copy(outputSeg, ValueLayout.JAVA_FLOAT, 0L, output, 0, outputReachFloats)
+            // Only the slice this call produced goes back: the staging segment is zero below
+            // outputOffset, and copying the whole reach wiped the rows a caller had already
+            // written there when it loops over the rows of a multi-row activation.
+            MemorySegment.copy(outputSeg, ValueLayout.JAVA_FLOAT, outputOffset.toLong() * java.lang.Float.BYTES, output, outputOffset, outputDim)
         }
     }
 

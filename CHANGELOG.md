@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Multi-row activations through the native Q8_0 / Q4_0 / Q5_0 / Q5_1 kernels returned zeros for every row but the last.** The FFM bindings of these four kernels staged a zero-filled output segment of `outputOffset + outputDim` floats and copied the whole reach back from index 0, so when `DefaultCpuOpsJvm` serves a `[rows, in] × packed [out, in]ᵀ` product row by row into one array, each call wiped the rows computed before it. A single-row product (a decode step) was right, which is why the GGUF decode paths never showed it; the token rows of an encoder on the quantize-at-load lane (Laya on Q8_0 with `skainet-backend-native-cpu` on the classpath) came back uniform. The bindings now copy back exactly the slice they produced, like the K-quant bindings always did. `NativeQ8CanonicalWeightTransposedReproTest` covers every packed format for 1, 7 and 50 rows against the dequant ground truth, with the native provider alone and with the default registry, and the SPI contract that a call at an output offset writes only its own row.
+
 ## [0.62.0] - 2026-10-21
 
 Headline: **JVM ↔ Kotlin/Wasm parity for compute and IO.** In 0.61 the SIMD128 sidecar served the
