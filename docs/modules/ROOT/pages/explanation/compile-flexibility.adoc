@@ -1,0 +1,238 @@
+= Flexibility at every compile stage: exact GELU as the example
+:description: What can be changed at each stage of SKaiNET's compiled path (trace, DAG, StableHLO, IREE), who changes it, and how one op — exact GELU — is lowered differently for a CPU, a fusing NPU, a target without erf, and eager execution.
+
+SKaiNET runs a model two ways. The eager path executes each op as it is called. The compiled
+path traces the model once and hands it through four stages, from Kotlin down to an IREE
+binary. Each of those stages has its own knobs, and a target plugin can turn some of them
+without the core ever naming a piece of hardware.
+
+This page maps those knobs and then follows a single op through all of them:
+`gelu(x, approximate = false)`, the exact, erf-based GELU added in 0.59.0 (#1342). It is a
+good example because the difference between its forms is small, measurable, and matters to
+real models, so every stage has a reason to treat it carefully.
+
+For the hands-on side (how to keep an op fused for your target, or how to register a pass),
+see the _Fused ops and `stablehlo.composite`_ section of xref:tutorials/hlo-getting-started.adoc[].
+For how the eager path picks kernels, see xref:explanation/eager-execution.adoc[].
+
+== The four stages and their knobs
+
+image::compile-stage-seams-light.svg["Four compile stages with the knobs at each stage, who turns them, and which target plugin hooks are wired",role=only-light]
+image::compile-stage-seams-dark.svg["Four compile stages with the knobs at each stage, who turns them, and which target plugin hooks are wired",role=only-dark]
+
+[cols="1,2,1",options="header"]
+|===
+| Stage | What can change | Who changes it
+
+| ① Kotlin DSL · trace
+| `@Lowering(composite = …)` on a `TensorOps` method declares how the op may be lowered.
+  The KSP tracing wrapper (`@GenerateTracingWrapper`) records the call _and its parameters_,
+  so a flag like `approximate` survives tracing. `dtypePolicy()` and schedule hints ride on
+  the node. `VoidTensorOps` traces shapes only, with no math.
+| op author, generated code, model author
+
+| ② Tape → DAG
+| `GraphOptimizationPass` implementations run to a fixed point: dtype resolution, constant
+  folding, DCE, fusion, layout and schedule passes. `dagPipelineFor(target)` appends the
+  passes the target registered. Every rewrite can leave node parameters and diagnostics
+  behind.
+| core, vendor (`TargetOptimizer.dagPasses()`)
+
+| ③ DAG → StableHLO
+| The converter registry (13 families) emits `stablehlo` and `chlo`. Ops with a
+  `LoweringSpec` can be kept as a `stablehlo.composite` or decomposed inline, per op, by the
+  target's `OpGranularityPolicy`. `ConstantMaterializationPolicy` decides whether weights are
+  inline constants or external `.irpa` parameters.
+| core, vendor (`TargetOptimizer.granularity()`), exporter
+
+| ④ IREE
+| Backend and flags (`llvm-cpu`, `vulkan-spirv`, or a vendor fork). IREE owns legalization,
+  tiling, vectorization and dispatch fusion. SKaiNET deliberately stops building here.
+| target, IREE
+|===
+
+A target plugs in through one interface in `sk.ainet.compile.opt`:
+
+[source,kotlin]
+----
+public interface TargetOptimizer {
+    public val target: String
+    public fun dagPasses(): List<GraphOptimizationPass> = emptyList()
+    public fun granularity(): OpGranularityPolicy? = null
+}
+----
+
+`CompilePhase` declares three phases, `TAPE`, `DAG` and `STABLE_HLO`. Only the DAG phase is
+wired today: `dagPasses()` runs after the core passes, and `granularity()` is read when the
+graph is lowered. The tape and StableHLO phases are declared but have no call sites yet, and
+`iree-compile` flags are still set per target by the caller rather than through a provider.
+
+== Why exact GELU needs care
+
+[cols="1,3"]
+|===
+| Exact (`approximate = false`) | `0.5 · x · (1 + erf(x / √2))`
+| Tanh (`approximate = true`) | `0.5 · x · (1 + tanh(√(2/π) · (x + 0.044715 · x³)))`
+|===
+
+image::gelu-exact-vs-tanh-error-light.svg["Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-4 near |x| = 2.70",role=only-light]
+image::gelu-exact-vs-tanh-error-dark.svg["Absolute difference between exact and tanh GELU over x from -5 to 5, peaking at 4.73e-4 near |x| = 2.70",role=only-dark]
+
+The two forms differ by at most 4.73e-4, at |x| ≈ 2.70. That sounds harmless, but encoders
+trained with `hidden_act = "gelu"` (BERT-class models, the Laya decision models) mean the
+exact form. In the Laya decision head the per-activation difference grows to a 7.5e-4 drift
+against a 5e-5 parity gate. So `approximate` is part of the op's meaning, not an
+implementation detail, and every stage below has to preserve it or change it on purpose.
+
+Before 0.59.0, `gelu` had only the tanh form and there was no `erf` op. Laya computed exact
+GELU on the host instead, which broke the traced graph at every activation and cost 44 host
+round trips per decision.
+
+=== What adding the op touched
+
+Making exact GELU a first-class op meant one change per layer of the stack (two PRs, #1344
+and #1346):
+
+* *Interface:* `gelu(tensor, approximate = true)` and a new `erf(tensor)` on `TensorOps`,
+  annotated `@Lowering(composite = "skainet.gelu")` and `@Lowering(composite = "skainet.erf")`.
+  This is a breaking change for every `TensorOps` implementation.
+* *Code generation:* the KSP tracing wrapper records `approximate`; the network and graph DSL
+  generators learned the default value, because KSP cannot read declared defaults.
+* *Tracing:* `VoidTensorOps`, tape recording, and the graph executor's `"gelu"` and `"erf"`
+  cases.
+* *Eager kernels:* `ErfKernel` and `DefaultCpuOps.gelu`/`erf`, plus a Vector API path in
+  `DefaultCpuOpsJvm`.
+* *Autograd:* the exact derivative `Φ(x) + x·φ(x)` and `erf′(x) = 2/√π · e^(−x²)`.
+* *Lowering:* `GeluLowering`, `ErfLowering`, and the activation and unary-math converters.
+* *Docs and tests:* the operator reference, the coverage matrix, and recording, emission and
+  pass tests.
+
+== One op, four ways down
+
+image::gelu-lowering-paths-light.svg["One exact GELU call lowered four ways: CPU, NPU with fused GELU, target without erf, and eager JVM",role=only-light]
+image::gelu-lowering-paths-dark.svg["One exact GELU call lowered four ways: CPU, NPU with fused GELU, target without erf, and eager JVM",role=only-dark]
+
+All four start from the same traced node, `gelu {approximate = false}`. What differs is which
+knobs the target turns.
+
+=== A portable target: inline decomposition
+
+With no granularity policy (for example `llvm-cpu`), the op is decomposed inline. StableHLO has
+no erf op, so the converter emits `chlo.erf` and lets IREE's `chlo-legalize-to-stablehlo`
+expand it:
+
+[source,mlir]
+----
+%c0 = stablehlo.constant dense<0.5> : tensor<1x4xf32>
+%c1 = stablehlo.constant dense<1.0> : tensor<1x4xf32>
+%c2 = stablehlo.constant dense<0.70710678118654752> : tensor<1x4xf32>
+%s  = stablehlo.multiply %arg0, %c2 : tensor<1x4xf32>
+%e  = chlo.erf %s : tensor<1x4xf32> -> tensor<1x4xf32>
+%p  = stablehlo.add %c1, %e : tensor<1x4xf32>
+%h  = stablehlo.multiply %c0, %arg0 : tensor<1x4xf32>
+%r  = stablehlo.multiply %h, %p : tensor<1x4xf32>
+----
+
+SKaiNET does not emit its own erf polynomial here. Owning that math would mean owning it for
+every target; IREE already does.
+
+=== A target that fuses GELU: composite with a decomposition
+
+A target with a native GELU kernel returns a policy that keeps the op:
+
+[source,kotlin]
+----
+FusedOpAllowList("my-npu", setOf("gelu"))
+----
+
+The converter then emits a `stablehlo.composite` and, once per (op, attributes, type), a
+private function with the reference body:
+
+[source,mlir]
+----
+%r = stablehlo.composite "skainet.gelu" %arg0 {
+       composite_attributes = {approximate = false},
+       decomposition = @skainet_gelu_approximate_false_1x4xf32,
+       version = 1 : i32 } : (tensor<1x4xf32>) -> tensor<1x4xf32>
+...
+func.func private @skainet_gelu_approximate_false_1x4xf32(%arg0: tensor<1x4xf32>) -> tensor<1x4xf32> {
+  // the same chlo.erf chain the inline form emits
+}
+----
+
+A vendor compiler can match `skainet.gelu` and call its kernel. Any compiler that does not
+know the name can inline the decomposition, which a test checks is identical to the inline
+form apart from SSA names. The composite always carries its exact meaning with it.
+
+=== A target without erf: a recorded legalization
+
+A target that cannot compute erf opts in to the tanh form by registering a DAG pass:
+
+[source,kotlin]
+----
+TargetOptimizers.registerDagPasses("my-dsp") {
+    listOf(GeluApproximationLegalizationPass("my-dsp has no erf kernel"))
+}
+----
+
+`GeluApproximationLegalizationPass` rewrites the node and records what it did, on the node and
+in the pass diagnostics:
+
+[source]
+----
+gelu { approximate = true,
+       legalizedFrom = "gelu(approximate=false)",
+       maxAbsError = 4.8E-4 }
+
+GELU_APPROX_LEGALIZED node=…: gelu(approximate=false) -> gelu(approximate=true) [my-dsp has no erf kernel] maxAbsError=4.8E-4
+----
+
+The converter then emits the 13-op tanh chain, so the module contains no `chlo.erf` at all.
+`GELU_TANH_MAX_ABS_ERROR` (4.8e-4) is the measured 4.73e-4 rounded up. The pass leaves a bare
+`erf` node alone on purpose: there is no cheap substitute, and a loud failure in the emitter
+is better than a quiet approximation.
+
+=== Eager execution: no compiler at all
+
+The eager path never builds a graph. `DefaultCpuOpsJvm` computes exact GELU directly, using
+the Abramowitz–Stegun 7.1.26 erf (|ε| < 1.5e-7) in Vector API lanes with
+`VectorOperators.EXP`. The scalar tail uses `ErfKernel.erfFloat` with the same operation
+order, so lanes and tail agree to within 1e-6.
+
+== Eager and compiled are two implementations
+
+One line of model code therefore has two implementations of erf: SKaiNET's polynomial on the
+eager path, and IREE's expansion of `chlo.erf` on the compiled path. They have different error
+bounds, owned by different projects. What is checked today:
+
+* Exact GELU matches the host formula within 2e-7 (bit-equal on the JVM).
+* Eager execution matches graph replay within 1e-6.
+* The exact–tanh difference stays between 4.5e-4 and 5.0e-4, with its maximum at |x| in 2.5–2.9.
+
+What is not yet checked: eager A&S erf against IREE's `chlo.erf` expansion, and an exact-GELU
+case in the IREE conformance suite, whose reference oracles still use the tanh form.
+
+== The rules this example follows
+
+* *Meaning travels with the op.* `approximate` is recorded at trace time and is visible on
+  the DAG node, so later stages can respect it.
+* *Approximation is opt-in and recorded.* Only a target that registers the legalization pass
+  gets the tanh form, and the node says so.
+* *A composite never loses its semantics.* It always carries a decomposition that any
+  compiler can inline.
+* *The core never names hardware.* Targets attach through `TargetOptimizer`; the converters
+  and passes stay target-neutral.
+
+== Status
+
+As of 0.61.0 no shipped target registers `GeluApproximationLegalizationPass` or keeps `gelu`
+fused; `my-npu` and `my-dsp` on this page are example names, and the mechanisms are exercised
+by tests. The `TAPE` and `STABLE_HLO` hook phases are declared but not wired, and there is no
+provider interface for `iree-compile` flags yet.
+
+== Related pages
+
+* xref:tutorials/hlo-getting-started.adoc[] — exporting StableHLO, composites and granularity in practice
+* xref:reference/graph-export-architecture.adoc[] — how the graph export is structured
+* xref:explanation/eager-execution.adoc[] — the eager path and its kernels
+* xref:explanation/operator-design.adoc[] — how operator documentation and lowering metadata are generated

@@ -361,6 +361,8 @@ The private decomposition function builds the same `iota`/`compare`/`select` kee
 
 Targets that cannot lower `erf` at all register `GeluApproximationLegalizationPass` through `TargetOptimizers.registerDagPasses`; it rewrites `gelu(approximate = false)` to the tanh form and records `legalizedFrom` / `maxAbsError` on the node, so the substitution shows up in the pass diagnostics instead of happening silently.
 
+For why these knobs exist and how one op, exact GELU, ends up different on each kind of target, see xref:explanation/compile-flexibility.adoc[].
+
 ==== Debugging HLO
 
 Use SKaiNET's built-in debugging tools:
