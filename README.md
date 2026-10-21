@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.62.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.62.1"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,7 +308,18 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.62.0
+## What's New in 0.62.1
+
+A fix release on top of 0.62.0: the native FFM bindings of the Q8_0, Q4_0, Q5_0 and Q5_1 kernels
+copied a zero-filled staging buffer back from index 0, so a product served row by row — any
+quantize-at-load encoder on the JVM with `skainet-backend-native-cpu` on the classpath — kept only
+its last row. Single-row decode steps were never affected. A regression test now covers every packed
+format for one, seven and fifty rows. Also: the YOLOv8 model code moves out of core into its cartridge
+blueprint (`skainet-model-yolo` is gone; `Letterbox`, `BoundingBox` and `nonMaxSuppression` stay in
+`skainet-data-media`), the StableHLO `softmax` axis and `logSoftmax` lowering are fixed, and the docs
+gain *Flexibility at every compile stage* and the SKEEP-008 draft on precision and encoding conversion.
+
+### Carried from 0.62.0
 
 JVM ↔ Kotlin/Wasm parity: the browser tier runs the same kernels as the JVM, keeps its activations
 in the sidecar, and reads models the way the JVM does — with every remaining difference documented.
@@ -358,6 +369,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.62.1)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the native packed-kernel
+  binding fix and its regression test, the YOLO move-out, the compile-flexibility explanation, the
+  SKEEP-008 draft, and the release
 
 ### Contributors (0.62.0)
 
@@ -478,7 +495,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.62.0. MIT License},
+  note         = {Version 0.62.1. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```

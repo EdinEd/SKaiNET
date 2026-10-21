@@ -2,7 +2,18 @@
 
 ## [Unreleased]
 
-Headline: **model-specific detector code leaves core; the reusable detection pieces stay.**
+## [0.62.1] - 2026-10-21
+
+Headline: **the native Q8_0 / Q4_0 / Q5_0 / Q5_1 kernel bindings no longer zero the earlier rows of a
+multi-row product** (#1436, see *Fixed*). The defect was in the JVM FFM lane since those bindings exist: a
+single-row product (a decode step) was right, every multi-row one kept only its last row, which made any
+quantize-at-load encoder on the JVM with `skainet-backend-native-cpu` on the classpath — Laya on Q8_0 — answer
+with uniform probabilities. CI never saw it because its classpath has no native provider; the LayaMoE example
+did. Fix releases carry what develop holds: also the YOLO move-out below, the StableHLO softmax axis fixes, the
+*Flexibility at every compile stage* explanation page (#1432) and the SKEEP-008 draft, *Precision and encoding
+conversion* (#1434, tracking #1433).
+
+Also in this release: **model-specific detector code leaves core; the reusable detection pieces stay.**
 
 ### Added
 
