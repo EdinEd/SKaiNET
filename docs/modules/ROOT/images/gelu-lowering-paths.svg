@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 600" width="1080" height="600" role="img" aria-label="One exact GELU call lowered four ways: CPU emits an inline chlo.erf chain that IREE expands; an NPU with keepFused gets a stablehlo.composite with a private decomposition; a target without erf runs the legalization pass and gets the tanh chain with a recorded 4.8e-4 bound; eager JVM computes it directly with an Abramowitz-Stegun erf.">
+<rect x="0" y="0" width="1080" height="600" rx="14" fill="#0A0B0D"/>
+<text x="28.0" y="38.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="18" fill="#F2F2F2" text-anchor="start" font-weight="700">One gelu(x, approximate = false), four ways down</text>
+<rect x="28" y="48" width="56" height="3" fill="#DC2626"/>
+<rect x="390.0" y="64" width="300" height="38" rx="8" fill="#2A1214" stroke="#DC2626" stroke-width="2"/>
+<text x="540.0" y="88.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="14" fill="#F2F2F2" text-anchor="middle" font-weight="500">x.gelu(approximate = false)</text>
+<text x="700.0" y="88.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11" fill="#8B929D" text-anchor="start" font-weight="400">① traced</text>
+<line x1="257.0" x2="947.0" y1="126" y2="126" stroke="#DC2626" stroke-width="2"/>
+<line x1="540.0" x2="540.0" y1="102" y2="126" stroke="#DC2626" stroke-width="2"/>
+<text x="28.0" y="220.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12.5" fill="#8B929D" text-anchor="start" font-weight="600">② DAG node</text>
+<text x="28.0" y="332.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12.5" fill="#8B929D" text-anchor="start" font-weight="600">③ StableHLO</text>
+<text x="28.0" y="444.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12.5" fill="#8B929D" text-anchor="start" font-weight="600">④ IREE / runtime</text>
+<line x1="257.0" x2="257.0" y1="126" y2="132" stroke="#DC2626" stroke-width="2"/>
+<line x1="257.0" x2="257.0" y1="176" y2="184" stroke="#DC2626" stroke-width="2"/>
+<text x="257.0" y="150.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13.5" fill="#F2F2F2" text-anchor="middle" font-weight="700">CPU</text>
+<text x="257.0" y="166.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#8B929D" text-anchor="middle" font-weight="400">llvm-cpu · no policy</text>
+<rect x="150" y="184" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="150" y="192" width="3" height="60" fill="#DC2626"/>
+<text x="257.0" y="216.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">gelu {approximate=false}</text>
+<text x="257.0" y="236.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">unchanged</text>
+<line x1="257.0" x2="257.0" y1="260" y2="296" stroke="#DC2626" stroke-width="2"/>
+<rect x="150" y="296" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="150" y="304" width="3" height="60" fill="#DC2626"/>
+<text x="257.0" y="328.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">8 ops, inline</text>
+<text x="257.0" y="348.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">chlo.erf</text>
+<line x1="257.0" x2="257.0" y1="372" y2="408" stroke="#DC2626" stroke-width="2"/>
+<rect x="150" y="408" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="150" y="416" width="3" height="60" fill="#DC2626"/>
+<text x="257.0" y="440.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">chlo-legalize-to-stablehlo</text>
+<text x="257.0" y="460.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">expands erf</text>
+<rect x="162" y="518" width="190" height="26" rx="13" fill="none" stroke="#2DD4BF" stroke-width="1.5"/>
+<text x="257.0" y="535.5" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" fill="#2DD4BF" text-anchor="middle" font-weight="600">exact · IREE's erf</text>
+<line x1="487.0" x2="487.0" y1="126" y2="132" stroke="#DC2626" stroke-width="2"/>
+<line x1="487.0" x2="487.0" y1="176" y2="184" stroke="#DC2626" stroke-width="2"/>
+<text x="487.0" y="150.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13.5" fill="#F2F2F2" text-anchor="middle" font-weight="700">NPU with fused GELU</text>
+<text x="487.0" y="166.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#8B929D" text-anchor="middle" font-weight="400">keepFused("gelu")</text>
+<rect x="380" y="184" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="380" y="192" width="3" height="60" fill="#DC2626"/>
+<text x="487.0" y="216.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">gelu {approximate=false}</text>
+<text x="487.0" y="236.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">unchanged</text>
+<line x1="487.0" x2="487.0" y1="260" y2="296" stroke="#DC2626" stroke-width="2"/>
+<rect x="380" y="296" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="380" y="304" width="3" height="60" fill="#DC2626"/>
+<text x="487.0" y="328.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">composite "skainet.gelu"</text>
+<text x="487.0" y="348.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">+ private decomposition</text>
+<line x1="487.0" x2="487.0" y1="372" y2="408" stroke="#DC2626" stroke-width="2"/>
+<rect x="380" y="408" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="380" y="416" width="3" height="60" fill="#DC2626"/>
+<text x="487.0" y="440.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">match → native kernel</text>
+<text x="487.0" y="460.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">or inline the body</text>
+<rect x="392" y="518" width="190" height="26" rx="13" fill="none" stroke="#2DD4BF" stroke-width="1.5"/>
+<text x="487.0" y="535.5" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" fill="#2DD4BF" text-anchor="middle" font-weight="600">exact · vendor kernel</text>
+<line x1="717.0" x2="717.0" y1="126" y2="132" stroke="#DC2626" stroke-width="2"/>
+<line x1="717.0" x2="717.0" y1="176" y2="184" stroke="#DC2626" stroke-width="2"/>
+<text x="717.0" y="150.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13.5" fill="#F2F2F2" text-anchor="middle" font-weight="700">Target without erf</text>
+<text x="717.0" y="166.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#8B929D" text-anchor="middle" font-weight="400">legalization pass</text>
+<rect x="610" y="184" width="214" height="76" rx="8" fill="#121418" stroke="#F59E0B" stroke-width="1.5"/>
+<rect x="610" y="192" width="3" height="60" fill="#F59E0B"/>
+<text x="717.0" y="216.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">gelu {approximate=true}</text>
+<text x="717.0" y="236.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#F59E0B" text-anchor="middle" font-weight="400">legalizedFrom, maxAbsError</text>
+<line x1="717.0" x2="717.0" y1="260" y2="296" stroke="#DC2626" stroke-width="2"/>
+<rect x="610" y="296" width="214" height="76" rx="8" fill="#121418" stroke="#F59E0B" stroke-width="1.5"/>
+<rect x="610" y="304" width="3" height="60" fill="#F59E0B"/>
+<text x="717.0" y="328.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">13 ops, tanh chain</text>
+<text x="717.0" y="348.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#F59E0B" text-anchor="middle" font-weight="400">no chlo.erf</text>
+<line x1="717.0" x2="717.0" y1="372" y2="408" stroke="#DC2626" stroke-width="2"/>
+<rect x="610" y="408" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="610" y="416" width="3" height="60" fill="#DC2626"/>
+<text x="717.0" y="440.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">stablehlo.tanh only</text>
+<text x="717.0" y="460.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">no erf lowering needed</text>
+<rect x="622" y="518" width="190" height="26" rx="13" fill="none" stroke="#F59E0B" stroke-width="1.5"/>
+<text x="717.0" y="535.5" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" fill="#F59E0B" text-anchor="middle" font-weight="600">≤ 4.8e−4 · recorded</text>
+<line x1="947.0" x2="947.0" y1="126" y2="132" stroke="#3C4049" stroke-width="2"/>
+<line x1="947.0" x2="947.0" y1="176" y2="184" stroke="#3C4049" stroke-width="2"/>
+<text x="947.0" y="150.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="13.5" fill="#F2F2F2" text-anchor="middle" font-weight="700">Eager JVM</text>
+<text x="947.0" y="166.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="11" fill="#8B929D" text-anchor="middle" font-weight="400">no compile</text>
+<rect x="840" y="184" width="214" height="76" rx="8" fill="#0A0B0D" stroke="#3C4049" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="947.0" y="226.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#8B929D" text-anchor="middle" font-weight="500">no graph</text>
+<line x1="947.0" x2="947.0" y1="260" y2="296" stroke="#3C4049" stroke-width="2"/>
+<rect x="840" y="296" width="214" height="76" rx="8" fill="#0A0B0D" stroke="#3C4049" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="947.0" y="338.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#8B929D" text-anchor="middle" font-weight="500">nothing lowered</text>
+<line x1="947.0" x2="947.0" y1="372" y2="408" stroke="#3C4049" stroke-width="2"/>
+<rect x="840" y="408" width="214" height="76" rx="8" fill="#121418" stroke="#2A3038" stroke-width="1"/>
+<rect x="840" y="416" width="3" height="60" fill="#DC2626"/>
+<text x="947.0" y="440.0" font-family="'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#F2F2F2" text-anchor="middle" font-weight="500">DefaultCpuOpsJvm</text>
+<text x="947.0" y="460.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">Vector API · A&amp;S erf f32</text>
+<rect x="852" y="518" width="190" height="26" rx="13" fill="none" stroke="#2DD4BF" stroke-width="1.5"/>
+<text x="947.0" y="535.5" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12" fill="#2DD4BF" text-anchor="middle" font-weight="600">exact · |ε| &lt; 1.5e−7</text>
+<text x="28.0" y="535.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="12.5" fill="#8B929D" text-anchor="start" font-weight="600">accuracy</text>
+<text x="540.0" y="576.0" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="11.5" fill="#8B929D" text-anchor="middle" font-weight="400">Tests: exact GELU vs host formula ≤ 2e−7 · eager vs graph replay ≤ 1e−6 · eager A&amp;S vs IREE chlo.erf: not yet compared</text>
+</svg>
