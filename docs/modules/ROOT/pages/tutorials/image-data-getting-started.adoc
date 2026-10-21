@@ -22,7 +22,7 @@ This guide shows how the three image-oriented modules fit together:
 By the end you will:
 
 . Load an image from disk on the JVM.
-. Letterbox it into a YOLO-style `(1, 3, H, W)` tensor.
+. Letterbox it into a detector-style `(1, 3, H, W)` tensor.
 . Wrap that tensor in the `Image` metadata API.
 
 === Add the modules
@@ -69,16 +69,16 @@ println("Loaded image: ${width}x${height}")
 
 `platformImageSize(...)` is the portable way to inspect dimensions.
 
-=== Step 2: Letterbox an image for YOLO
+=== Step 2: Letterbox an image for a detector
 
-Object detectors such as YOLO commonly keep aspect ratio, resize the
+Single-shot object detectors commonly keep aspect ratio, resize the
 image to fit inside a square canvas, and pad the remaining area with a
 constant color. This is usually called *letterboxing*.
 
 The image transform DSL makes that flow explicit. `toTensor(ctx)`
 converts the letterboxed platform image to an RGB tensor with shape
 `(1, 3, H, W)`, and `rescale(ctx, 255f)` moves pixel values into the
-`[0, 1]` range expected by most YOLOv8-style exports.
+`[0, 1]` range most detector exports expect.
 
 [source,kotlin]
 ----
@@ -107,7 +107,7 @@ val right = padX - left
 val top = padY / 2
 val bottom = padY - top
 
-val yoloInput = pipeline<PlatformBitmapImage>()
+val detectorInput = pipeline<PlatformBitmapImage>()
     .resize(resizedWidth, resizedHeight)
     .pad(
         top = top,
@@ -122,7 +122,7 @@ val yoloInput = pipeline<PlatformBitmapImage>()
     .rescale(ctx, 255f)
     .apply(input)
 
-println("Tensor shape: ${yoloInput.shape}")
+println("Tensor shape: ${detectorInput.shape}")
 println("Letterbox scale: $scale")
 println("Top/left padding: $top / $left")
 ----
@@ -147,7 +147,7 @@ import sk.ainet.data.media.Image
 import sk.ainet.data.media.ImageLayout
 
 val image = Image.fromTensor(
-    tensor = yoloInput,
+    tensor = detectorInput,
     layout = ImageLayout.NCHW,
     colorSpace = ColorSpace.RGB
 )
@@ -164,9 +164,11 @@ tracking which axis is width, height, or channels.
 
 [NOTE]
 ====
-If you use `skainet-model-yolo`, the same `scale`, `left`, and `top`
-values from the letterbox step are the metadata needed to remap decoded
-detections back to the original image coordinates.
+The same geometry is available without a platform image as
+`sk.ainet.data.media.Letterbox` (`skainet-data-media`): `Letterbox.fit(...)`
+computes `scale` and the offsets, `fillNchw(rgb888)` letterboxes raw RGB888
+bytes, and `toSource(box)` remaps a detection back to the original image.
+`nonMaxSuppression(...)` in the same module does class-aware NMS.
 ====
 
 === Step 4: Start from a tensor you already have

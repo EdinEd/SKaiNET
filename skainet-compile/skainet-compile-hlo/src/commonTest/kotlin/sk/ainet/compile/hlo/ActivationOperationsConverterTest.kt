@@ -217,6 +217,28 @@ class ActivationOperationsConverterTest {
     }
 
     @Test
+    fun testSoftmaxReducesOverTheRecordedDim() {
+        // The tape records TensorOps.softmax(t, dim) as parameters["dim"]; a non-last axis must be honoured.
+        val graph = createActivationGraphWithParameters("softmax", mapOf("dim" to 1), listOf(1, 16, 4, 8))
+        val module = StableHloConverterFactory.createExtended().convert(graph, "test_softmax_dim")
+
+        assertTrue(module.content.contains("applies stablehlo.maximum across dimensions = [1]"), module.content)
+        assertTrue(module.content.contains("applies stablehlo.add across dimensions = [1]"), module.content)
+        assertTrue(module.content.contains("-> tensor<1x4x8xf32>"), "reduced type drops the softmax axis")
+        assertTrue(module.content.contains("dims = [0, 2, 3]"), "broadcast back over the kept axes")
+    }
+
+    @Test
+    fun testLogSoftmaxSubtractsTheLogSum() {
+        // TensorOps.logSoftmax is recorded as softmax with log = true.
+        val graph = createActivationGraphWithParameters("softmax", mapOf("dim" to -1, "log" to true), listOf(2, 3))
+        val module = StableHloConverterFactory.createExtended().convert(graph, "test_log_softmax")
+
+        assertTrue(module.content.contains("stablehlo.log "), module.content)
+        assertFalse(module.content.contains("stablehlo.divide"), "log-softmax must not normalize by division")
+    }
+
+    @Test
     fun testActivationChaining() {
         // Test chaining multiple activation functions
         val graph = DefaultComputeGraph()

@@ -67,7 +67,6 @@ include("skainet-io:skainet-io-onnx")
 
 // ====== models
 include("skainet-models:skainet-model-identity")
-include("skainet-models:skainet-model-yolo")
 
 // ====== FRONT ENDS (SKEEP-006)
 include("skainet-frontend:skainet-frontend-core")

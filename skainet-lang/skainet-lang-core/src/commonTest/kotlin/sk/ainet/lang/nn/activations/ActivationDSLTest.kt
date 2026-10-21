@@ -63,7 +63,7 @@ class ActivationDSLTest {
             network {
                 input(20)
                 
-                // First layer with SiLU (YOLO8 style)
+                // First layer with SiLU
                 dense(16) {
                     activation = { tensor -> with(tensor) { silu() } }
                 }
@@ -85,9 +85,9 @@ class ActivationDSLTest {
     }
 
     @Test
-    fun testYOLO8StyleActivationChain() {
-        // Simulate YOLO8-style network using SiLU as primary activation
-        val yoloModel = definition<FP32, Float> {
+    fun testSiLUActivationChain() {
+        // A network using SiLU as its primary activation
+        val siluModel = definition<FP32, Float> {
             network {
                 input(512)
                 
@@ -110,7 +110,7 @@ class ActivationDSLTest {
             }
         }
         
-        assertNotNull(yoloModel)
-        assertTrue(yoloModel.modules.size >= 4) // Input + 4 dense layers
+        assertNotNull(siluModel)
+        assertTrue(siluModel.modules.size >= 4) // Input + 4 dense layers
     }
 }

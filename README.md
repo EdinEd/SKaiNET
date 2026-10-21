@@ -243,7 +243,7 @@ Runnable examples:
 ### Neural Network DSL
 
 - **Sequential**: `nn { input(); dense(); relu(); dense() }`
-- **DAG / Graph**: arbitrary wiring with `dag { }` for ResNet, YOLO-style architectures
+- **DAG / Graph**: arbitrary wiring with `dag { }` for ResNet-style skip connections and multi-scale detector heads
 - Layers: Dense, Conv1d/2d/3d, MaxPool, AvgPool, BatchNorm, Dropout, LeakyReLU, ELU
 - KAN (Kolmogorov–Arnold Networks) layer (experimental)
 - Autograd engine with reverse-mode gradients, SGD and Adam/AdamW optimizers

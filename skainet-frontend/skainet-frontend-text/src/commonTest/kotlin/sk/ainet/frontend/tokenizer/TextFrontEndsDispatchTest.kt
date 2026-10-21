@@ -245,9 +245,9 @@ class TextFrontEndsDispatchTest {
 
     @Test
     fun `a view without text evidence resolves to null and resolveText names the registry`() {
-        val view = InMemoryCheckpointView(ModelFormat.ONNX, mapOf("architecture" to "yolo"))
+        val view = InMemoryCheckpointView(ModelFormat.ONNX, mapOf("architecture" to "resnet"))
         assertNull(TextFrontEnds.resolver().resolve(view).text)
         val ex = assertFailsWith<UnsupportedFrontEndException> { TextFrontEnds.resolver().resolveText(view) }
-        assertTrue("llama" in ex.message!! && "yolo" in ex.message!!, ex.message)
+        assertTrue("llama" in ex.message!! && "resnet" in ex.message!!, ex.message)
     }
 }

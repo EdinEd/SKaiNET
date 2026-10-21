@@ -11,13 +11,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Smoke-test a YOLOv8-like head expressed with the DAG DSL:
+ * Smoke-test a multi-scale detector-style head expressed with the DAG DSL:
  * stem conv -> downsample conv -> upsample -> 1x1 head conv, with multiple parameter/constant nodes.
  */
-class YoloStyleGraphDslTest {
+class MultiScaleHeadGraphDslTest {
 
     @Test
-    fun yoloish_head_graph_builds_and_validates() {
+    fun multi_scale_head_graph_builds_and_validates() {
         val program = dag {
             val input = input<FP32>("input", TensorSpec("input", listOf(1, 3, 640, 640), "FP32"))
 
@@ -35,7 +35,7 @@ class YoloStyleGraphDslTest {
             val bHead = constant<FP32, Float>("b_head") { shape(3) { zeros() } }
             val head = conv2d(up, wHead, bHead, stride = 1 to 1, padding = 0 to 0)
 
-            output(c2, head) // multi-scale outputs like YOLO heads
+            output(c2, head) // multi-scale outputs, one per feature level
         }
 
         val graph = program.toComputeGraph() as DefaultComputeGraph

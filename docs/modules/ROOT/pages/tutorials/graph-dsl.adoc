@@ -77,9 +77,9 @@ if (validation is ValidationResult.Valid) {
 }
 ----
 
-=== YOLO-style Example
+=== Multi-scale Head Example
 
-The Graph DSL is particularly useful for complex architectures like YOLO heads:
+The Graph DSL is particularly useful for complex architectures such as multi-scale detector heads:
 
 [source,kotlin]
 ----

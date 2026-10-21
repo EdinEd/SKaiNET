@@ -8,7 +8,7 @@ import sk.ainet.lang.types.DType
 /**
  * 2D upsampling layer for increasing spatial resolution.
  *
- * Supports nearest-neighbor mode (typical for YOLO necks). Bilinear can be wired
+ * Supports nearest-neighbor mode (typical for feature-pyramid necks). Bilinear can be wired
  * once backends add support.
  */
 public class Upsample2d<T : DType, V>(

@@ -194,7 +194,7 @@ public object OnnxWeightLoader {
 
     /**
      * Extract the most specific "model.X.Y.Z" pattern from a DSL module path.
-     * E.g., "Yolo8/model.22.cv2.0/model.22.cv2.0.0/Conv2d-0" -> "model.22.cv2.0.0"
+     * E.g., "Net/model.22.cv2.0/model.22.cv2.0.0/Conv2d-0" -> "model.22.cv2.0.0"
      *
      * Delegates to [WeightMapper.extractLayerNameFromPath].
      */

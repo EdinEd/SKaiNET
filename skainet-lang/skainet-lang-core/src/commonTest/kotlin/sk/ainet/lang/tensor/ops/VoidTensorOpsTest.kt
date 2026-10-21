@@ -574,7 +574,7 @@ class VoidTensorOpsTest {
         assertEquals(Shape(20, 1000), reshapeResult.shape)
     }
 
-    // Tests for new YOLO shape operations
+    // Tests for concat/split/upsample shape operations
     
     @Test
     fun testConcat_SameDimensions_Success() {
