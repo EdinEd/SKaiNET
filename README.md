@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.61.0"))
+    implementation(platform("sk.ainet:skainet-bom:0.62.0"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,26 +308,32 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.61.0
+## What's New in 0.62.0
 
-The browser lane (SKEEP-007): packed SIMD128 kernels, quantize-at-load, no reference-kernel
-fallbacks on wasm.
+JVM ↔ Kotlin/Wasm parity: the browser tier runs the same kernels as the JVM, keeps its activations
+in the sidecar, and reads models the way the JVM does — with every remaining difference documented.
 
-- **`skainet-backend-wasm-simd`** — the engine's own C kernels compiled by Emscripten into a
-  SIMD128 sidecar for wasmJs, with pthreads on cross-origin-isolated pages and under Node. One call,
-  `WasmSimd.install()`, registers the kernel pack and the provider and makes every context built
-  afterwards use them. Measured on Node: Laya's Q8_0 matmuls from 0.72 GFLOPS (scalar) to 8.5
-  single-threaded and 27 with four threads — a 22-layer decision from about 29 s to about 1.2 s.
-- **Quantize at load** — `WeightForm(RequantizeTo(Q8_0))` on the SafeTensors loaders (and every
-  encoding with a quantizer on the GGUF loader) turns dense F32/F16/BF16 weight matrices into packed
-  Q8_0 or Q4_0 at load; `PlannerProfile.quantizeDenseTo` lets a browser or phone profile ask for it;
-  `skainet-quantize` converts offline. Hugging Face checkpoints can be served packed on every target.
-- **The scalar lane is no longer the reference lane** — a canonical packed weight on a target without
-  a row-major kernel pack is relaid once into kernel feed order and served by the scalar packed
-  kernels; dense `[out, in]` weights are multiplied in place without a transpose copy; 16-bit
-  token tables are read row by row. `ByteArrayRandomAccessSource` is the engine's in-memory source.
-- The SKEEP-006 compatibility aliases, errors since 0.60, are removed as scheduled; `TokenizerFactory`
-  stays in `sk.ainet.io.tokenizer` for Java callers.
+- **Every kernel on the wasm tier** — explicit SIMD128 bodies for every matmul format (K-quants,
+  Q5_0/Q5_1, dense FP32/BF16/FP16), the ternary BitNet kernels, elementwise, activation and
+  reduction kernels, fused softmax, normalisation and banded attention, and convolutions as
+  im2col + GEMM, all threaded over the sidecar's row pool. Chains of ops stay resident in the
+  sidecar's linear memory (`Storage.OffHeap` in a browser) and come back to the Kotlin heap only when
+  something outside needs them.
+- **Both directions** — the JVM binds the same C kernels through FFM: the direct `x · Wᵀ` kernel
+  (no transposed weight copy), fused softmax, layer and RMS normalisation, and SDPA with
+  key lengths, windows and grouped-query heads. One C source per kernel serves every native build.
+- **Browser IO** — `Blob` sources address `Long` positions (shards over 2 GB), copy in bulk, and
+  serve blocking reads inside a Web Worker; sharded SafeTensors load from Blobs;
+  `PlannerProfile.BROWSER`; `MemoryProbe` reports the JavaScript heap, linear memory and the
+  sidecar's resident bytes; `skainet-data-source` resolves HTTP and Hugging Face URIs over `fetch`
+  on Kotlin/JS and Kotlin/Wasm.
+- **One benchmark table** — the `engine-*` scenarios of the JVM publish harness run with identical
+  shapes in `wasm-bench`, and the kernel support matrix names what each tier serves and why the
+  rest is N/A. The operator coverage matrix is generated from backend data, with StableHLO, backward
+  and NN-layer columns and a CI leg that rejects unmarked stubs.
+- **JVM decode allocation** — four fixes from the BitNet 2B4T profile: the ternary GEMV on the
+  shared row pool (+19 % decode), intrinsified Vector API elementwise paths, a dense `split` fast
+  path and bulk copies from mapped tensors.
 
 See [CHANGELOG.md](CHANGELOG.md) for full release notes, including every prior release.
 
@@ -352,6 +358,16 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.62.0)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the JVM ↔ wasm parity
+  series: SIMD128 bodies for every sidecar kernel, the ternary and direct `x · Wᵀ` kernels, resident
+  activations with the elementwise, fused and convolution kernels on both tiers, the browser IO
+  parity, `skainet-data-source` on JS and wasm, the operator coverage matrix, the BitNet decode
+  allocation fixes, and the release
+- **Edwin** ([@EdinEd](https://github.com/EdinEd)) — the `ClassificationSupport` helpers extracted
+  from `Accuracy`, preparing the precision, recall and F1 metrics (#1222)
 
 ### Contributors (0.61.0)
 
@@ -462,7 +478,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.61.0. MIT License},
+  note         = {Version 0.62.0. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```

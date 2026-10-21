@@ -2,7 +2,35 @@
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-21
+
+Headline: **JVM ↔ Kotlin/Wasm parity for compute and IO.** In 0.61 the SIMD128 sidecar served the
+packed matmuls only; everything else in a browser ran as single-threaded scalar Kotlin, and the IO
+layer had gaps the JVM does not have. This release gives the wasm tier every kernel the JVM has —
+explicit SIMD128 bodies for every matmul format, BF16/FP16, the ternary kernels, elementwise,
+activation and reduction kernels, fused softmax, normalisation and banded attention, convolutions as
+im2col + GEMM — keeps activations resident in the sidecar between ops, and closes the IO gaps:
+`Long` Blob sources with worker-side blocking reads, sharded SafeTensors from Blobs,
+`PlannerProfile.BROWSER`, a browser `MemoryProbe`, and `skainet-data-source` on Kotlin/JS and
+Kotlin/Wasm. Parity runs in both directions: the JVM gains the direct `x · Wᵀ` kernel and the fused
+softmax, normalisation and attention kernels through FFM, every new C kernel is one source for every
+native build, and the `engine-*` benchmarks run with identical shapes on both tiers. Every remaining
+difference between the tiers is a documented N/A with its reason (no file system, no `mmap`, no
+Kotlin threads, no ServiceLoader, 2 GB arrays) in `how-to/io-readers.adoc` and the kernel support
+matrix. On the JVM side, four allocation and threading fixes from the BitNet decode profile (#1357)
+land as well.
+
+Version note: every API addition is additive (`KernelProvider` accessors with `null` defaults,
+`FusedNormOps`, `TensorOps.convTranspose2d` with a throwing default, new constructors beside the
+old ones). `skainet-data-source` now publishes `-js` and `-wasm-js` variants; it has no native
+target yet. SKaiNET-transformers and the web samples follow on this release (`WasmSimd.install()`
+is still the one call that turns the browser tier on).
+
 ### Added
+
+- **Operator coverage matrix from real data** (#1370): `@NotImplemented` takes `reason` and `issue`, wins over `@InProgress` and over a detected override, and is read on methods of `@Backend` classes; the docs processor also runs in `skainet-backend-cpu`, so the cpu column of `ops-status-matrix.adoc` reflects the backend (66/67) instead of `—`. New *StableHLO* and *Backward* columns from jvmTest dumps of the converter registry and the tape's dispatch table, an *NN layers* table over every concrete `nn` `Module`, ❌ cells linking their tracking issue, notes rendered (they were always empty). Tracking parents: #1371 (`TransposedConv2d` / `convTranspose2d`), #1379 (`GroupNormalization` forward), #1384 (SDPA backward), #1389 (StableHLO converter coverage).
+- **`TensorOps.convTranspose2d`** (throwing default) so `TransposedConv2d.forward` has an op to call; `TransposedConv2d` and `GroupNormalization` carry `@NotImplemented` with their issues instead of a bare `NotImplementedError` / `TODO()`.
+- **`./gradlew checkUnmarkedStubs`** and the `stub-markers` CI leg: production code may not contain `NotImplementedError` / `TODO(` outside a marked declaration or `config/stub-allowlist.txt` (`path|count|issue`); the docs workflow regenerates the operator matrix and fails when the committed pages are stale.
 
 - **BF16 and FP16 matmul on the wasm tier**: `WasmKernelProvider` now binds the sidecar's `skainet_bf16_matmul` / `skainet_fp16_matmul` exports (`WasmBf16MatmulKernel`, `WasmFp16MatmulKernel`), so 16-bit dense weights no longer fall to the scalar kernels in a browser; a contiguous weight stays resident in the sidecar after its first call.
 - **`WasmSimd.features()` / `WasmKernels.features()`**: mode, SIMD128, threads, cross-origin isolation, logical cores and resident weight bytes — the wasm counterpart of the JVM provider banner. `WasmSimd.install()` prints one `[SKaiNET] Using SIMD128 sidecar kernels (…)` line like the JVM factory does.
@@ -29,6 +57,16 @@
 - **Convolutions on the wasm tier**: `conv1d` / `conv2d` / `conv3d` on dense FP32 run as im2col + GEMM in the SIMD128 sidecar (`WasmCpuOps`), with stride, padding, dilation and groups (depthwise included), the weight resident after its first call and the output resident — the JVM's im2col + Vector API path had no counterpart in a browser, where a convolution was the common per-element loop. The new shared C kernel `skainet_f32_conv` (`f32_conv.c`, in every native build) gathers the receptive fields patch-major, threaded over patches through the row pool, and multiplies them against the weight rows with the existing `skainet_fp32_matmul_wt` SIMD128 / NEON dot kernel. `engine-conv2d` joins `jvm-cpu-publish` and `wasm-bench`; the kernel support matrix's *Kernel packs* table gains the row.
 - **`skainet-data-source` on Kotlin/JS and Kotlin/Wasm** (was JVM-only): `WebDataSourceResolver` resolves HTTP(S) and Hugging Face URIs over the browser's `fetch` (`KtorRemoteDataSourceFetcher` on the Ktor JS engine, the same name and contract as the JVM's CIO fetcher) with the common cache policies, checksum verification and token handling; remote artifacts are cached in memory for the life of the resolver (`InMemoryDataSourceArtifactStore`, new in common code, also the store for tests), a `file:` URI resolves to bytes the page registered under that path (a file picker, a drop) and fails otherwise, and the token comes from the request or the resolver — a tab has no file system and no environment. `Sha256DataSourceChecksum` is a SHA-256 in common Kotlin, byte-identical to `MessageDigest` (tested), for targets without a synchronous platform digest.
 - **`wasm-bench` runs the `engine-*` scenarios** of the JVM publish harness (`engine-fp32-gemm`, `engine-kernel-matmul`, `engine-bf16-matmul`, `engine-q8-matmul`, `engine-q4-gemm`, `engine-ternary-f32-gemv`, `engine-elementwise-add`, `engine-reductions-sum/mean`) with identical shapes and metrics on every tier it measures, so the JVM and wasm numbers sit in one table.
+
+### Changed
+
+- **Ternary FP32 GEMV on the shared row pool** (#1359): the `BITNET_B1_58` projection drove the vendored kernel's own create-and-join threads on every call (about 210 per BitNet 2B4T decode step); the adapter now slices the rows over `skainet_run_rows`, the vendored file stays byte-identical, results are bit-identical. BitNet 2B4T decode on four Cortex-A78C cores: 1.90 → 2.26 tok/s.
+- **Elementwise Vector API paths are intrinsified** (#1360): the shared `binaryFloat` / `unaryFloat` helpers are `inline` (one monomorphic loop per op instead of a megamorphic lambda) and the species is a static final; the Vector API's Java fallback, 61 % of all allocation in the decode profile, is gone from the allocation sites. `relu` on 1 × 2560: 31 KB → 10.5 KB per call. Output unchanged.
+- **`split` on dense FP32** (#1361) copies contiguous runs instead of building every element through `get(*indices)` (two `IntArray` copies and a boxed value each); `RoPE.applyRoPESplitHalfFull` no longer shows in the decode allocation profile.
+- **`MmapFloatTensorData.copyToFloatArray()`** (#1362) is one bulk `FloatBuffer` read instead of a per-element walk; the mapped RMS-norm gains that `eagerFusedRmsNorm` copies every forward cost about 10 GB per 45 s of decode before.
+- 35 stale `@InProgress("cpu", …)` markers on implemented `DefaultCpuOps` methods and the placeholder `@InProgress("Metal", …)` in `VoidTensorOps` are removed (#1370).
+- Internal: the classification helpers of `Accuracy` (argmax, shape validation, target dispatch, sample traversal) live in `ClassificationSupport`, shared by the upcoming precision, recall and F1 metrics (#1429, #1222).
+- Toolchain: Kotlin 2.4.21, kotest 6.2.6, Gradle 9.8.1.
 
 ## [0.61.0] - 2026-10-16
 
