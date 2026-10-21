@@ -1,0 +1,349 @@
+= SKEEP-008: Precision and encoding conversion
+:description: SKaiNET proposal for the two ways a tensor's numeric form changes after it exists: a per-layer or per-stage dtype in the network DSL (mixed precision), and re-encoding stored weights between dense and packed formats (repackTo and an explicit, lossy requantizeTo).
+
+Status: Draft +
+Audience: SKaiNET maintainers and contributors; users of the network DSL; loader and kernel authors who consume `TensorEncoding` +
+Created: 2026-10-21 +
+Tracking issue: https://github.com/SKaiNET-developers/SKaiNET/issues/1433[#1433] +
+Origin: the stub inventory behind the operator coverage matrix (https://github.com/SKaiNET-developers/SKaiNET/pull/1370[#1370]). Six `TODO()` stubs in `NetworkBuilder.kt` (`dense<TLayer>()` ×2, `stage<TStage>()`, in both DSL implementations) and `TensorStorage.repackTo`, which throws for every encoding change, were left without a tracking issue because both change public API semantics.
+
+== Summary
+
+SKaiNET has two public entry points that promise to change a tensor's numeric form and do
+not work:
+
+* *Mixed precision in the DSL.* `NeuralNetworkDsl` declares `dense<TLayer>(…)` and
+  `stage<TStage>(…)`, so a network can run one layer or one block in another dtype. Every
+  implementation is `TODO()`. They cannot be implemented as declared: `TLayer` is a type
+  parameter of an interface method, which cannot be `reified`, so the implementation has no
+  `KClass` to build the layer's tensors with.
+* *Encoding change after load.* `TensorStorage.repackTo(targetEncoding)` returns `this` for the
+  same encoding and throws `UnsupportedOperationException` for every other one.
+
+This proposal replaces both with designs built on code SKaiNET already has:
+
+. The DSL takes the layer dtype as a *value* (`dense(64, dtype = FP16) { … }`,
+  `stage("encoder", dtype = BF16) { … }`). The DSL wraps the result in one small module,
+  `PrecisionBoundary`, which casts the input in and the output back with the existing
+  `TensorOps.convert`.
+. `repackTo` stays *lossless*: same values, different encoding (packed → dense, narrow dense
+  → wide dense). A new `requantizeTo` does the *lossy* direction through the existing
+  `Requantizers` registry, so a precision loss is always visible at the call site.
+. The unused scaffold (`MixedPrecisionModule`, `InternalMixedPrecisionModule`,
+  `MixedPrecisionTensorOps`) is deprecated and removed.
+
+== Motivation
+
+=== What the code does today
+
+[cols="2,3",options="header"]
+|===
+| Entry point | Behaviour
+
+| `NeuralNetworkDsl.dense<TLayer>(outputDimension, id, content)`
+| `TODO("Mixed-precision dense implementation needed")` in `NeuralNetworkDslImpl` and `StageImpl`
+
+| `NeuralNetworkDsl.dense<TLayer>(id, content)`
+| same
+
+| `NeuralNetworkDsl.stage<TStage>(id, content)`
+| `TODO("Mixed-precision stage implementation needed")`
+
+| `TensorStorage.repackTo(targetEncoding)`
+| `this` when the encoding is equal, otherwise `UnsupportedOperationException`
+
+| `MixedPrecisionModule`, `InternalMixedPrecisionModule`
+| abstract, no subclass anywhere. `forward` casts the output to the input type unchecked;
+  "same dtype?" is decided by searching `tensor.toString()` for the type name; the conversion
+  cache is commented out
+
+| `MixedPrecisionTensorOps<V>`
+| no implementation; re-declares `convert`, which `TensorOps` already has, and adds an
+  unimplemented `addMixed`
+|===
+
+No code in the repository calls the generic `dense`/`stage` overloads or `repackTo` outside
+the test that asserts it throws. The stubs are listed in `config/stub-allowlist.txt` so that
+`checkUnmarkedStubs` passes.
+
+=== What already works
+
+The pieces a working design needs are in place:
+
+* `TensorOps.convert(tensor, targetType)` is implemented on the CPU backend for FP32, FP16,
+  BF16, Int32 and Int8. Narrowing to FP16/BF16 rounds through the format's codec. It lowers
+  to StableHLO (the converter maps `convert`/`cast`), and `DtypeForwardPropagationPass`
+  already understands it.
+* `Requantizers` (`sk.ainet.lang.tensor.data`, SKEEP-007 §T2) quantizes dense FP32 values into
+  Q8_0, Q4_0 and BITNET_PLANES. Loaders use it for `EncodingRequest.RequantizeTo`.
+* Every packed `TensorData` implements `dequantizeBlock`, and
+  `TensorStorageFactory.toTensorData(storage)` bridges a storage descriptor to its data.
+* `DTypePolicy` and `DTypeConstraintResolutionPass` express a dtype requirement on a graph node.
+
+=== Why this needs a SKEEP
+
+Both changes alter public Kotlin API (`NeuralNetworkDsl` members, `TensorStorage`) and DSL
+semantics (what the dtype of a layer means, where a cast happens), and they define a
+compatibility rule for precision loss. Those are SKEEP triggers.
+
+== Goals
+
+* A network can run a layer or a stage in FP16 or BF16 inside an FP32 network, for inference,
+  on every backend that implements `convert`, and the same network traces and exports with the
+  casts visible.
+* Stored weights can change encoding after load: lossless where the values are preserved,
+  lossy only through a call whose name says so.
+* One quantizer registry: what `requantizeTo` accepts is exactly what a loader's
+  `EncodingRequest.RequantizeTo` accepts.
+* No API remains that is declared but cannot run.
+
+== Non-Goals
+
+* *Automatic mixed precision (AMP) for training*: FP32 master weights, loss scaling, autocast
+  policies. Phase 1 is inference. Phase 2 makes the boundary differentiable, which allows
+  training through it, but nothing more.
+* *Memory savings from narrow dtypes.* FP16/BF16 tensors are float-backed today (the values
+  are rounded, the storage is 4 bytes per element). Real 2-byte storage belongs to the storage
+  model (SKEEP-003), not here.
+* *Integer layers through the DSL.* A cast to Int8 truncates; it is not quantization. Integer
+  inference uses packed encodings (`requantizeTo`) and the quantized kernels.
+* *New quantizers.* Adding an encoding to `Requantizers` stays a DARC feature (one line plus a
+  quantizer), for example the K-quant family.
+
+== Proposed Design
+
+=== Part A: per-layer and per-stage dtype in the DSL
+
+==== The dtype is a value, not a type argument
+
+The generic overloads are replaced by overloads that take the target dtype as a parameter.
+DType singletons (`FP32`, `FP16`, `BF16`) are objects, so `dtype::class` gives the
+implementation the `KClass` it needs, and the type argument is inferred:
+
+[source,kotlin]
+----
+public interface NeuralNetworkDsl<T : DType, V> : NetworkDslItem {
+    // existing, unchanged
+    public fun dense(outputDimension: Int, id: String = "", content: DENSE<T, V>.() -> Unit = {})
+
+    /** A dense layer whose weights and computation use [dtype]; input and output stay [T]. */
+    public fun <TLayer : DType> dense(
+        outputDimension: Int,
+        dtype: TLayer,
+        id: String = "",
+        content: DENSE<TLayer, V>.() -> Unit = {},
+    )
+
+    /** A stage whose layers all use [dtype]; the stage's input and output stay [T]. */
+    public fun <TStage : DType> stage(
+        id: String,
+        dtype: TStage,
+        content: NeuralNetworkDsl<TStage, V>.() -> Unit,
+    )
+}
+----
+
+Usage:
+
+[source,kotlin]
+----
+val model = sequential<FP32, Float> {
+    input(784)
+    dense(256, dtype = BF16) { activation = { it.relu() } }   // one BF16 layer
+    stage("head", dtype = FP16) {                            // an FP16 block
+        dense(64) { activation = { it.relu() } }
+        dense(10)
+    }
+}
+----
+
+Like every other DSL member, the new overloads return `Unit` and append to the network. The
+old generic overloads return `Module<T, V>`, unlike their siblings; that inconsistency goes away.
+
+==== One boundary module
+
+Both overloads build their content with the existing `DenseImpl` / `StageImpl` for `TLayer`
+(passing `dtype::class`) and wrap the result:
+
+[source,kotlin]
+----
+public class PrecisionBoundary<TOuter : DType, TInner : DType, V>(
+    override val name: String,
+    private val inner: Module<TInner, V>,
+    private val innerType: TInner,
+    private val outerType: TOuter,
+) : Module<TOuter, V>() {
+    override fun forward(input: Tensor<TOuter, V>, ctx: ExecutionContext): Tensor<TOuter, V> =
+        withForwardHooks(ctx, this, input) {
+            val x = ctx.ops.convert(input, innerType)
+            ctx.ops.convert(inner.forward(x, ctx), outerType)
+        }
+}
+----
+
+`convert` already returns its input when the dtype matches, so a boundary between equal dtypes
+costs nothing. Two consecutive boundaries of the same inner dtype are a cast followed by its
+inverse; a later optimisation pass may fold them, and nothing in this design depends on that.
+
+Weights of a `TLayer` dense are created in `TLayer` by the existing initialisers. User-supplied
+weight tensors must already be `TLayer`; the DSL does not silently cast them.
+
+==== Tracing, export and autograd
+
+* *Tracing and export:* `convert` is a `TensorOps` call, so the generated tracing wrapper
+  (`KspTensorOps`) records it and
+  the StableHLO converter emits `stablehlo.convert` at each boundary. No new converter is needed.
+* *Autograd, phase 1:* `convert` is non-differentiable today, so gradients stop at a boundary
+  and the layers behind it do not train. Phase 1 states this in the KDoc of both overloads, and a
+  test pins it, so the restriction cannot be lifted by accident.
+* *Autograd, phase 2:* `convert` becomes `@Diff`. Its backward pass casts the upstream gradient
+  back to the source dtype. That lifts the phase 1 restriction.
+
+==== The old scaffold
+
+`MixedPrecisionModule`, `InternalMixedPrecisionModule` and `MixedPrecisionTensorOps` are
+deprecated in the release that ships `PrecisionBoundary` and removed in the next one. Nothing
+implements or subclasses them, and their observable behaviour (the `toString()` dtype check, the
+unchecked output cast) is not something to preserve.
+
+=== Part B: encoding change after load
+
+==== Lossless and lossy are different calls
+
+[source,kotlin]
+----
+public class TensorStorage {
+    /**
+     * Re-encode without changing the represented values. Supported: equal encoding (returns
+     * this), any packed encoding with a dequantizer -> Dense(4), Dense(2) -> Dense(4).
+     * Narrowing and quantization throw and name requantizeTo.
+     */
+    public fun repackTo(targetEncoding: TensorEncoding): TensorStorage
+    public fun repackTo(targetEncoding: TensorEncoding, resolver: BufferResolver): TensorStorage
+
+    /**
+     * Re-encode, accepting precision loss. Supported targets: Requantizers.supported.
+     * A packed source is dequantized to FP32 first.
+     */
+    public fun requantizeTo(targetEncoding: TensorEncoding): TensorStorage
+    public fun requantizeTo(targetEncoding: TensorEncoding, resolver: BufferResolver): TensorStorage
+}
+----
+
+The split follows the rule in xref:ROOT:explanation/dsl-principles.adoc[DSL principles]: a
+costly or lossy step is a visible, named call, never a side effect. `repackTo` keeps the name it
+has today and gains the cases that are pure re-encodings. Anything that rounds goes through
+`requantizeTo`.
+
+==== Behaviour
+
+* The result is owned host storage (`BufferHandle.Owned`, `MemoryDomain.HOST_HEAP`). Reading the
+  source follows `copyMaterialize`: `FileBacked` and `Aliased` buffers are read through the
+  resolver, and a device-resident buffer throws as it does today.
+* `logicalType`, shape and placement device are kept; `encoding`, buffer and byte size change.
+* `requantizeTo` validates up front, with the same message a loader gives:
+  `Requantizers.supports(target)` must be true, and the shape must block (for example the last
+  dimension a multiple of 32 for Q4_0).
+* Implementation: `TensorStorageFactory.toTensorData(this)`, dequantize block by block into a
+  `FloatArray` when the source is packed, then either wrap as dense or call
+  `Requantizers.quantize`, and turn the result back into storage through
+  `TensorStorageFactory`.
+
+==== Relation to `WeightForm`
+
+`EncodingRequest.RequantizeTo` / `DequantizeTo` in a loader's `WeightForm` stay the preferred way
+to get a weight into a target encoding: they convert while reading, without a second resident
+copy. `repackTo` / `requantizeTo` are for tensors that already exist: a weight loaded in one
+form and needed in another, a tensor produced at runtime, or a tool such as `skainet-tensor-tools
+quantize`. Both paths use `Requantizers`, so they accept the same set of encodings.
+
+== Compatibility and Migration
+
+* *Source:* code that calls `dense<FP16>(64) { … }` does not compile after the change. No such
+  call exists in this repository, and the call always threw at runtime. The new form is
+  `dense(64, dtype = FP16) { … }`.
+* *Binary:* the generic `dense`/`stage` members of `NeuralNetworkDsl` are removed. The release
+  that adds the new overloads marks the old ones `@Deprecated(level = ERROR)` with a
+  `ReplaceWith`; the next release removes them. A third-party implementation of
+  `NeuralNetworkDsl` must add the two new members. `apiDump` records both steps.
+* `MixedPrecisionModule`, `InternalMixedPrecisionModule`, `MixedPrecisionTensorOps`: deprecated
+  (`WARNING`), then removed one release later.
+* `repackTo`: calls that worked keep working (same encoding returns `this`). Calls that threw
+  either succeed (lossless cases) or throw with a message that names `requantizeTo`. The test
+  `repackTo_differentEncoding_throwsUnsupported` changes: Dense → Q4_K still throws, but now
+  points at `requantizeTo`.
+
+== Rollout Plan
+
+Each phase is a DARC feature with lane sub-issues, linked from the tracking issue.
+
+. *B1, encoding change:* lossless `repackTo` and `requantizeTo` on `TensorStorage`, round-trip
+  tests per supported encoding, and the `repackTo` KDoc. Independent of Part A.
+. *A1, DSL boundary:* `PrecisionBoundary`, the dtype-parameter overloads in both DSL
+  implementations, deprecation of the generic overloads, removal of the six `TODO()` stubs and
+  their `config/stub-allowlist.txt` entry. Inference only, as documented above.
+. *A2, export:* a test that a mixed-precision network traces with `convert` nodes and exports to
+  StableHLO with `stablehlo.convert` at each boundary.
+. *A3, autograd:* `convert` becomes `@Diff`, the inference-only note is removed, and a gradient check
+  runs through an FP16 boundary.
+. *A4, cleanup:* removal of the deprecated generic overloads and the old scaffold one release
+  after A1.
+. *Docs:* a "Mixed precision" section in the DSL docs, and `Status: Implemented` here in the PR
+  that ships A1 and B1.
+
+== Acceptance Criteria
+
+* `checkUnmarkedStubs` passes with the `NetworkBuilder.kt` entry removed from
+  `config/stub-allowlist.txt`.
+* An FP32 network with one BF16 `dense` and one FP16 `stage` runs on the CPU backend. Its output
+  matches an all-FP32 reference to the tolerance of the narrow format, and differs from it, which
+  proves the rounding happens.
+* The same network exports to StableHLO with one `stablehlo.convert` pair per boundary.
+* `repackTo(Dense(4))` from every packed encoding with a dequantizer reproduces the values that
+  `dequantizeBlock` gives, bit-exact.
+* `requantizeTo(Q8_0 | Q4_0 | BITNET_PLANES)` from dense FP32 gives data identical to what the
+  loader produces for `EncodingRequest.RequantizeTo` on the same values.
+* `requantizeTo` with an unsupported encoding or a shape that does not block fails before reading
+  the buffer, with the loader's message.
+* After A3: a gradient check through an FP16 boundary passes.
+
+== Risks
+
+* *Hidden cost per forward.* Every boundary copies its input and output. A network that switches
+  dtype often can be slower than all-FP32, especially while narrow dtypes are float-backed and
+  give no bandwidth benefit. The DSL docs must say so.
+* *Precision surprise.* BF16 keeps FP32's range with 8 bits of mantissa; FP16 overflows past
+  65504. The `convert` codecs handle overflow to infinity and NaN, but a model can still
+  silently degrade. Narrow layers are opt-in per call, never a network default.
+* *Overload resolution.* `dense(64, FP16)` and `dense(64, "id")` differ in the second parameter's
+  type, so resolution is unambiguous, but named arguments (`dtype = …`) are the documented form.
+* *Two conversion paths for weights.* `WeightForm` at load and `requantizeTo` after it could drift
+  apart. Sharing `Requantizers`, plus the parity criterion above, keeps them aligned.
+
+== Open Questions
+
+. Should a `reified` extension (`dense<FP16>(64)`) be offered as sugar over the value form? It
+  reads well, but extensions named like members interact badly with overload resolution and IDE
+  completion.
+. Should a stage boundary that ends in the same dtype as the next stage elide the cast pair at
+  DSL time, or leave that to a compile pass?
+. Is `TensorStorage` the right owner of `requantizeTo`, or should it be a free function in
+  `sk.ainet.lang.tensor.data` next to `Requantizers`, keeping `TensorStorage` a descriptor?
+. Does phase 2 need per-boundary `DTypePolicy` metadata, so that
+  `DTypeConstraintResolutionPass` can see and validate the boundaries in a compiled graph?
+
+== References
+
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/dsl/NetworkBuilder.kt`:
+  the generic overloads and their stubs
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/storage/TensorStorage.kt`:
+  `repackTo`
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/nn/MixedPrecisionModule.kt`,
+  `.../tensor/ops/MixedPrecisionTensorOps.kt`: the scaffold this proposal retires
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/tensor/data/Requantizers.kt`
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/memory/plan/WeightForm.kt`:
+  `EncodingRequest`
+* `skainet-lang/skainet-lang-core/src/commonMain/kotlin/sk/ainet/lang/types/DTypePolicy.kt`
+* xref:skeep:003-unified-tensor-storage.adoc[SKEEP-003: Unifying the tensor storage model]
+* xref:skeep:007-browser-lane.adoc[SKEEP-007: The browser lane] (§T2, quantize-at-load)
+* xref:ROOT:explanation/dsl-principles.adoc[DSL principles]
