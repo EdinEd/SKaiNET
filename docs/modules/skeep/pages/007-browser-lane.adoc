@@ -1,7 +1,7 @@
 = SKEEP-007: The browser lane — packed SIMD kernels and quantize-at-load
 :description: SKaiNET proposal for making inference in a browser usable and quick: stop the scalar wasm lane from falling to the decoding reference kernel, serve dense weights without transpose copies, keep token tables narrow, add a SIMD128 kernel pack with pthreads as a sidecar wasm module, and let the SafeTensors loader quantize at load so Hugging Face checkpoints are served packed on every target.
 
-Status: Implemented (Tiers 0, 1 and 2 in engine 0.61.0; resident activations with sidecar elementwise, activation and reduction kernels, then fused softmax / normalisation / attention kernels on the wasm and JVM tiers, then the browser IO gaps — `Long` Blob sources with bulk copies and worker-side blocking reads, sharded SafeTensors from Blobs, `PlannerProfile.BROWSER`, the browser `MemoryProbe` — and convolutions as im2col + GEMM in the sidecar, in the parity series that followed); the SKaiNET-transformers consumer and the WebGPU proposal remain open +
+Status: Implemented (Tiers 0, 1 and 2 in engine 0.61.0; resident activations with sidecar elementwise, activation and reduction kernels, then fused softmax / normalisation / attention kernels on the wasm and JVM tiers, then the browser IO gaps — `Long` Blob sources with bulk copies and worker-side blocking reads, sharded SafeTensors from Blobs, `PlannerProfile.BROWSER`, the browser `MemoryProbe` — and convolutions as im2col + GEMM in the sidecar, in the parity series that followed, engine 0.62.0); the SKaiNET-transformers consumer and the WebGPU proposal remain open +
 Implementation: Tier 0 https://github.com/SKaiNET-developers/SKaiNET/pull/1352[#1352], Tier 2 quantize-at-load https://github.com/SKaiNET-developers/SKaiNET/pull/1353[#1353], Tier 1 `skainet-backend-wasm-simd` https://github.com/SKaiNET-developers/SKaiNET/pull/1354[#1354] — engine 0.61.0; the consumer work in SKaiNET-transformers follows, see <<_rollout_plan>>. +
 Audience: SKaiNET maintainers and contributors; SKaiNET-transformers maintainers (Laya and BERT in the browser); SKaiNET-examples maintainers (every web sample runs through this lane) +
 Created: 2026-10-16 +
@@ -192,7 +192,8 @@ marked breaking only for implementors of `ParametersLoader`.
   `PlannerProfile.quantizeDenseTo`, the `skainet-quantize` tool in `skainet-tensor-tools`.
 . PR 2 (Tier 1): the sidecar build, `skainet-backend-wasm-simd`, `WasmCpuOps`, parity and bench.
 . PR 3 (Tier 1 follow-up): resident activations, banded attention, pthread tuning — scoped by PR 2's
-  measurements.
+  measurements. Shipped in engine 0.62.0 as the JVM ↔ wasm parity series
+  (https://github.com/SKaiNET-developers/SKaiNET/pull/1363[#1363], https://github.com/SKaiNET-developers/SKaiNET/pull/1364[#1364], https://github.com/SKaiNET-developers/SKaiNET/pull/1368[#1368], https://github.com/SKaiNET-developers/SKaiNET/pull/1369[#1369], https://github.com/SKaiNET-developers/SKaiNET/pull/1426[#1426], https://github.com/SKaiNET-developers/SKaiNET/pull/1427[#1427], https://github.com/SKaiNET-developers/SKaiNET/pull/1428[#1428], https://github.com/SKaiNET-developers/SKaiNET/pull/1430[#1430]).
 . Engine release; then SKaiNET-transformers: a common-code `LayaModelLoader` over a
   `RandomAccessSource`, a packed-aware `LayaWeightPreparation.splitRows`, a decision-quality gate
   for the quantized lane; then the SemanticEmojiFilter web verifier.
