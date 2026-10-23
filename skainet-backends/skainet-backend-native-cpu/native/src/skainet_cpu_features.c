@@ -34,3 +34,52 @@ int skainet_cpu_has_dotprod(void) {
 }
 
 #endif
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__wasm__)
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+
+int skainet_cpu_has_avx2_fma(void) {
+    /* Benign-race cache, as for the dotprod probe above. */
+    static int cached = -1;
+    if (cached < 0) {
+        int ok = 0;
+        int r[4];
+        __cpuid(r, 0);
+        if (r[0] >= 7) {
+            __cpuid(r, 1);
+            const int fma = (r[2] >> 12) & 1;
+            const int osxsave = (r[2] >> 27) & 1;
+            const int avx = (r[2] >> 28) & 1;
+            __cpuidex(r, 7, 0);
+            const int avx2 = (r[1] >> 5) & 1;
+            if (fma && osxsave && avx && avx2) {
+                /* XCR0 bits 1 (XMM) and 2 (YMM): the OS restores the upper halves. */
+                ok = (_xgetbv(0) & 0x6) == 0x6;
+            }
+        }
+        cached = ok;
+    }
+    return cached;
+}
+
+#else /* GCC / Clang: libgcc's probe also checks the OS XSAVE state. */
+
+int skainet_cpu_has_avx2_fma(void) {
+    static int cached = -1;
+    if (cached < 0) {
+        cached = __builtin_cpu_supports("avx2") && __builtin_cpu_supports("fma");
+    }
+    return cached;
+}
+
+#endif
+
+#else /* not x86-64 */
+
+int skainet_cpu_has_avx2_fma(void) {
+    return 0;
+}
+
+#endif

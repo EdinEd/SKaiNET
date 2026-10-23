@@ -499,9 +499,13 @@ SKAINET_API void skainet_ternary_lmhead_stage1(
  *   out[out_offset + i*n + o] = Σ_p in[in_offset + i*k + p] * w[w_offset + o*k + p]
  *
  * for i in [0, m), o in [0, n). No transposed copy of the weight is made; every
- * output is one contiguous dot product over the weight's own row, accumulated
- * in ascending p — bit-identical to transpose-then-GEMM. Threads over output
- * rows like the packed kernels. m, n, k <= 0 are no-ops (k == 0 zeroes out).
+ * output is one contiguous dot product over the weight's own row. Its
+ * accumulation order is fixed per build (portable loop, four-lane NEON/wasm
+ * sums, or the eight-lane AVX2/FMA tile that x86-64 hosts with AVX2 select at
+ * runtime) and never depends on the thread or row slice that computes it, so
+ * threaded, sliced and single calls are bit-identical to each other. Threads
+ * over output rows like the packed kernels. m, n, k <= 0 are no-ops (k == 0
+ * zeroes out).
  */
 SKAINET_API void skainet_fp32_matmul_wt(
     const float* in, int32_t in_offset,

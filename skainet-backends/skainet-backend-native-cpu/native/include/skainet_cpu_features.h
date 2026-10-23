@@ -14,4 +14,13 @@
  */
 int skainet_cpu_has_dotprod(void);
 
+/*
+ * Returns 1 if this x86-64 CPU and OS execute AVX2 and FMA (and the OS saves
+ * the YMM state). Cached after the first call; 0 on every other architecture.
+ * The shared library is built for baseline x86-64, so kernels that want these
+ * instructions compile the hot body a second time with the avx2+fma target
+ * and pick it per call through this probe (fp32_matmul_wt.c).
+ */
+int skainet_cpu_has_avx2_fma(void);
+
 #endif /* SKAINET_CPU_FEATURES_H */
