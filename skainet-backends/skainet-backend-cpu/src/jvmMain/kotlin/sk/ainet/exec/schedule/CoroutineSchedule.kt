@@ -53,13 +53,17 @@ public open class CoroutineSchedule @JvmOverloads constructor(
     private val executor: Executor = dispatcher.asExecutor()
 
     override fun forRange(n: Int, grain: Int, body: (start: Int, end: Int) -> Unit) {
-        val tasks = Schedule.tasksFor(n, grain, parallelism)
-        if (tasks == 0) return
-        if (tasks == 1 || inRegion.get() == true) {
+        val wanted = Schedule.tasksFor(n, grain, parallelism)
+        if (wanted == 0) return
+        if (wanted == 1 || inRegion.get() == true) {
             body(0, n)
             return
         }
-        val chunk = Schedule.chunkFor(n, tasks)
+        val chunk = Schedule.chunkFor(n, wanted)
+        // Rounding the chunk up can leave the last of `wanted` chunks past the end (63 rows on 12
+        // tasks: chunks of 6, the twelfth starts at 66); the contract promises non-empty ranges that
+        // cover [0, n), so the task count follows the chunk, never the other way round.
+        val tasks = (n + chunk - 1) / chunk
         val started = if (sink.isEnabled) TraceClock.nowNanos() else 0L
         val region = Region(n, chunk, tasks, body)
         inRegion.set(true)
