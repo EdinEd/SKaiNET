@@ -20,9 +20,12 @@ import sk.ainet.backend.api.kernel.Fp32MemSegMatmulWtKernel
  *
  * which the wasm sidecar has served since 0.61.0 and the JVM never bound: `DefaultCpuOpsJvm`
  * transposed every dense weight once into `[k, n]` for the GEMM kernels and cached the copy. The C
- * kernel computes every output as one contiguous dot product over the weight's own row (NEON or
- * auto-vectorised portable body, four rows per tile), threads over output rows through the shared
- * row pool, and accumulates in ascending `p` — bit-identical to transpose-then-GEMM.
+ * kernel computes every output as one contiguous dot product over the weight's own row (NEON, the
+ * portable body, or on x86-64 hosts with AVX2+FMA a runtime-selected eight-lane register tile that
+ * reads the weight once per call instead of once per activation row) and threads over output rows
+ * through the shared row pool. The accumulation order of an output is fixed per build and does not
+ * depend on the thread or row slice that computes it, so threaded, sliced and single calls agree
+ * bit for bit; against transpose-then-GEMM the result agrees to rounding.
  *
  * Two faces. The heap face ([Fp32MatmulWtKernel]) stages both operands off-heap per call, like
  * [NativeFp32MatmulKernel]; for a decode step that copy is the weight, so it is the slow one. The
