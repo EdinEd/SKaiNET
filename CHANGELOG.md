@@ -2,15 +2,28 @@
 
 ## [Unreleased]
 
+## [0.62.2] - 2026-10-24
+
+Headline: **the dense FP32 `x · Wᵀ` product on the JVM native lane uses every core and, on x86-64, AVX2/FMA**
+(#1441, #1442, see *Changed*). The kernel behind every resident dense weight ran on the compile-time C row pool
+(four threads) with an SSE2 loop that re-read the weight once per activation row. It now splits the weight's rows
+across the context `Schedule` (SKEEP-005) and, on hosts with AVX2 and FMA, runs an eight-lane register-tiled lane
+selected at runtime; threaded, sliced and single calls stay bit-identical to each other. Measured on a six-core
+laptop: a single 63 × 1024 × 1024 call goes from 29.6 to 131.7 GFLOP/s, and a ModernBERT-large encoder request in
+the LayaMoE example from 13.0 s to 6.4 s with unchanged answers. Also in this release: added-token matching in the
+text front-end is indexed by first character and length (#1443: Gemma's 6,400 added tokens, 2.0 ms → 36 µs per
+encode), `CoroutineSchedule.forRange` no longer hands a body an empty, inverted range, and the Gradle wrapper
+(9.8.2) and `kotlinx-serialization-json` (1.12.0) are bumped.
+
 ### Changed
 
+- **Dense FP32 `x · Wᵀ` on the JVM native lane runs under the context schedule** (`skainet-backend-cpu`, SKEEP-005): `DefaultCpuOpsJvm` used to hand the whole product to `skainet_fp32_matmul_wt` in one call and leave threading to the C row pool, which is sized at compile time (four threads) and re-reads the weight for every activation row, so an encoder or prefill pass on a twelve-core host ran on about three cores at the shared cache's bandwidth. A product with several activation rows now splits the weight's rows across the `Schedule` — up to `parallelism` native calls over disjoint column slices, each slice narrow enough for a core's own cache — so `DirectCpuExecutionContext()` (the hardware schedule) uses every core and `withSchedule(Schedule.Sequential)` runs the old single call. Results are bit-identical either way: every output stays the same contiguous dot product in the same order. A single-row product (a decode step) is unchanged, as is a weight in a confined arena, which stays on the calling thread.
 - **Dense FP32 `x · Wᵀ` uses AVX2/FMA on x86-64** (`skainet-backend-native-cpu`): `skainet_fp32_matmul_wt` had SIMD bodies for wasm and NEON only; the x86-64 library is built for baseline x86-64, so the kernel behind the JVM's resident dense weights (SKEEP-007) ran a scalar/SSE2 loop and re-read the weight once per activation row. Hosts with AVX2 and FMA now select, once per call through a cached `cpuid` probe, a lane compiled per function for that target: eight-lane FMA chains over a tile of four weight rows and two activation rows, so the weight streams from memory once per call. Every tile variant reduces an output in the same order, so threaded, sliced (`Schedule`) and single calls stay bit-identical to each other; against the previous x86 numbers an output moves within rounding, as the NEON and wasm lanes already do. Machines without AVX2, and every other architecture, run the previous code. Measured single call, m=63 n=1024 k=1024 on a 6-core laptop: see the pull request.
 
 ### Fixed
 
 - **Added-token matching no longer scans every added token at every position** (`skainet-frontend-text`, `AddedTokenMatcher` behind `SpecialTokenSplitter` and the inline matchers). Gemma's GGUF declares ~6,400 added tokens; a 70-character chat turn cost ~450k region compares per `encode`. Candidates are now indexed by first character and length (one map lookup per distinct length). Gemma-3 270M fine-tune vocab, JVM: 2.0 ms → 36 µs per chat-turn encode, ids unchanged; on a 32-bit ARM Android device the same encode took 36–166 ms.
 - **`CoroutineSchedule.forRange` could call its body with an empty, inverted range** (`skainet-backend-cpu`): the chunk length is rounded up, so for some `n` and task counts the last chunk started past `n` (63 elements on 12 tasks: chunks of 6, the twelfth at 66..63). The engine's own bodies loop over the range and did nothing for it; a body that passes the range length to a kernel saw a negative size. The task count now follows the chunk length, and every range is non-empty and covers `[0, n)` as the `Schedule` contract states.
-
 
 ## [0.62.1] - 2026-10-21
 
