@@ -6,6 +6,11 @@
 
 - **Dense FP32 `x · Wᵀ` uses AVX2/FMA on x86-64** (`skainet-backend-native-cpu`): `skainet_fp32_matmul_wt` had SIMD bodies for wasm and NEON only; the x86-64 library is built for baseline x86-64, so the kernel behind the JVM's resident dense weights (SKEEP-007) ran a scalar/SSE2 loop and re-read the weight once per activation row. Hosts with AVX2 and FMA now select, once per call through a cached `cpuid` probe, a lane compiled per function for that target: eight-lane FMA chains over a tile of four weight rows and two activation rows, so the weight streams from memory once per call. Every tile variant reduces an output in the same order, so threaded, sliced (`Schedule`) and single calls stay bit-identical to each other; against the previous x86 numbers an output moves within rounding, as the NEON and wasm lanes already do. Machines without AVX2, and every other architecture, run the previous code. Measured single call, m=63 n=1024 k=1024 on a 6-core laptop: see the pull request.
 
+### Fixed
+
+- **`CoroutineSchedule.forRange` could call its body with an empty, inverted range** (`skainet-backend-cpu`): the chunk length is rounded up, so for some `n` and task counts the last chunk started past `n` (63 elements on 12 tasks: chunks of 6, the twelfth at 66..63). The engine's own bodies loop over the range and did nothing for it; a body that passes the range length to a kernel saw a negative size. The task count now follows the chunk length, and every range is non-empty and covers `[0, n)` as the `Schedule` contract states.
+
+
 ## [0.62.1] - 2026-10-21
 
 Headline: **the native Q8_0 / Q4_0 / Q5_0 / Q5_1 kernel bindings no longer zero the earlier rows of a

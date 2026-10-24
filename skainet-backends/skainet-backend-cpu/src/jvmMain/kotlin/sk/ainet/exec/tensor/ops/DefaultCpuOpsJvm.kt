@@ -304,9 +304,20 @@ internal class DefaultCpuOpsJvm(
     /**
      * `x · Wᵀ` for a dense FP32 `[out, in]` weight through the native direct kernel — the JVM-side
      * half of SKEEP-007 §T0.2: no transposed copy of the weight is made, the weight is read where it
-     * lies (a segment-backed weight as is, a heap one after a single off-heap copy), and the C kernel
-     * threads over output rows. `null` when the kernel is not available or the operands are not
-     * dense FP32 the kernel can take, in which case the caller continues to the cached transpose.
+     * lies (a segment-backed weight as is, a heap one after a single off-heap copy). `null` when the
+     * kernel is not available or the operands are not dense FP32 the kernel can take, in which case
+     * the caller continues to the cached transpose.
+     *
+     * The output columns — the weight's rows — are the [schedule]'s units (SKEEP-005): a product with
+     * several activation rows (a prefill or encoder pass) runs as up to `parallelism` native calls,
+     * each over a disjoint slice of the weight's rows and all activation rows, into a private
+     * `[m, cols]` block copied into the result. The kernel reads its weight rows once per activation
+     * row, so a slice narrow enough for a core's own cache is what makes the pass scale; a slice is
+     * never wider than the kernel's own threading threshold, which keeps the C row pool out of a
+     * scheduled call. Every output element is the same contiguous dot product in the same `p` order
+     * whichever task computes it, so a scheduled run is bit-identical to a sequential one. A single
+     * row (a decode step) has nothing to amortise and goes to the kernel as one call, whose own pool
+     * threads over the columns.
      */
     @Suppress("UNCHECKED_CAST")
     private fun <T : DType, V> matmulDenseWeightTransposedNative(x: Tensor<T, V>, weight: Tensor<T, V>): Tensor<T, V>? {
@@ -319,7 +330,26 @@ internal class DefaultCpuOpsJvm(
         val activation = heapActivation(x) ?: return null
         val m = if (k == 0) 0 else x.shape.volume / k
         val out = FloatArray(m * n)
-        if (m > 0 && n > 0) kernel.matmulWt(activation.first, activation.second, resident.first, resident.second, out, 0, m, n, k)
+        if (m > 0 && n > 0) {
+            val (xArr, xOff) = activation
+            val (wSeg, wOff) = resident
+            val tasks = if (m >= 2 && m.toLong() * n >= PARALLEL_MATMUL_MIN_OUTPUT && isSharedSegment(wSeg)) {
+                sk.ainet.context.schedule.Schedule.tasksFor(n, WT_COLUMN_GRAIN, schedule.parallelism)
+            } else {
+                1
+            }
+            if (tasks <= 1) {
+                kernel.matmulWt(xArr, xOff, wSeg, wOff, out, 0, m, n, k)
+            } else {
+                val grain = maxOf(WT_COLUMN_GRAIN, (n + tasks - 1) / tasks)
+                schedule.forRange(n, grain) { o0, o1 ->
+                    val cols = o1 - o0
+                    val block = FloatArray(m * cols)
+                    kernel.matmulWt(xArr, xOff, wSeg, wOff + o0.toLong() * k * java.lang.Float.BYTES, block, 0, m, cols, k)
+                    for (i in 0 until m) System.arraycopy(block, i * cols, out, i * n + o0, cols)
+                }
+            }
+        }
         val outShape = if (x.rank == 1) Shape(n) else Shape(*(x.shape.dimensions.copyOf(x.rank - 1) + n))
         val outData = dataFactory.adoptFloatArray<T, Float>(outShape, x.dtype, out) as TensorData<T, V>
         return newTensor(outData, x.dtype, x, weight)
@@ -340,6 +370,13 @@ internal class DefaultCpuOpsJvm(
         }
         else -> null
     }
+
+    /**
+     * Whether [segment] may be read from a thread other than the current one — a shared, automatic
+     * or global arena. A confined segment (another caller's `Arena.ofConfined()`) is not, and a
+     * product over it stays on the calling thread. The probe thread is never started.
+     */
+    private fun isSharedSegment(segment: java.lang.foreign.MemorySegment): Boolean = segment.isAccessibleBy(SEGMENT_PROBE_THREAD)
 
     /** The weight's `floats` floats as an off-heap segment and byte offset: its own segment, or the resident copy of its heap array. */
     private fun residentDenseWeight(weight: Tensor<*, *>, floats: Long): Pair<java.lang.foreign.MemorySegment, Long>? {
@@ -1402,3 +1439,12 @@ internal class DefaultCpuOpsJvm(
         return CpuTensor(outData as TensorData<T, V>, this, tensor.dtype)
     }
 }
+
+/** A thread that never runs: the probe for [java.lang.foreign.MemorySegment.isAccessibleBy] (a confined segment answers `false` for it). */
+private val SEGMENT_PROBE_THREAD: Thread = Thread { }
+
+/**
+ * Fewest weight rows one scheduled `x · Wᵀ` task takes: four is the kernel's row tile, sixteen
+ * keeps the per-call staging (an activation copy, an arena) a rounding error beside the dot products.
+ */
+private const val WT_COLUMN_GRAIN: Int = 16
