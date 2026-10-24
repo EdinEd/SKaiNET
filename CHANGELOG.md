@@ -5,6 +5,11 @@
 ### Fixed
 
 - **Added-token matching no longer scans every added token at every position** (`skainet-frontend-text`, `AddedTokenMatcher` behind `SpecialTokenSplitter` and the inline matchers). Gemma's GGUF declares ~6,400 added tokens; a 70-character chat turn cost ~450k region compares per `encode`. Candidates are now indexed by first character and length (one map lookup per distinct length). Gemma-3 270M fine-tune vocab, JVM: 2.0 ms → 36 µs per chat-turn encode, ids unchanged; on a 32-bit ARM Android device the same encode took 36–166 ms.
+- **`CoroutineSchedule.forRange` could call its body with an empty, inverted range** (`skainet-backend-cpu`): the chunk length is rounded up, so for some `n` and task counts the last chunk started past `n` (63 elements on 12 tasks: chunks of 6, the twelfth at 66..63). The engine's own bodies loop over the range and did nothing for it; a body that passes the range length to a kernel saw a negative size. The task count now follows the chunk length, and every range is non-empty and covers `[0, n)` as the `Schedule` contract states.
+
+### Changed
+
+- **Dense FP32 `x · Wᵀ` on the JVM native lane runs under the context schedule** (`skainet-backend-cpu`, SKEEP-005): `DefaultCpuOpsJvm` used to hand the whole product to `skainet_fp32_matmul_wt` in one call and leave threading to the C row pool, which is sized at compile time (four threads) and re-reads the weight for every activation row, so an encoder or prefill pass on a twelve-core host ran on about three cores at the shared cache's bandwidth. A product with several activation rows now splits the weight's rows across the `Schedule` — up to `parallelism` native calls over disjoint column slices, each slice narrow enough for a core's own cache — so `DirectCpuExecutionContext()` (the hardware schedule) uses every core and `withSchedule(Schedule.Sequential)` runs the old single call. Results are bit-identical either way: every output stays the same contiguous dot product in the same order. A single-row product (a decode step) is unchanged, as is a weight in a confined arena, which stays on the calling thread.
 
 ## [0.62.1] - 2026-10-21
 
