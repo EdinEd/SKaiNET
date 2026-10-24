@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Added-token matching no longer scans every added token at every position** (`skainet-frontend-text`, `AddedTokenMatcher` behind `SpecialTokenSplitter` and the inline matchers). Gemma's GGUF declares ~6,400 added tokens; a 70-character chat turn cost ~450k region compares per `encode`. Candidates are now indexed by first character and length (one map lookup per distinct length). Gemma-3 270M fine-tune vocab, JVM: 2.0 ms → 36 µs per chat-turn encode, ids unchanged; on a 32-bit ARM Android device the same encode took 36–166 ms.
+
 ## [0.62.1] - 2026-10-21
 
 Headline: **the native Q8_0 / Q4_0 / Q5_0 / Q5_1 kernel bindings no longer zero the earlier rows of a

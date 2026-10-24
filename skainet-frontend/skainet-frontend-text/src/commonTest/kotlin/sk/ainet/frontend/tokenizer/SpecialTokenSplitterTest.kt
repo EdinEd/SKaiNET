@@ -84,6 +84,21 @@ class SpecialTokenSplitterTest {
     }
 
     @Test
+    fun `a rejected single_word match falls back to the next shorter token with the same first char`() {
+        val splitter = SpecialTokenSplitter(
+            CharBase,
+            listOf(
+                AddedToken(content = "word", id = 5, special = false, singleWord = true),
+                AddedToken(content = "wo", id = 6, special = false),
+                AddedToken(content = "wordy-long", id = 9, special = false),   // longer than what is left of the text
+            ),
+        )
+        // "word" inside "swordx" is not a whole word, so the shorter "wo" matches instead
+        assertContentEquals(intArrayOf('s'.code, 6, 'r'.code, 'd'.code, 'x'.code), splitter.encode("swordx"))
+        assertContentEquals(intArrayOf('a'.code, ' '.code, 5), splitter.encode("a word"))
+    }
+
+    @Test
     fun `consecutive specials emit no spurious base segments`() {
         val specials = mapOf("<a>" to 1, "<b>" to 2)
         val splitter = SpecialTokenSplitter(CharBase, specials)
