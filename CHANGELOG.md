@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`StreamingGGUFReader` parses the metadata through a buffered cursor** (`skainet-io-gguf`): the header, KV and tensor-info sections used one `RandomAccessSource.readAt` per value (a fresh byte array each, and on `JvmRandomAccessSource`/`AndroidRandomAccessSource` one `FileChannel` read each), plus a `Pair` and a boxed offset per array element. A tokenizer GGUF has arrays of ~262k strings, floats and ints, so that was over a million source calls. The reader now pulls the source in 64 KB blocks and decodes values from the block; the large arrays are decoded block by block straight into pre-sized lists. `fields` is unchanged: same keys and order, same value and element classes (`UInt` for UINT32, `Float` for FLOAT32, …), still plain lists. A truncated file or an array count larger than the file now fails with an `IllegalArgumentException` before allocating. Gemma-3 tokenizer GGUF (262k tokens), JVM: file source 1,002 → 21–45 ms, in-memory 55 → 21–34 ms; interpreter-only JVM (`-Xint`): file 13.9 s → 0.5 s, in-memory 1.4 → 0.5 s; on a 32-bit ARM Android device (debuggable app): file source 23.3 → 1.2 s, in-memory 2.0 → 1.15 s warm and 4.0–4.7 → 3.0 s on the first parse in a process.
+
 ## [0.62.2] - 2026-10-24
 
 Headline: **the dense FP32 `x · Wᵀ` product on the JVM native lane uses every core and, on x86-64, AVX2/FMA**

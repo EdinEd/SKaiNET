@@ -202,27 +202,23 @@ public class StreamingGGUFReader private constructor(
     // ========== Parsing Implementation ==========
 
     private fun parse() {
-        var offset = 0L
+        val cursor = GgufMetadataCursor(source)
 
         // 1. Verify magic number (4 bytes)
-        val magic = readUInt(offset)
+        val magic = cursor.uint()
         if (magic != GGUF_MAGIC) {
             throw IllegalArgumentException("Invalid GGUF magic: expected 0x${GGUF_MAGIC.toString(16)}, got 0x${magic.toString(16)}")
         }
-        offset += 4
 
         // 2. Read version (4 bytes)
-        version = readUInt(offset)
+        version = cursor.uint()
         if (version.toInt() !in READER_SUPPORTED_VERSIONS) {
             throw IllegalArgumentException("Unsupported GGUF version: $version (supported: $READER_SUPPORTED_VERSIONS)")
         }
-        offset += 4
 
         // 3. Read tensor count and KV count (8 + 8 bytes)
-        tensorCount = readULong(offset)
-        offset += 8
-        kvCount = readULong(offset)
-        offset += 8
+        tensorCount = cursor.ulong()
+        kvCount = cursor.ulong()
 
         // Store counts in fields for compatibility
         fields["GGUF.tensor_count"] = tensorCount
@@ -230,7 +226,7 @@ public class StreamingGGUFReader private constructor(
         fields["GGUF.version"] = version
 
         // 4. Parse KV metadata section
-        offset = parseKVSection(offset, kvCount.toInt())
+        parseKVSection(cursor, kvCount.toInt())
 
         // 5. Check for alignment override
         val alignmentValue = fields["general.alignment"]
@@ -241,9 +237,10 @@ public class StreamingGGUFReader private constructor(
         }
 
         // 6. Parse tensor info section
-        offset = parseTensorInfoSection(offset, tensorCount.toInt())
+        parseTensorInfoSection(cursor, tensorCount.toInt())
 
         // 7. Calculate data offset with alignment
+        var offset = cursor.position
         val padding = (offset % alignment).toInt()
         if (padding != 0) {
             offset += alignment - padding
@@ -256,27 +253,13 @@ public class StreamingGGUFReader private constructor(
         }
     }
 
-    private fun parseKVSection(startOffset: Long, count: Int): Long {
-        var offset = startOffset
-
+    private fun parseKVSection(cursor: GgufMetadataCursor, count: Int) {
         for (i in 0 until count) {
-            // Read key string
-            val keyLength = readULong(offset)
-            offset += 8
-            val keyBytes = source.readAt(offset, keyLength.toInt())
-            offset += keyLength.toLong()
-            val keyName = keyBytes.decodeToString()
-
-            // Read value type
-            val valueType = readUInt(offset).toInt()
-            offset += 4
-
+            val keyName = cursor.string()
+            val valueType = cursor.int()
             val gtype = GGUFValueType.entries.find { it.value == valueType }
-                ?: throw IllegalArgumentException("Unknown GGUFValueType: $valueType at offset ${offset - 4}")
-
-            // Read value
-            val (bytesConsumed, value) = readFieldValue(offset, gtype)
-            offset += bytesConsumed
+                ?: throw IllegalArgumentException("Unknown GGUFValueType: $valueType at offset ${cursor.position - 4}")
+            val value = readFieldValue(cursor, gtype)
 
             // Store in fields map
             if (fields.containsKey(keyName)) {
@@ -285,13 +268,9 @@ public class StreamingGGUFReader private constructor(
                 fields[keyName] = value
             }
         }
-
-        return offset
     }
 
-    private fun parseTensorInfoSection(startOffset: Long, count: Int): Long {
-        var offset = startOffset
-
+    private fun parseTensorInfoSection(cursor: GgufMetadataCursor, count: Int) {
         // First pass: collect all tensor info with relative offsets
         data class TensorParseInfo(
             val name: String,
@@ -300,30 +279,19 @@ public class StreamingGGUFReader private constructor(
             val ggmlType: GGMLQuantizationType,
             val relativeOffset: Long
         )
-        val parsedTensors = mutableListOf<TensorParseInfo>()
+        val parsedTensors = ArrayList<TensorParseInfo>(count)
 
         for (i in 0 until count) {
-            // Read tensor name
-            val nameLength = readULong(offset)
-            offset += 8
-            val nameBytes = source.readAt(offset, nameLength.toInt())
-            offset += nameLength.toLong()
-            val tensorName = nameBytes.decodeToString()
+            val tensorName = cursor.string()
 
-            // Read dimensions count (4 bytes)
-            val nDims = readUInt(offset).toInt()
-            offset += 4
-
-            // Read dimensions (8 bytes each)
-            val dims = mutableListOf<ULong>()
+            // Dimensions: count (4 bytes), then 8 bytes each
+            val nDims = cursor.uint().toInt()
+            val dims = ArrayList<ULong>(nDims)
             for (d in 0 until nDims) {
-                dims.add(readULong(offset))
-                offset += 8
+                dims.add(cursor.ulong())
             }
 
-            // Read tensor type (4 bytes)
-            val tensorTypeValue = readUInt(offset).toInt()
-            offset += 4
+            val tensorTypeValue = cursor.uint().toInt()
 
             // Use graceful fallback for unknown types
             val ggmlType = GGMLQuantizationType.fromValueOrUnknown(tensorTypeValue)
@@ -332,9 +300,7 @@ public class StreamingGGUFReader private constructor(
                 println("WARNING: Unknown GGML quantization type $tensorTypeValue for tensor '$tensorName'. Will treat as raw bytes.")
             }
 
-            // Read relative data offset (8 bytes)
-            val relativeDataOffset = readULong(offset)
-            offset += 8
+            val relativeDataOffset = cursor.ulong()
 
             parsedTensors.add(TensorParseInfo(
                 name = tensorName,
@@ -385,122 +351,64 @@ public class StreamingGGUFReader private constructor(
                 )
             )
         }
+    }
 
-        return offset
+    /** Read one field value at the cursor. */
+    private fun readFieldValue(cursor: GgufMetadataCursor, gtype: GGUFValueType): Any? = when (gtype) {
+        GGUFValueType.UINT8 -> cursor.byte().toUByte()
+        GGUFValueType.INT8 -> cursor.byte()
+        GGUFValueType.UINT16 -> cursor.short().toUShort()
+        GGUFValueType.INT16 -> cursor.short()
+        GGUFValueType.UINT32 -> cursor.uint()
+        GGUFValueType.INT32 -> cursor.int()
+        GGUFValueType.FLOAT32 -> Float.fromBits(cursor.int())
+        GGUFValueType.UINT64 -> cursor.ulong()
+        GGUFValueType.INT64 -> cursor.long()
+        GGUFValueType.FLOAT64 -> Double.fromBits(cursor.long())
+        GGUFValueType.BOOL -> cursor.byte() != 0.toByte()
+        GGUFValueType.STRING -> cursor.string()
+        GGUFValueType.ARRAY -> readArrayValue(cursor)
     }
 
     /**
-     * Read a field value and return (bytesConsumed, value).
+     * Read an array value into a pre-sized list with the same element types as a single value of that type.
+     * Elements are decoded in bulk from the cursor's block. The values are boxed here, once, into a
+     * plain [ArrayList]: consumers walk these lists several times (a tokenizer build reads tokens and token types three
+     * times), and on an interpreted runtime (a debuggable Android app) a lazily boxing view in this module cost more
+     * per access than the platform's compiled `ArrayList`.
      */
-    private fun readFieldValue(offset: Long, gtype: GGUFValueType): Pair<Long, Any?> {
-        return when (gtype) {
-            GGUFValueType.UINT8 -> 1L to source.readByteAt(offset).toUByte()
-            GGUFValueType.INT8 -> 1L to source.readByteAt(offset)
-            GGUFValueType.UINT16 -> 2L to readUShort(offset)
-            GGUFValueType.INT16 -> 2L to readShort(offset)
-            GGUFValueType.UINT32 -> 4L to readUInt(offset)
-            GGUFValueType.INT32 -> 4L to readInt(offset)
-            GGUFValueType.FLOAT32 -> 4L to readFloat(offset)
-            GGUFValueType.UINT64 -> 8L to readULong(offset)
-            GGUFValueType.INT64 -> 8L to readLong(offset)
-            GGUFValueType.FLOAT64 -> 8L to readDouble(offset)
-            GGUFValueType.BOOL -> 1L to (source.readByteAt(offset) != 0.toByte())
-            GGUFValueType.STRING -> {
-                val length = readULong(offset)
-                val bytes = source.readAt(offset + 8, length.toInt())
-                (8 + length.toLong()) to bytes.decodeToString()
-            }
-            GGUFValueType.ARRAY -> readArrayValue(offset)
-        }
-    }
-
-    /**
-     * Read an array value.
-     */
-    private fun readArrayValue(startOffset: Long): Pair<Long, List<Any?>> {
-        var offset = startOffset
-
-        // Read element type
-        val elementType = readUInt(offset).toInt()
-        offset += 4
-
-        // Read array length
-        val arrayLength = readULong(offset)
-        offset += 8
-
+    private fun readArrayValue(cursor: GgufMetadataCursor): List<Any?> {
+        val elementType = cursor.int()
+        val length = cursor.checkedLength(cursor.ulong(), "array")
         val gtype = GGUFValueType.entries.find { it.value == elementType }
             ?: throw IllegalArgumentException("Unknown array element type: $elementType")
-
-        val result = mutableListOf<Any?>()
-        for (i in 0 until arrayLength.toInt()) {
-            val (bytesConsumed, value) = readFieldValue(offset, gtype)
-            result.add(value)
-            offset += bytesConsumed
+        // Smallest encoding per element: a string is at least its 8-byte length, a nested array its 12-byte header.
+        val minBytes = when (gtype) {
+            GGUFValueType.UINT8, GGUFValueType.INT8, GGUFValueType.BOOL -> 1
+            GGUFValueType.UINT16, GGUFValueType.INT16 -> 2
+            GGUFValueType.UINT32, GGUFValueType.INT32, GGUFValueType.FLOAT32 -> 4
+            GGUFValueType.UINT64, GGUFValueType.INT64, GGUFValueType.FLOAT64, GGUFValueType.STRING -> 8
+            GGUFValueType.ARRAY -> 12
         }
+        cursor.checkFits(length, minBytes, "array")
 
-        return (offset - startOffset) to result
-    }
-
-    // ========== Primitive Reading Helpers ==========
-
-    private fun readUShort(position: Long): UShort {
-        val bytes = source.readAt(position, 2)
-        return ((bytes[0].toInt() and 0xFF) or
-                ((bytes[1].toInt() and 0xFF) shl 8)).toUShort()
-    }
-
-    private fun readShort(position: Long): Short {
-        val bytes = source.readAt(position, 2)
-        return ((bytes[0].toInt() and 0xFF) or
-                ((bytes[1].toInt() and 0xFF) shl 8)).toShort()
-    }
-
-    private fun readUInt(position: Long): UInt {
-        val bytes = source.readAt(position, 4)
-        return ((bytes[0].toInt() and 0xFF) or
-                ((bytes[1].toInt() and 0xFF) shl 8) or
-                ((bytes[2].toInt() and 0xFF) shl 16) or
-                ((bytes[3].toInt() and 0xFF) shl 24)).toUInt()
-    }
-
-    private fun readInt(position: Long): Int {
-        val bytes = source.readAt(position, 4)
-        return (bytes[0].toInt() and 0xFF) or
-                ((bytes[1].toInt() and 0xFF) shl 8) or
-                ((bytes[2].toInt() and 0xFF) shl 16) or
-                ((bytes[3].toInt() and 0xFF) shl 24)
-    }
-
-    private fun readFloat(position: Long): Float {
-        return Float.fromBits(readInt(position))
-    }
-
-    private fun readULong(position: Long): ULong {
-        val bytes = source.readAt(position, 8)
-        return ((bytes[0].toLong() and 0xFF) or
-                ((bytes[1].toLong() and 0xFF) shl 8) or
-                ((bytes[2].toLong() and 0xFF) shl 16) or
-                ((bytes[3].toLong() and 0xFF) shl 24) or
-                ((bytes[4].toLong() and 0xFF) shl 32) or
-                ((bytes[5].toLong() and 0xFF) shl 40) or
-                ((bytes[6].toLong() and 0xFF) shl 48) or
-                ((bytes[7].toLong() and 0xFF) shl 56)).toULong()
-    }
-
-    private fun readLong(position: Long): Long {
-        val bytes = source.readAt(position, 8)
-        return (bytes[0].toLong() and 0xFF) or
-                ((bytes[1].toLong() and 0xFF) shl 8) or
-                ((bytes[2].toLong() and 0xFF) shl 16) or
-                ((bytes[3].toLong() and 0xFF) shl 24) or
-                ((bytes[4].toLong() and 0xFF) shl 32) or
-                ((bytes[5].toLong() and 0xFF) shl 40) or
-                ((bytes[6].toLong() and 0xFF) shl 48) or
-                ((bytes[7].toLong() and 0xFF) shl 56)
-    }
-
-    private fun readDouble(position: Long): Double {
-        return Double.fromBits(readLong(position))
+        val out = ArrayList<Any?>(length)
+        when (gtype) {
+            GGUFValueType.UINT8 -> for (v in cursor.bytes(length)) out.add(v.toUByte())
+            GGUFValueType.INT8 -> for (v in cursor.bytes(length)) out.add(v)
+            GGUFValueType.BOOL -> for (v in cursor.bytes(length)) out.add(v != 0.toByte())
+            GGUFValueType.UINT16 -> for (v in cursor.shorts(length)) out.add(v.toUShort())
+            GGUFValueType.INT16 -> for (v in cursor.shorts(length)) out.add(v)
+            GGUFValueType.UINT32 -> cursor.int32s(length, GgufMetadataCursor.UINT32, out)
+            GGUFValueType.INT32 -> cursor.int32s(length, GgufMetadataCursor.INT32, out)
+            GGUFValueType.FLOAT32 -> cursor.int32s(length, GgufMetadataCursor.FLOAT32, out)
+            GGUFValueType.UINT64 -> for (v in cursor.longs(length)) out.add(v.toULong())
+            GGUFValueType.INT64 -> for (v in cursor.longs(length)) out.add(v)
+            GGUFValueType.FLOAT64 -> for (v in cursor.longs(length)) out.add(Double.fromBits(v))
+            GGUFValueType.STRING -> cursor.strings(length, out)
+            GGUFValueType.ARRAY -> repeat(length) { out.add(readArrayValue(cursor)) }
+        }
+        return out
     }
 
     // ========== Closeable ==========
