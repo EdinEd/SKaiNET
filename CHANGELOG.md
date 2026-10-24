@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- **Added-token matching no longer scans every added token at every position** (`skainet-frontend-text`, `AddedTokenMatcher` behind `SpecialTokenSplitter` and the inline matchers). Gemma's GGUF declares ~6,400 added tokens; a 70-character chat turn cost ~450k region compares per `encode`. Candidates are now indexed by first character and length (one map lookup per distinct length). Gemma-3 270M fine-tune vocab, JVM: 2.0 ms → 36 µs per chat-turn encode, ids unchanged; on a 32-bit ARM Android device the same encode took 36–166 ms.
 - **`CoroutineSchedule.forRange` could call its body with an empty, inverted range** (`skainet-backend-cpu`): the chunk length is rounded up, so for some `n` and task counts the last chunk started past `n` (63 elements on 12 tasks: chunks of 6, the twelfth at 66..63). The engine's own bodies loop over the range and did nothing for it; a body that passes the range length to a kernel saw a negative size. The task count now follows the chunk length, and every range is non-empty and covers `[0, n)` as the `Schedule` contract states.
 
 

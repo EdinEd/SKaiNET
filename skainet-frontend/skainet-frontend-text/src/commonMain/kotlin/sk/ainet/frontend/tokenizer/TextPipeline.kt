@@ -37,9 +37,16 @@ public interface RunDecoder {
  */
 internal class AddedTokenMatcher(tokens: Collection<AddedToken>) {
     private val byContent: Map<String, AddedToken> = tokens.filter { it.content.isNotEmpty() }.associateBy { it.content }
-    private val byLengthDesc: List<String> = byContent.keys.sortedByDescending { it.length }
+    /**
+     * The distinct lengths of the added tokens per first character, longest first. Only a token starting with
+     * `text[from]` can match at `from`, and at most one per length, so a position costs one map lookup per
+     * length. Gemma's GGUF declares ~6,400 added tokens; comparing each of them at every position cost ~450k
+     * region compares for a 70-character chat turn.
+     */
+    private val lengthsByFirstChar: Map<Char, IntArray> =
+        byContent.keys.groupBy { it[0] }.mapValues { (_, c) -> c.map { it.length }.distinct().sortedDescending().toIntArray() }
 
-    val isEmpty: Boolean get() = byLengthDesc.isEmpty()
+    val isEmpty: Boolean get() = byContent.isEmpty()
     val ids: Set<Int> = byContent.values.map { it.id }.toSet()
     val specialIds: Set<Int> = byContent.values.filter { it.special }.map { it.id }.toSet()
     val idToContent: Map<Int, String> = byContent.values.associate { it.id to it.content }
@@ -64,12 +71,12 @@ internal class AddedTokenMatcher(tokens: Collection<AddedToken>) {
     }
 
     private fun matchAt(text: String, from: Int): AddedToken? {
-        for (content in byLengthDesc) {
-            if (!text.regionMatches(from, content, 0, content.length)) continue
-            val tok = byContent.getValue(content)
+        for (length in lengthsByFirstChar[text[from]] ?: return null) {
+            if (from + length > text.length) continue
+            val tok = byContent[text.substring(from, from + length)] ?: continue
             if (tok.singleWord) {
                 val before = if (from > 0) text[from - 1] else ' '
-                val afterIdx = from + content.length
+                val afterIdx = from + length
                 val after = if (afterIdx < text.length) text[afterIdx] else ' '
                 if (before.isLetterOrDigit() || after.isLetterOrDigit()) continue
             }
