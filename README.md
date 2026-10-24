@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.62.1"))
+    implementation(platform("sk.ainet:skainet-bom:0.62.2"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,7 +308,18 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.62.1
+## What's New in 0.62.2
+
+A performance release for the JVM native lane. The dense FP32 `x · Wᵀ` kernel — what every resident dense
+weight resolves to once `skainet-backend-native-cpu` is on the classpath — now splits its work across the
+context `Schedule` (SKEEP-005) instead of a fixed four-thread C pool, and on x86-64 hosts with AVX2 and FMA
+runs a runtime-selected eight-lane register-tiled lane; threaded, sliced and single calls stay bit-identical.
+A single 63 × 1024 × 1024 call goes from 29.6 to 131.7 GFLOP/s on a six-core laptop, and a ModernBERT-large
+encoder request in the LayaMoE example from 13.0 s to 6.4 s with unchanged answers. The text front-end
+indexes added tokens by first character and length, so a Gemma chat turn encodes in 36 µs instead of 2.0 ms.
+`CoroutineSchedule.forRange` never hands a body an empty range any more.
+
+### Carried from 0.62.1
 
 A fix release on top of 0.62.0: the native FFM bindings of the Q8_0, Q4_0, Q5_0 and Q5_1 kernels
 copied a zero-filled staging buffer back from index 0, so a product served row by row — any
@@ -369,6 +380,12 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.62.2)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the schedule-driven and AVX2/FMA
+  dense FP32 lanes with their tests and measurements, the `CoroutineSchedule` fix, the added-token index, and
+  the release
 
 ### Contributors (0.62.1)
 
@@ -495,7 +512,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.62.1. MIT License},
+  note         = {Version 0.62.2. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
