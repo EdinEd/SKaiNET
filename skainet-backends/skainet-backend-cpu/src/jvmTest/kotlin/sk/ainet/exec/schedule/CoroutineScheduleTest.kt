@@ -26,6 +26,7 @@ class CoroutineScheduleTest {
         val tasks = AtomicInteger()
         schedule.forRange(n, grain) { s, e ->
             tasks.incrementAndGet()
+            assertTrue(s < e, "range [$s, $e) must be non-empty")
             synchronized(seen) {
                 for (i in s until e) {
                     assertTrue(!seen[i], "index $i visited twice")
@@ -36,16 +37,39 @@ class CoroutineScheduleTest {
         return seen to tasks.get()
     }
 
+    /** Ranges a schedule of [parallelism] cuts [n] elements at [grain] into: the chunk is rounded up, the count follows it. */
+    private fun expectedTasks(n: Int, grain: Int, parallelism: Int): Int {
+        val wanted = Schedule.tasksFor(n, grain, parallelism)
+        if (wanted == 0) return 0
+        val chunk = Schedule.chunkFor(n, wanted)
+        return (n + chunk - 1) / chunk
+    }
+
     @Test
     fun everyIndexIsVisitedExactlyOnceForAnyShape() {
-        val schedule = CoroutineSchedule(parallelism = 4)
-        for (n in listOf(0, 1, 7, 255, 1000, 4097)) {
-            for (grain in listOf(1, 17, 10_000)) {
-                val (seen, tasks) = coverage(schedule, n, grain)
-                assertEquals(n, seen.cardinality(), "n=$n grain=$grain")
-                assertEquals(Schedule.tasksFor(n, grain, 4), tasks, "n=$n grain=$grain task count")
+        for (parallelism in listOf(4, 12)) {
+            val schedule = CoroutineSchedule(parallelism = parallelism)
+            for (n in listOf(0, 1, 5, 7, 63, 255, 1000, 4097)) {
+                for (grain in listOf(1, 17, 10_000)) {
+                    val (seen, tasks) = coverage(schedule, n, grain)
+                    assertEquals(n, seen.cardinality(), "n=$n grain=$grain parallelism=$parallelism")
+                    assertEquals(expectedTasks(n, grain, parallelism), tasks, "n=$n grain=$grain parallelism=$parallelism task count")
+                }
             }
         }
+    }
+
+    @Test
+    fun aRoundedUpChunkNeverYieldsAnEmptyTrailingRange() {
+        // 63 on 12 tasks: chunks of 6 — eleven of them cover [0, 63), a twelfth would start at 66.
+        val ranges = mutableListOf<Pair<Int, Int>>()
+        CoroutineSchedule(parallelism = 12).forRange(63) { s, e -> synchronized(ranges) { ranges += s to e } }
+        assertEquals(11, ranges.size)
+        assertTrue(ranges.all { (s, e) -> s < e && e <= 63 })
+        // 5 on 4 tasks: chunks of 2 — three ranges, not four.
+        val small = mutableListOf<Pair<Int, Int>>()
+        CoroutineSchedule(parallelism = 4).forRange(5) { s, e -> synchronized(small) { small += s to e } }
+        assertEquals(setOf(0 to 2, 2 to 4, 4 to 5), small.toSet())
     }
 
     @Test
