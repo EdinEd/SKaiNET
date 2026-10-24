@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Dense FP32 SGEMM uses AVX2/FMA on x86-64** (`skainet-backend-native-cpu`): `skainet_fp32_matmul`, the kernel behind every `A · B` product the JVM hands to the native lane (a weight stored `[in, out]`, attention scores and values, training), had register-tiled bodies for wasm SIMD128 only; the x86-64 library is built for baseline x86-64, so the kernel ran a scalar/SSE2 outer-product loop without FMA that loaded and stored a row of C for every row of A. Hosts with AVX2 and FMA now select, through the cached `cpuid` probe the `x · Wᵀ` kernel introduced, a lane compiled per function for that target: a 6 × 16 tile of C in twelve eight-lane FMA accumulators over a 256-deep k-block, each sixteen-column panel of B packed once so a power-of-two `n` no longer maps every row of the panel to one L1 set, 2 × 16 and 1 × 16 tiles for the rows left over and a lane-masked stripe for the columns left over. Every output takes one fused multiply-add per `p` in ascending `p` whichever tile holds it, so sliced, threaded and whole calls stay bit-identical to each other; against the previous x86 numbers an output moves within rounding, as the NEON and wasm lanes already do. Machines without AVX2, and every other architecture, run the previous code. Measured single call on a six-core laptop, develop → this change: 63 × 1024 × 1024 21 → 281 GFLOP/s, 1024³ 48 → 311, 512³ 59 → 358, 192 × 192 × 64 (one thread) 18 → 99.
+
+### Fixed
+
+- **`NativeFp32MatmulKernel` no longer zeroes the rest of a sub-block caller's output buffer** (`skainet-backend-native-cpu`): the heap face of `skainet_fp32_matmul` stages C off-heap and copied the whole staged reach back, so an `out` with an offset or a stride wider than `n` — the sub-block case the `Fp32MatmulKernel` strides exist for — had everything before the offset and the padding between its rows overwritten with zeros. Only the `m × n` block is copied back now.
+
 ## [0.62.2] - 2026-10-24
 
 Headline: **the dense FP32 `x · Wᵀ` product on the JVM native lane uses every core and, on x86-64, AVX2/FMA**
