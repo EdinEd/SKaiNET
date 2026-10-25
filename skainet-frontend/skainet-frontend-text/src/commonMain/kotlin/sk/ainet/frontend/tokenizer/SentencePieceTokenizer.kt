@@ -34,29 +34,38 @@ import sk.ainet.frontend.text.Vocabulary
  * For `tokenizer.json` files with `model.type == "Unigram"` the reference algorithm is the
  * Viterbi lattice of [UnigramTokenizer]; [fromTokenizerJson] is kept for source compatibility.
  */
-public class SentencePieceTokenizer(
+public class SentencePieceTokenizer internal constructor(
     tokens: List<String>,
-    scores: List<Float>,
-    public val unknownTokenId: Int? = null,
-    bosTokenId: Int? = null,
-    eosTokenId: Int? = null,
-    public val addSpacePrefix: Boolean = true,
-    policy: SpecialTokens? = null,
-    source: String? = null,
+    private val idToScore: FloatArray,
+    public val unknownTokenId: Int?,
+    bosTokenId: Int?,
+    eosTokenId: Int?,
+    public val addSpacePrefix: Boolean,
+    policy: SpecialTokens?,
+    source: String?,
 ) : Tokenizer, RunDecoder {
 
+    public constructor(
+        tokens: List<String>,
+        scores: List<Float>,
+        unknownTokenId: Int? = null,
+        bosTokenId: Int? = null,
+        eosTokenId: Int? = null,
+        addSpacePrefix: Boolean = true,
+        policy: SpecialTokens? = null,
+        source: String? = null,
+    ) : this(tokens, scores.toFloatArray(), unknownTokenId, bosTokenId, eosTokenId, addSpacePrefix, policy, source)
+
     private val pieces: ArrayVocabulary
-    private val idToScore: FloatArray
 
     /** `byteTokenIds[b]` = vocab id of `<0xBB>`, or `-1` if absent. */
     private val byteTokenIds: IntArray
 
     init {
-        require(tokens.size == scores.size) {
-            "tokens (${tokens.size}) and scores (${scores.size}) must have the same length"
+        require(tokens.size == idToScore.size) {
+            "tokens (${tokens.size}) and scores (${idToScore.size}) must have the same length"
         }
         pieces = ArrayVocabulary(tokens)
-        idToScore = FloatArray(scores.size) { scores[it] }
         byteTokenIds = IntArray(256) { b -> pieces.tokenToId(byteTokenString(b)) ?: -1 }
     }
 
@@ -241,23 +250,32 @@ public class SentencePieceTokenizer(
          */
         public fun fromGgufFields(fields: Map<String, Any?>): SentencePieceTokenizer {
             val tokens = GgufTokenizerFields.tokens(fields)
-            val scores = (fields[GgufTokenizerFields.SCORES] as? List<*>)
-                ?.mapNotNull { (it as? Number)?.toFloat() }
+            val types = GgufTokenizerFields.tokenTypeIds(fields)
+            return fromGgufFields(fields, tokens, types, GgufTokenizerFields.specialTokenMap(tokens, types))
+        }
+
+        /** As [fromGgufFields] with the tokens, token types and special tokens already taken from [fields]. */
+        internal fun fromGgufFields(
+            fields: Map<String, Any?>,
+            tokens: List<String>,
+            types: IntArray?,
+            specials: Map<String, Int>,
+        ): SentencePieceTokenizer {
+            val scores = GgufTokenizerFields.scores(fields)
                 ?: error("${GgufTokenizerFields.SCORES} missing — required for SentencePiece")
             require(tokens.size == scores.size) { "GGUF tokens (${tokens.size}) and scores (${scores.size}) disagree" }
 
             var unknownId = fields[GgufTokenizerFields.UNK]?.toIntFlexible()
             if (unknownId == null) {
-                val idx = GgufTokenizerFields.tokenTypes(fields)?.indexOf(GgufTokenizerFields.TOKEN_TYPE_UNKNOWN) ?: -1
+                val idx = types?.indexOf(GgufTokenizerFields.TOKEN_TYPE_UNKNOWN) ?: -1
                 if (idx >= 0) unknownId = idx
             }
             val addSpacePrefix = fields[GgufTokenizerFields.ADD_SPACE_PREFIX].toBooleanFlexible(default = true)
-            val specials = GgufTokenizerFields.specialTokenMap(fields)
             val policy = GgufTokenizerFields.specialTokens(fields, specials.values.toSet()).let { if (it.unk == null) it.copy(unk = unknownId) else it }
 
             return SentencePieceTokenizer(
                 tokens = tokens,
-                scores = scores,
+                idToScore = scores,
                 unknownTokenId = unknownId,
                 bosTokenId = policy.bos,
                 eosTokenId = policy.eos,

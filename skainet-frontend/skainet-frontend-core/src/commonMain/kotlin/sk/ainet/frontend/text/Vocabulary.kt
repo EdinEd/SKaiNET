@@ -19,8 +19,9 @@ public interface Vocabulary {
 public class ArrayVocabulary(pieces: List<String>) : Vocabulary {
     private val idToPiece: Array<String> = pieces.toTypedArray()
     private val pieceToId: Map<String, Int> = HashMap<String, Int>(pieces.size * 2).also { m ->
-        // first occurrence wins, matching how llama.cpp and `tokenizers` build their maps
-        for (i in idToPiece.indices) if (idToPiece[i] !in m) m[idToPiece[i]] = i
+        // first occurrence wins, matching how llama.cpp and `tokenizers` build their maps: inserting from the last id
+        // down, the lowest id of a duplicated piece is written last, at one map operation per piece
+        for (i in idToPiece.indices.reversed()) m[idToPiece[i]] = i
     }
 
     override val size: Int get() = idToPiece.size
