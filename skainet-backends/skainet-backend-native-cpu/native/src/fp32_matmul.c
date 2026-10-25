@@ -1,6 +1,7 @@
 #include "skainet_kernels.h"
 #include "skainet_simd.h"
 #include "skainet_row_threads.h"
+#include "skainet_cpu_features.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -30,6 +31,21 @@
  * in C between k-blocks — so the result is bit-identical to the portable
  * body (SIMD128 has no fused multiply-add; the portable body is compiled
  * without FMA contraction on that target too).
+ *
+ * x86-64 body: the shared library is built without -march (it has to run on
+ * any x86-64), so the portable loop above is SSE2 code without FMA. Hosts
+ * with AVX2+FMA take skainet_fp32_block_avx2 — compiled per function with
+ * the avx2+fma target (MSVC emits VEX intrinsics without /arch) and selected
+ * once per call by the cached cpuid probe in skainet_cpu_features.h, the
+ * dispatch the x·Wᵀ kernel and the Apple arm64 dotprod kernels use. It is
+ * the SIMD128 micro-kernel grown to the register file: a 6-row × 16-column
+ * tile of C in twelve __m256 accumulators (two B loads and six broadcasts
+ * feed twelve FMAs per p), the same 256-deep k-blocking, 2×16 and 1×16
+ * tiles for the rows left under six and a lane-masked 1×w tile for the
+ * columns left under sixteen. Every C element takes one fused
+ * multiply-add per p in ascending p whichever tile holds it, so a split,
+ * threaded or single call gives the same bits — the AVX2 lane differs from
+ * the portable x86 lane (mul then add) the way NEON already does.
  *
  * Threading (#1195 pattern, skainet_row_threads.h): the output is split over
  * the longer of its two sides — rows of C when m ≥ n, columns otherwise —
@@ -175,6 +191,234 @@ static void skainet_fp32_block(const skainet_fp32_gemm_ctx* c, int32_t i0, int32
 
 #endif
 
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__wasm__)
+#define SKAINET_FP32_GEMM_AVX2 1
+#include <immintrin.h>
+#if defined(__GNUC__) || defined(__clang__)
+#  define SKAINET_AVX2_TARGET __attribute__((target("avx2,fma")))
+#else
+#  define SKAINET_AVX2_TARGET
+#endif
+
+#define SKAINET_FP32_AVX2_K_BLOCK 256
+
+/*
+ * The tiles below take their operands as plain pointers: `a` is the first of
+ * the tile's rows of A (a_stride apart), `b_row` is row p0 of a 16-column
+ * panel of B (b_stride apart — the packed copy, or B itself), `c0` the first
+ * of the tile's rows of C (c_stride apart — C itself, or the 16-wide stripe
+ * the column tail is computed in). Accumulators are loaded from C and stored
+ * back, so a tile continues the sum carried in C from the previous k-block.
+ */
+
+/*
+ * C[6 × 16] over p in [p0, p1): twelve accumulators. Per p two B loads and
+ * six broadcasts feed twelve FMAs, so the loop is bound by the two FMA ports,
+ * not by loads.
+ */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_tile_6x16(
+    const float* a, int32_t a_stride, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    const float* a0 = a;
+    const float* a1 = a0 + a_stride;
+    const float* a2 = a1 + a_stride;
+    const float* a3 = a2 + a_stride;
+    const float* a4 = a3 + a_stride;
+    const float* a5 = a4 + a_stride;
+    float* c1 = c0 + c_stride;
+    float* c2 = c1 + c_stride;
+    float* c3 = c2 + c_stride;
+    float* c4 = c3 + c_stride;
+    float* c5 = c4 + c_stride;
+    __m256 s00 = _mm256_loadu_ps(c0), s01 = _mm256_loadu_ps(c0 + 8);
+    __m256 s10 = _mm256_loadu_ps(c1), s11 = _mm256_loadu_ps(c1 + 8);
+    __m256 s20 = _mm256_loadu_ps(c2), s21 = _mm256_loadu_ps(c2 + 8);
+    __m256 s30 = _mm256_loadu_ps(c3), s31 = _mm256_loadu_ps(c3 + 8);
+    __m256 s40 = _mm256_loadu_ps(c4), s41 = _mm256_loadu_ps(c4 + 8);
+    __m256 s50 = _mm256_loadu_ps(c5), s51 = _mm256_loadu_ps(c5 + 8);
+    for (int32_t p = p0; p < p1; ++p, b_row += b_stride) {
+        const __m256 b0 = _mm256_loadu_ps(b_row);
+        const __m256 b1 = _mm256_loadu_ps(b_row + 8);
+        __m256 x = _mm256_broadcast_ss(a0 + p);
+        s00 = _mm256_fmadd_ps(x, b0, s00); s01 = _mm256_fmadd_ps(x, b1, s01);
+        x = _mm256_broadcast_ss(a1 + p);
+        s10 = _mm256_fmadd_ps(x, b0, s10); s11 = _mm256_fmadd_ps(x, b1, s11);
+        x = _mm256_broadcast_ss(a2 + p);
+        s20 = _mm256_fmadd_ps(x, b0, s20); s21 = _mm256_fmadd_ps(x, b1, s21);
+        x = _mm256_broadcast_ss(a3 + p);
+        s30 = _mm256_fmadd_ps(x, b0, s30); s31 = _mm256_fmadd_ps(x, b1, s31);
+        x = _mm256_broadcast_ss(a4 + p);
+        s40 = _mm256_fmadd_ps(x, b0, s40); s41 = _mm256_fmadd_ps(x, b1, s41);
+        x = _mm256_broadcast_ss(a5 + p);
+        s50 = _mm256_fmadd_ps(x, b0, s50); s51 = _mm256_fmadd_ps(x, b1, s51);
+    }
+    _mm256_storeu_ps(c0, s00); _mm256_storeu_ps(c0 + 8, s01);
+    _mm256_storeu_ps(c1, s10); _mm256_storeu_ps(c1 + 8, s11);
+    _mm256_storeu_ps(c2, s20); _mm256_storeu_ps(c2 + 8, s21);
+    _mm256_storeu_ps(c3, s30); _mm256_storeu_ps(c3 + 8, s31);
+    _mm256_storeu_ps(c4, s40); _mm256_storeu_ps(c4 + 8, s41);
+    _mm256_storeu_ps(c5, s50); _mm256_storeu_ps(c5 + 8, s51);
+}
+
+/* C[2 × 16]: the rows left under six, two at a time. */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_tile_2x16(
+    const float* a, int32_t a_stride, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    const float* a0 = a;
+    const float* a1 = a0 + a_stride;
+    float* c1 = c0 + c_stride;
+    __m256 s00 = _mm256_loadu_ps(c0), s01 = _mm256_loadu_ps(c0 + 8);
+    __m256 s10 = _mm256_loadu_ps(c1), s11 = _mm256_loadu_ps(c1 + 8);
+    for (int32_t p = p0; p < p1; ++p, b_row += b_stride) {
+        const __m256 b0 = _mm256_loadu_ps(b_row);
+        const __m256 b1 = _mm256_loadu_ps(b_row + 8);
+        __m256 x = _mm256_broadcast_ss(a0 + p);
+        s00 = _mm256_fmadd_ps(x, b0, s00); s01 = _mm256_fmadd_ps(x, b1, s01);
+        x = _mm256_broadcast_ss(a1 + p);
+        s10 = _mm256_fmadd_ps(x, b0, s10); s11 = _mm256_fmadd_ps(x, b1, s11);
+    }
+    _mm256_storeu_ps(c0, s00); _mm256_storeu_ps(c0 + 8, s01);
+    _mm256_storeu_ps(c1, s10); _mm256_storeu_ps(c1 + 8, s11);
+}
+
+/* C[1 × 16]: the last odd row. */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_tile_1x16(
+    const float* a, const float* b_row, int32_t b_stride, float* c0, int32_t p0, int32_t p1
+) {
+    __m256 s0 = _mm256_loadu_ps(c0), s1 = _mm256_loadu_ps(c0 + 8);
+    for (int32_t p = p0; p < p1; ++p, b_row += b_stride) {
+        const __m256 x = _mm256_broadcast_ss(a + p);
+        s0 = _mm256_fmadd_ps(x, _mm256_loadu_ps(b_row), s0);
+        s1 = _mm256_fmadd_ps(x, _mm256_loadu_ps(b_row + 8), s1);
+    }
+    _mm256_storeu_ps(c0, s0); _mm256_storeu_ps(c0 + 8, s1);
+}
+
+/* Rows [i0, i1) of A against the panel `b_row` into C rows `c0` (both 16 wide): 6×16 tiles, then 2×16, then 1×16. */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_column(
+    const float* a, int32_t a_stride, int32_t rows, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    int32_t i = 0;
+    for (; i + 6 <= rows; i += 6) {
+        skainet_fp32_avx2_tile_6x16(a + (size_t) i * a_stride, a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, c_stride, p0, p1);
+    }
+    for (; i + 2 <= rows; i += 2) {
+        skainet_fp32_avx2_tile_2x16(a + (size_t) i * a_stride, a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, c_stride, p0, p1);
+    }
+    if (i < rows) {
+        skainet_fp32_avx2_tile_1x16(a + (size_t) i * a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, p0, p1);
+    }
+}
+
+/*
+ * B[p0..p1, j..j+16) copied into a contiguous 16-wide panel. In place, the
+ * panel's rows are b_stride floats apart, and when n is a multiple of 1024
+ * that is a multiple of 4 KiB: every row maps to the same L1 set, only eight
+ * of them fit, and the "resident" panel thrashes (measured: 63×1024×1024 at
+ * half the speed of 63×1021×1023). Packed, the panel is one line per p in
+ * consecutive sets. Lanes at or past `w` (the column tail) are masked off —
+ * VMASKMOV neither reads nor faults on them — and come out as zeros, so the
+ * full tiles can run over a tail panel; the matching C lanes are never
+ * stored (see the tail stripe below).
+ */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_pack_panel(
+    float* panel, const float* b, int32_t b_stride, int32_t p0, int32_t p1, __m256i m0, __m256i m1
+) {
+    const float* b_row = b + (size_t) p0 * b_stride;
+    for (int32_t p = p0; p < p1; ++p, b_row += b_stride, panel += 16) {
+        _mm256_storeu_ps(panel, _mm256_maskload_ps(b_row, m0));
+        _mm256_storeu_ps(panel + 8, _mm256_maskload_ps(b_row + 8, m1));
+    }
+}
+
+/* Masks for the lanes below w (0..16) in each half of a 16-wide row. */
+SKAINET_AVX2_TARGET
+static inline void skainet_fp32_avx2_lane_masks(int32_t w, __m256i* m0, __m256i* m1) {
+    const __m256i lane = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
+    *m0 = _mm256_cmpgt_epi32(_mm256_set1_epi32(w), lane);
+    *m1 = _mm256_cmpgt_epi32(_mm256_set1_epi32(w - 8), lane);
+}
+
+/*
+ * The columns left under sixteen, from j, for rows [i0, i1): the C block is
+ * copied (lanes past the tail width masked off) into a 16-wide stripe, the full tiles
+ * run over the stripe and the zero-padded tail panel, and the live lanes are
+ * stored back. Each live element takes exactly the fused steps it would in a
+ * full tile, so the tail is as fast per row as the body and bit-identical to
+ * what a wider block would have given it.
+ */
+SKAINET_AVX2_TARGET
+static void skainet_fp32_avx2_tail(
+    const skainet_fp32_gemm_ctx* c, int32_t i0, int32_t i1, int32_t j,
+    const float* panel, int32_t p0, int32_t p1, __m256i m0, __m256i m1
+) {
+    float stripe[6 * 16];
+    for (int32_t i = i0; i < i1; i += 6) {
+        const int32_t rows = (i1 - i) < 6 ? (i1 - i) : 6;
+        float* c_row = c->c + (size_t) i * c->c_stride + j;
+        for (int32_t r = 0; r < rows; ++r) {
+            _mm256_storeu_ps(stripe + r * 16, _mm256_maskload_ps(c_row + (size_t) r * c->c_stride, m0));
+            _mm256_storeu_ps(stripe + r * 16 + 8, _mm256_maskload_ps(c_row + (size_t) r * c->c_stride + 8, m1));
+        }
+        skainet_fp32_avx2_column(c->a + (size_t) i * c->a_stride, c->a_stride, rows, panel, 16, stripe, 16, p0, p1);
+        for (int32_t r = 0; r < rows; ++r) {
+            _mm256_maskstore_ps(c_row + (size_t) r * c->c_stride, m0, _mm256_loadu_ps(stripe + r * 16));
+            _mm256_maskstore_ps(c_row + (size_t) r * c->c_stride + 8, m1, _mm256_loadu_ps(stripe + r * 16 + 8));
+        }
+    }
+}
+
+/* Rows [i0, i1) × columns [j0, j1) of C, k-blocked: the 16-column panels first, the column tail after. */
+SKAINET_AVX2_TARGET
+static void skainet_fp32_block_avx2(const skainet_fp32_gemm_ctx* c, int32_t i0, int32_t i1, int32_t j0, int32_t j1) {
+    for (int32_t i = i0; i < i1; ++i) {
+        float* c_row = c->c + (size_t) i * c->c_stride;
+        for (int32_t j = j0; j < j1; ++j) c_row[j] = 0.0f;
+    }
+    if (c->k <= 0) return;
+    const int32_t rows = i1 - i0;
+    const int32_t j_tiles_end = j0 + ((j1 - j0) / 16) * 16;
+    const int32_t j_tail = j1 - j_tiles_end;
+    /* The packed copy pays for itself from two row tiles up; a thinner block reads B in place. */
+    const int pack = rows >= 12;
+    __m256i all0, all1, tail0, tail1;
+    skainet_fp32_avx2_lane_masks(16, &all0, &all1);
+    skainet_fp32_avx2_lane_masks(j_tail, &tail0, &tail1);
+    float panel[SKAINET_FP32_AVX2_K_BLOCK * 16];
+    const float* a = c->a + (size_t) i0 * c->a_stride;
+    for (int32_t p0 = 0; p0 < c->k; p0 += SKAINET_FP32_AVX2_K_BLOCK) {
+        const int32_t p1 = (c->k - p0) < SKAINET_FP32_AVX2_K_BLOCK ? c->k : p0 + SKAINET_FP32_AVX2_K_BLOCK;
+        for (int32_t j = j0; j < j_tiles_end; j += 16) {
+            float* c0 = c->c + (size_t) i0 * c->c_stride + j;
+            if (pack) {
+                skainet_fp32_avx2_pack_panel(panel, c->b + j, c->b_stride, p0, p1, all0, all1);
+                skainet_fp32_avx2_column(a, c->a_stride, rows, panel, 16, c0, c->c_stride, p0, p1);
+            } else {
+                skainet_fp32_avx2_column(a, c->a_stride, rows, c->b + (size_t) p0 * c->b_stride + j, c->b_stride, c0, c->c_stride, p0, p1);
+            }
+        }
+        if (j_tail > 0) {
+            skainet_fp32_avx2_pack_panel(panel, c->b + j_tiles_end, c->b_stride, p0, p1, tail0, tail1);
+            skainet_fp32_avx2_tail(c, i0, i1, j_tiles_end, panel, p0, p1, tail0, tail1);
+        }
+    }
+}
+
+static void skainet_fp32_gemm_range_avx2(void* vctx, int32_t start, int32_t end) {
+    const skainet_fp32_gemm_ctx* c = (const skainet_fp32_gemm_ctx*) vctx;
+    if (c->split_rows) skainet_fp32_block_avx2(c, start, end, 0, c->n);
+    else skainet_fp32_block_avx2(c, 0, c->m, start, end);
+}
+#endif /* x86-64 */
+
 static void skainet_fp32_gemm_range(void* vctx, int32_t start, int32_t end) {
     const skainet_fp32_gemm_ctx* c = (const skainet_fp32_gemm_ctx*) vctx;
     if (c->split_rows) skainet_fp32_block(c, start, end, 0, c->n);
@@ -199,5 +443,9 @@ SKAINET_API void skainet_fp32_matmul(
     ctx.n = n;
     ctx.k = k < 0 ? 0 : k;
     ctx.split_rows = m >= n;
-    skainet_run_rows(skainet_fp32_gemm_range, &ctx, ctx.split_rows ? m : n);
+    skainet_row_range_fn range = skainet_fp32_gemm_range;
+#ifdef SKAINET_FP32_GEMM_AVX2
+    if (skainet_cpu_has_avx2_fma()) range = skainet_fp32_gemm_range_avx2;
+#endif
+    skainet_run_rows(range, &ctx, ctx.split_rows ? m : n);
 }

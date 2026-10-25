@@ -7,6 +7,8 @@ set(SKAINET_KERNELS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../skainet-backend-nativ
 
 set(SKAINET_KERNEL_SOURCES
     ${SKAINET_KERNELS_ROOT}/src/skainet_smoke.c
+    # Runtime CPU probes (x86-64 AVX2+FMA for the emulator ABI; a constant on arm64).
+    ${SKAINET_KERNELS_ROOT}/src/skainet_cpu_features.c
     ${SKAINET_KERNELS_ROOT}/src/fp32_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/bf16_matmul.c
     ${SKAINET_KERNELS_ROOT}/src/fp16_matmul.c
