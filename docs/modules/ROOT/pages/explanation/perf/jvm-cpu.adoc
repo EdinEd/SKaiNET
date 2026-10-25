@@ -40,6 +40,7 @@ You can toggle acceleration paths at runtime using system properties or environm
 ** `-Dskainet.cpu.blas.enabled=true++|++false`
 ** or `SKAINET++_++CPU++_++BLAS++_++ENABLED=true++|++false`
 ** `-Dskainet.cpu.blas.library=<path or soname>` / `SKAINET++_++CPU++_++BLAS++_++LIBRARY` names the library to load (default: Accelerate on macOS, the OpenBLAS / reference BLAS sonames on Linux)
+** To see which library resolved, run `./gradlew :skainet-backends:skainet-backend-cpu:jvmTest --tests '*JvmBlasTest*'` and look for the `[blas] <library>` line in `build/test-results/jvmTest/TEST-sk.ainet.exec.tensor.ops.JvmBlasTest.xml`; `[skip]` there means no `cblas_sgemm` was found and the bundled kernels served every product.
 
 Each benchmark also exposes `@Param` to toggle these flags without modifying Gradle args.
 
