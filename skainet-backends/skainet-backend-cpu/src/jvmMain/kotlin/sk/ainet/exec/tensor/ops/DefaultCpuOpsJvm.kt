@@ -330,7 +330,7 @@ internal class DefaultCpuOpsJvm(
         val activation = heapActivation(x) ?: return null
         val m = if (k == 0) 0 else x.shape.volume / k
         val out = FloatArray(m * n)
-        if (m > 0 && n > 0) {
+        if (m > 0 && n > 0 && !blasWeightTransposed(activation, resident, out, m, n, k)) {
             val (xArr, xOff) = activation
             val (wSeg, wOff) = resident
             val tasks = if (m >= 2 && m.toLong() * n >= PARALLEL_MATMUL_MIN_OUTPUT && isSharedSegment(wSeg)) {
@@ -370,6 +370,38 @@ internal class DefaultCpuOpsJvm(
         }
         else -> null
     }
+
+    /**
+     * `x · Wᵀ` through the platform BLAS when one is enabled and resolved ([JvmBlas]): `sgemm` with B
+     * transposed reads the resident `[out, in]` weight where it lies, the activation is staged
+     * off-heap (`m × k`, small) and the `m × n` result copied back. On macOS this is Accelerate, whose
+     * SGEMM runs on the matrix units of Apple silicon and threads itself — several times the NEON
+     * kernel's throughput — so it takes the product before the schedule split. False when BLAS is
+     * off, absent, the product is too small to pay the call, or the call failed; the caller then
+     * runs the native kernel.
+     */
+    private fun blasWeightTransposed(
+        activation: Pair<FloatArray, Int>,
+        resident: Pair<java.lang.foreign.MemorySegment, Long>,
+        out: FloatArray,
+        m: Int, n: Int, k: Int,
+    ): Boolean {
+        if (!blasWanted(m.toLong() * n * k)) return false
+        val (xArr, xOff) = activation
+        val (wSeg, wOff) = resident
+        Arena.ofConfined().use { arena ->
+            val xSeg = arena.allocate(m.toLong() * k * java.lang.Float.BYTES, 64L)
+            java.lang.foreign.MemorySegment.copy(xArr, xOff, xSeg, java.lang.foreign.ValueLayout.JAVA_FLOAT, 0L, m * k)
+            val cSeg = arena.allocate(m.toLong() * n * java.lang.Float.BYTES, 64L)
+            if (!JvmBlas.sgemm(false, true, m, n, k, xSeg, 0L, k, wSeg, wOff, k, cSeg, 0L, n)) return false
+            java.lang.foreign.MemorySegment.copy(cSeg, java.lang.foreign.ValueLayout.JAVA_FLOAT, 0L, out, 0, m * n)
+            return true
+        }
+    }
+
+    /** Whether a dense FP32 product of [work] multiply-adds goes to the platform BLAS: enabled, resolved, and large enough to pay the call and the staging copies. */
+    private fun blasWanted(work: Long): Boolean =
+        work >= BLAS_MIN_WORK && JvmCpuBackendConfig.blasEnabled && JvmBlas.isAvailable()
 
     /**
      * Whether [segment] may be read from a thread other than the current one — a shared, automatic
@@ -541,6 +573,12 @@ internal class DefaultCpuOpsJvm(
      * kernel — at m=32 the kernel is already ~16 GFLOP/s and pulling away.
      */
     private val SMALL_FP32_MATMUL_WORK: Long = 4_000_000L
+
+    /**
+     * Below this many multiply-adds a dense FP32 product stays on the in-process kernels even when a
+     * BLAS is on: the call, and on the heap faces the staging copies, cost more than the arithmetic.
+     */
+    private val BLAS_MIN_WORK: Long = 1L shl 18
 
     /** The heap packed types whose JVM kernels read input-block-major bytes. */
     private fun isHeapPackedWeightForJvm(data: sk.ainet.lang.tensor.data.TensorData<*, *>): Boolean =
@@ -1338,6 +1376,18 @@ internal class DefaultCpuOpsJvm(
             // forward pass exhausts the JVM direct-memory cap.
             val arena = Arena.ofAuto()
             val result = MemorySegmentTensorData<T>(Shape(m, n), arena)
+            // Both operands already off-heap: the platform BLAS reads them in place, no staging.
+            if (blasWanted(m.toLong() * n * k) &&
+                JvmBlas.sgemm(
+                    false, false, m, n, k,
+                    aMemSeg.segment, aMemSeg.segmentByteOffset, k,
+                    bMemSeg.segment, bMemSeg.segmentByteOffset, n,
+                    result.segment, result.segmentByteOffset, n,
+                )
+            ) {
+                @Suppress("UNCHECKED_CAST")
+                return CpuTensor(result as TensorData<T, V>, this, a.dtype)
+            }
             val blockedThresholdMS = 16 * 16
             if (m >= blockedThresholdMS || n >= blockedThresholdMS || k >= blockedThresholdMS) {
                 JvmVectorKernels.matmulFloatBlockedMemSeg(
@@ -1366,17 +1416,12 @@ internal class DefaultCpuOpsJvm(
         val work = m.toLong() * n.toLong() * k.toLong()
         val outBuffer = FloatArray(m * n)
 
-        // Try BLAS for large sizes if enabled and available. The JNI shim takes whole arrays, so
-        // it only serves offset-0 operands; slab windows go through the kernel SPI below, which
-        // takes offsets natively.
-        if (aWin.off == 0 && bWin.off == 0 && JvmCpuBackendConfig.blasEnabled && JvmBlas.isAvailable()) {
-            val blasThreshold = 512L * 512L * 256L // tuneable
-            if (work >= blasThreshold) {
-                val ok = JvmBlas.sgemmRowMajorNN(m, n, k, 1f, aWin.arr, bWin.arr, outBuffer)
-                if (ok) {
-                    return floatResult(Shape(m, n), a.dtype, outBuffer)
-                }
-            }
+        // The platform BLAS first when it is on and resolved (Accelerate on macOS by default): the
+        // heap face stages the operands off-heap, which the native heap kernel below does too.
+        if (blasWanted(work) &&
+            JvmBlas.sgemmRowMajorNN(m, n, k, aWin.arr, aWin.off, k, bWin.arr, bWin.off, n, outBuffer, 0, n)
+        ) {
+            return floatResult(Shape(m, n), a.dtype, outBuffer)
         }
 
         // Small shapes are overhead-bound, not throughput-bound. The tile-blocked SPI kernel below
