@@ -19,10 +19,16 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
  *       float* c, int32_t c_offset, int32_t c_stride,
  *       int32_t m, int32_t n, int32_t k);
  *
- * The C kernel is a tight i-p-j outer-product accumulator over rows
- * of C; the inner `c[j] += a*b[j]` loop streams two contiguous arrays
- * and auto-vectorizes into FMA under -O3 -ffast-math (vfmadd231ps on
- * x86_64, fmla on AArch64).
+ * The C kernel has one body per lane: a register-tiled SGEMM on x86-64 hosts
+ * with AVX2 and FMA (a 6 × 16 tile of C in twelve eight-lane accumulators over
+ * a packed sixteen-column panel of B, selected at runtime by a cached `cpuid`
+ * probe because the library is built for baseline x86-64), a 4 × 8 tile on the
+ * wasm SIMD128 sidecar, and an i-p-j outer product whose inner `c[j] += a*b[j]`
+ * loop auto-vectorizes (NEON `fmla`, SSE2 without FMA on x86-64 hosts that lack
+ * AVX2). Every output accumulates its products in ascending `p` whichever tile,
+ * thread or call computes it, so sliced and whole calls agree bit for bit;
+ * lanes differ from each other within rounding, as NEON and wasm always have
+ * ([NativeFp32MatmulX86LaneTest]).
  *
  * Numerical parity vs [PanamaVectorMatmulKernel] is asserted by
  * [NativeFp32MatmulKernelParityTest] within FMA + reordered-reduction
@@ -125,7 +131,17 @@ internal object NativeFp32MatmulKernel : Fp32MatmulKernel {
                 m, n, k,
             )
 
-            MemorySegment.copy(cSeg, ValueLayout.JAVA_FLOAT, 0L, out, 0, cReachFloats)
+            // Only the m×n block comes back. The off-heap C starts out zeroed, so copying its whole
+            // reach would overwrite `out` before `outOffset` and the stride padding between rows —
+            // the parts of a sub-block caller's buffer this kernel is not responsible for.
+            if (outStride == n) {
+                MemorySegment.copy(cSeg, ValueLayout.JAVA_FLOAT, outOffset.toLong() * java.lang.Float.BYTES, out, outOffset, m * n)
+            } else {
+                for (i in 0 until m) {
+                    val row = outOffset + i * outStride
+                    MemorySegment.copy(cSeg, ValueLayout.JAVA_FLOAT, row.toLong() * java.lang.Float.BYTES, out, row, n)
+                }
+            }
         }
     }
 
