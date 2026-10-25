@@ -16,10 +16,14 @@
  * `aStride == k`, `bStride == n`, `cStride == n`. Sub-block scenarios
  * pass larger strides and the corresponding offsets.
  *
- * Portable and NEON bodies: iteration order is i-p-j (outer product into
- * rows of C). The inner loop is `c[j] += a_ip * b[j]` over a contiguous run
- * of `n` floats for both b's row and c's row — auto-vectorizes cleanly under
- * -O3 -ffast-math into vfmadd231ps / fmla.
+ * Portable body: iteration order is i-p-j (outer product into rows of C).
+ * The inner loop is `c[j] += a_ip * b[j]` over a contiguous run of `n`
+ * floats for both b's row and c's row — auto-vectorizes under -O3
+ * -ffast-math. It is what a target without one of the lanes below runs.
+ *
+ * AArch64 body (Apple silicon, Android arm64, Linux arm64): an 8×8 register
+ * tile in sixteen float32x4 accumulators with lane-indexed FMAs, the packed
+ * 8-column B panel and the tails of the AVX2 lane — see the NEON block.
  *
  * SIMD128 body (the Emscripten sidecar): a 4×8 register-blocked micro-kernel.
  * Eight f32x4 accumulators hold a 4-row × 8-column tile of C for a whole
@@ -155,7 +159,266 @@ static void skainet_fp32_block(const skainet_fp32_gemm_ctx* c, int32_t i0, int32
     }
 }
 
-#else /* portable + NEON: i-p-j outer product over the block */
+#elif defined(SKAINET_HAVE_NEON)
+
+/*
+ * AArch64 body: the same shape as the AVX2 lane below, sized for NEON's
+ * 32 four-lane registers. An 8-row × 8-column tile of C lives in sixteen
+ * float32x4 accumulators; four p-steps at a time, eight A loads (four
+ * consecutive p of each row) and eight B loads feed sixty-four lane-indexed
+ * FMAs (vfmaq_laneq_f32 takes the a-value straight from a lane, no
+ * broadcast register). The same 256-deep k-blocking, the same packed
+ * 8-column B panel (a power-of-two n otherwise maps every panel row to one
+ * L1 set), 4×8 and 1×8 tiles for the rows left over and a zero-padded panel
+ * plus C stripe for the columns left over. Every element takes one fused
+ * step per p in ascending p whichever tile holds it.
+ */
+
+#define SKAINET_FP32_NEON_K_BLOCK 256
+
+/* One p-step of the 8×8 tile with the a-values in lane LANE of a0..a7. */
+#define SKAINET_FP32_NEON_8X8_STEP(LANE) \
+    bl = vld1q_f32(b_row); bh = vld1q_f32(b_row + 4); b_row += b_stride; \
+    s00 = vfmaq_laneq_f32(s00, bl, a0, LANE); s01 = vfmaq_laneq_f32(s01, bh, a0, LANE); \
+    s10 = vfmaq_laneq_f32(s10, bl, a1, LANE); s11 = vfmaq_laneq_f32(s11, bh, a1, LANE); \
+    s20 = vfmaq_laneq_f32(s20, bl, a2, LANE); s21 = vfmaq_laneq_f32(s21, bh, a2, LANE); \
+    s30 = vfmaq_laneq_f32(s30, bl, a3, LANE); s31 = vfmaq_laneq_f32(s31, bh, a3, LANE); \
+    s40 = vfmaq_laneq_f32(s40, bl, a4, LANE); s41 = vfmaq_laneq_f32(s41, bh, a4, LANE); \
+    s50 = vfmaq_laneq_f32(s50, bl, a5, LANE); s51 = vfmaq_laneq_f32(s51, bh, a5, LANE); \
+    s60 = vfmaq_laneq_f32(s60, bl, a6, LANE); s61 = vfmaq_laneq_f32(s61, bh, a6, LANE); \
+    s70 = vfmaq_laneq_f32(s70, bl, a7, LANE); s71 = vfmaq_laneq_f32(s71, bh, a7, LANE)
+
+/*
+ * C[8 × 8] over p in [p0, p1). `a` is the first of the tile's rows of A, `b_row`
+ * row p0 of an 8-column panel of B (the packed copy, or B itself with its
+ * stride), `c0` the first of the tile's rows of C; accumulators are loaded from
+ * C and stored back, so a tile continues the sum carried from the previous
+ * k-block.
+ */
+static inline void skainet_fp32_neon_tile_8x8(
+    const float* a, int32_t a_stride, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    const float* ar0 = a;
+    const float* ar1 = ar0 + a_stride;
+    const float* ar2 = ar1 + a_stride;
+    const float* ar3 = ar2 + a_stride;
+    const float* ar4 = ar3 + a_stride;
+    const float* ar5 = ar4 + a_stride;
+    const float* ar6 = ar5 + a_stride;
+    const float* ar7 = ar6 + a_stride;
+    float* c1 = c0 + c_stride;
+    float* c2 = c1 + c_stride;
+    float* c3 = c2 + c_stride;
+    float* c4 = c3 + c_stride;
+    float* c5 = c4 + c_stride;
+    float* c6 = c5 + c_stride;
+    float* c7 = c6 + c_stride;
+    float32x4_t s00 = vld1q_f32(c0), s01 = vld1q_f32(c0 + 4);
+    float32x4_t s10 = vld1q_f32(c1), s11 = vld1q_f32(c1 + 4);
+    float32x4_t s20 = vld1q_f32(c2), s21 = vld1q_f32(c2 + 4);
+    float32x4_t s30 = vld1q_f32(c3), s31 = vld1q_f32(c3 + 4);
+    float32x4_t s40 = vld1q_f32(c4), s41 = vld1q_f32(c4 + 4);
+    float32x4_t s50 = vld1q_f32(c5), s51 = vld1q_f32(c5 + 4);
+    float32x4_t s60 = vld1q_f32(c6), s61 = vld1q_f32(c6 + 4);
+    float32x4_t s70 = vld1q_f32(c7), s71 = vld1q_f32(c7 + 4);
+    float32x4_t bl, bh;
+    int32_t p = p0;
+    for (; p + 4 <= p1; p += 4) {
+        const float32x4_t a0 = vld1q_f32(ar0 + p), a1 = vld1q_f32(ar1 + p);
+        const float32x4_t a2 = vld1q_f32(ar2 + p), a3 = vld1q_f32(ar3 + p);
+        const float32x4_t a4 = vld1q_f32(ar4 + p), a5 = vld1q_f32(ar5 + p);
+        const float32x4_t a6 = vld1q_f32(ar6 + p), a7 = vld1q_f32(ar7 + p);
+        SKAINET_FP32_NEON_8X8_STEP(0);
+        SKAINET_FP32_NEON_8X8_STEP(1);
+        SKAINET_FP32_NEON_8X8_STEP(2);
+        SKAINET_FP32_NEON_8X8_STEP(3);
+    }
+    for (; p < p1; ++p) {
+        bl = vld1q_f32(b_row); bh = vld1q_f32(b_row + 4); b_row += b_stride;
+        s00 = vfmaq_n_f32(s00, bl, ar0[p]); s01 = vfmaq_n_f32(s01, bh, ar0[p]);
+        s10 = vfmaq_n_f32(s10, bl, ar1[p]); s11 = vfmaq_n_f32(s11, bh, ar1[p]);
+        s20 = vfmaq_n_f32(s20, bl, ar2[p]); s21 = vfmaq_n_f32(s21, bh, ar2[p]);
+        s30 = vfmaq_n_f32(s30, bl, ar3[p]); s31 = vfmaq_n_f32(s31, bh, ar3[p]);
+        s40 = vfmaq_n_f32(s40, bl, ar4[p]); s41 = vfmaq_n_f32(s41, bh, ar4[p]);
+        s50 = vfmaq_n_f32(s50, bl, ar5[p]); s51 = vfmaq_n_f32(s51, bh, ar5[p]);
+        s60 = vfmaq_n_f32(s60, bl, ar6[p]); s61 = vfmaq_n_f32(s61, bh, ar6[p]);
+        s70 = vfmaq_n_f32(s70, bl, ar7[p]); s71 = vfmaq_n_f32(s71, bh, ar7[p]);
+    }
+    vst1q_f32(c0, s00); vst1q_f32(c0 + 4, s01);
+    vst1q_f32(c1, s10); vst1q_f32(c1 + 4, s11);
+    vst1q_f32(c2, s20); vst1q_f32(c2 + 4, s21);
+    vst1q_f32(c3, s30); vst1q_f32(c3 + 4, s31);
+    vst1q_f32(c4, s40); vst1q_f32(c4 + 4, s41);
+    vst1q_f32(c5, s50); vst1q_f32(c5 + 4, s51);
+    vst1q_f32(c6, s60); vst1q_f32(c6 + 4, s61);
+    vst1q_f32(c7, s70); vst1q_f32(c7 + 4, s71);
+}
+
+#define SKAINET_FP32_NEON_4X8_STEP(LANE) \
+    bl = vld1q_f32(b_row); bh = vld1q_f32(b_row + 4); b_row += b_stride; \
+    s00 = vfmaq_laneq_f32(s00, bl, a0, LANE); s01 = vfmaq_laneq_f32(s01, bh, a0, LANE); \
+    s10 = vfmaq_laneq_f32(s10, bl, a1, LANE); s11 = vfmaq_laneq_f32(s11, bh, a1, LANE); \
+    s20 = vfmaq_laneq_f32(s20, bl, a2, LANE); s21 = vfmaq_laneq_f32(s21, bh, a2, LANE); \
+    s30 = vfmaq_laneq_f32(s30, bl, a3, LANE); s31 = vfmaq_laneq_f32(s31, bh, a3, LANE)
+
+/* C[4 × 8]: the rows left under eight, four at a time. */
+static inline void skainet_fp32_neon_tile_4x8(
+    const float* a, int32_t a_stride, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    const float* ar0 = a;
+    const float* ar1 = ar0 + a_stride;
+    const float* ar2 = ar1 + a_stride;
+    const float* ar3 = ar2 + a_stride;
+    float* c1 = c0 + c_stride;
+    float* c2 = c1 + c_stride;
+    float* c3 = c2 + c_stride;
+    float32x4_t s00 = vld1q_f32(c0), s01 = vld1q_f32(c0 + 4);
+    float32x4_t s10 = vld1q_f32(c1), s11 = vld1q_f32(c1 + 4);
+    float32x4_t s20 = vld1q_f32(c2), s21 = vld1q_f32(c2 + 4);
+    float32x4_t s30 = vld1q_f32(c3), s31 = vld1q_f32(c3 + 4);
+    float32x4_t bl, bh;
+    int32_t p = p0;
+    for (; p + 4 <= p1; p += 4) {
+        const float32x4_t a0 = vld1q_f32(ar0 + p), a1 = vld1q_f32(ar1 + p);
+        const float32x4_t a2 = vld1q_f32(ar2 + p), a3 = vld1q_f32(ar3 + p);
+        SKAINET_FP32_NEON_4X8_STEP(0);
+        SKAINET_FP32_NEON_4X8_STEP(1);
+        SKAINET_FP32_NEON_4X8_STEP(2);
+        SKAINET_FP32_NEON_4X8_STEP(3);
+    }
+    for (; p < p1; ++p) {
+        bl = vld1q_f32(b_row); bh = vld1q_f32(b_row + 4); b_row += b_stride;
+        s00 = vfmaq_n_f32(s00, bl, ar0[p]); s01 = vfmaq_n_f32(s01, bh, ar0[p]);
+        s10 = vfmaq_n_f32(s10, bl, ar1[p]); s11 = vfmaq_n_f32(s11, bh, ar1[p]);
+        s20 = vfmaq_n_f32(s20, bl, ar2[p]); s21 = vfmaq_n_f32(s21, bh, ar2[p]);
+        s30 = vfmaq_n_f32(s30, bl, ar3[p]); s31 = vfmaq_n_f32(s31, bh, ar3[p]);
+    }
+    vst1q_f32(c0, s00); vst1q_f32(c0 + 4, s01);
+    vst1q_f32(c1, s10); vst1q_f32(c1 + 4, s11);
+    vst1q_f32(c2, s20); vst1q_f32(c2 + 4, s21);
+    vst1q_f32(c3, s30); vst1q_f32(c3 + 4, s31);
+}
+
+/* C[1 × 8]: the last rows, one at a time. */
+static inline void skainet_fp32_neon_tile_1x8(
+    const float* a, const float* b_row, int32_t b_stride, float* c0, int32_t p0, int32_t p1
+) {
+    float32x4_t s0 = vld1q_f32(c0), s1 = vld1q_f32(c0 + 4);
+    int32_t p = p0;
+    for (; p + 4 <= p1; p += 4) {
+        const float32x4_t av = vld1q_f32(a + p);
+        s0 = vfmaq_laneq_f32(s0, vld1q_f32(b_row), av, 0); s1 = vfmaq_laneq_f32(s1, vld1q_f32(b_row + 4), av, 0); b_row += b_stride;
+        s0 = vfmaq_laneq_f32(s0, vld1q_f32(b_row), av, 1); s1 = vfmaq_laneq_f32(s1, vld1q_f32(b_row + 4), av, 1); b_row += b_stride;
+        s0 = vfmaq_laneq_f32(s0, vld1q_f32(b_row), av, 2); s1 = vfmaq_laneq_f32(s1, vld1q_f32(b_row + 4), av, 2); b_row += b_stride;
+        s0 = vfmaq_laneq_f32(s0, vld1q_f32(b_row), av, 3); s1 = vfmaq_laneq_f32(s1, vld1q_f32(b_row + 4), av, 3); b_row += b_stride;
+    }
+    for (; p < p1; ++p, b_row += b_stride) {
+        s0 = vfmaq_n_f32(s0, vld1q_f32(b_row), a[p]); s1 = vfmaq_n_f32(s1, vld1q_f32(b_row + 4), a[p]);
+    }
+    vst1q_f32(c0, s0); vst1q_f32(c0 + 4, s1);
+}
+
+/* Rows [0, rows) of A against the panel `b_row` into C rows `c0` (both 8 wide): 8×8 tiles, then 4×8, then 1×8. */
+static inline void skainet_fp32_neon_column(
+    const float* a, int32_t a_stride, int32_t rows, const float* b_row, int32_t b_stride,
+    float* c0, int32_t c_stride, int32_t p0, int32_t p1
+) {
+    int32_t i = 0;
+    for (; i + 8 <= rows; i += 8) {
+        skainet_fp32_neon_tile_8x8(a + (size_t) i * a_stride, a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, c_stride, p0, p1);
+    }
+    for (; i + 4 <= rows; i += 4) {
+        skainet_fp32_neon_tile_4x8(a + (size_t) i * a_stride, a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, c_stride, p0, p1);
+    }
+    for (; i < rows; ++i) {
+        skainet_fp32_neon_tile_1x8(a + (size_t) i * a_stride, b_row, b_stride, c0 + (size_t) i * c_stride, p0, p1);
+    }
+}
+
+/*
+ * B[p0..p1, j..j+w) copied into a contiguous 8-wide panel, columns at or past
+ * w (the column tail, w < 8) zero-filled. See the AVX2 lane for why the copy
+ * pays: in place, a power-of-two n puts every row of the panel in one L1 set.
+ */
+static inline void skainet_fp32_neon_pack_panel(
+    float* panel, const float* b, int32_t b_stride, int32_t w, int32_t p0, int32_t p1
+) {
+    const float* b_row = b + (size_t) p0 * b_stride;
+    if (w == 8) {
+        for (int32_t p = p0; p < p1; ++p, b_row += b_stride, panel += 8) {
+            vst1q_f32(panel, vld1q_f32(b_row));
+            vst1q_f32(panel + 4, vld1q_f32(b_row + 4));
+        }
+    } else {
+        for (int32_t p = p0; p < p1; ++p, b_row += b_stride, panel += 8) {
+            int32_t j = 0;
+            for (; j < w; ++j) panel[j] = b_row[j];
+            for (; j < 8; ++j) panel[j] = 0.0f;
+        }
+    }
+}
+
+/*
+ * The columns left under eight, from j, for rows [i0, i1): the C block is
+ * copied into an 8-wide stripe, the full tiles run over the stripe and the
+ * zero-padded tail panel, and the live columns are stored back — the same
+ * fused steps a wider block would give them.
+ */
+static void skainet_fp32_neon_tail(
+    const skainet_fp32_gemm_ctx* c, int32_t i0, int32_t i1, int32_t j, int32_t w,
+    const float* panel, int32_t p0, int32_t p1
+) {
+    float stripe[8 * 8];
+    for (int32_t i = i0; i < i1; i += 8) {
+        const int32_t rows = (i1 - i) < 8 ? (i1 - i) : 8;
+        float* c_row = c->c + (size_t) i * c->c_stride + j;
+        for (int32_t r = 0; r < rows; ++r) {
+            int32_t jj = 0;
+            for (; jj < w; ++jj) stripe[r * 8 + jj] = c_row[(size_t) r * c->c_stride + jj];
+            for (; jj < 8; ++jj) stripe[r * 8 + jj] = 0.0f;
+        }
+        skainet_fp32_neon_column(c->a + (size_t) i * c->a_stride, c->a_stride, rows, panel, 8, stripe, 8, p0, p1);
+        for (int32_t r = 0; r < rows; ++r) {
+            for (int32_t jj = 0; jj < w; ++jj) c_row[(size_t) r * c->c_stride + jj] = stripe[r * 8 + jj];
+        }
+    }
+}
+
+/* Rows [i0, i1) × columns [j0, j1) of C, k-blocked: the 8-column panels first, the column tail after. */
+static void skainet_fp32_block(const skainet_fp32_gemm_ctx* c, int32_t i0, int32_t i1, int32_t j0, int32_t j1) {
+    for (int32_t i = i0; i < i1; ++i) {
+        float* c_row = c->c + (size_t) i * c->c_stride;
+        for (int32_t j = j0; j < j1; ++j) c_row[j] = 0.0f;
+    }
+    if (c->k <= 0) return;
+    const int32_t rows = i1 - i0;
+    const int32_t j_tiles_end = j0 + ((j1 - j0) / 8) * 8;
+    const int32_t j_tail = j1 - j_tiles_end;
+    /* The packed copy pays for itself from two row tiles up; a thinner block reads B in place. */
+    const int pack = rows >= 16;
+    float panel[SKAINET_FP32_NEON_K_BLOCK * 8];
+    const float* a = c->a + (size_t) i0 * c->a_stride;
+    for (int32_t p0 = 0; p0 < c->k; p0 += SKAINET_FP32_NEON_K_BLOCK) {
+        const int32_t p1 = (c->k - p0) < SKAINET_FP32_NEON_K_BLOCK ? c->k : p0 + SKAINET_FP32_NEON_K_BLOCK;
+        for (int32_t j = j0; j < j_tiles_end; j += 8) {
+            float* c0 = c->c + (size_t) i0 * c->c_stride + j;
+            if (pack) {
+                skainet_fp32_neon_pack_panel(panel, c->b + j, c->b_stride, 8, p0, p1);
+                skainet_fp32_neon_column(a, c->a_stride, rows, panel, 8, c0, c->c_stride, p0, p1);
+            } else {
+                skainet_fp32_neon_column(a, c->a_stride, rows, c->b + (size_t) p0 * c->b_stride + j, c->b_stride, c0, c->c_stride, p0, p1);
+            }
+        }
+        if (j_tail > 0) {
+            skainet_fp32_neon_pack_panel(panel, c->b + j_tiles_end, c->b_stride, j_tail, p0, p1);
+            skainet_fp32_neon_tail(c, i0, i1, j_tiles_end, j_tail, panel, p0, p1);
+        }
+    }
+}
+
+#else /* portable: i-p-j outer product over the block */
 
 static void skainet_fp32_block(const skainet_fp32_gemm_ctx* c, int32_t i0, int32_t i1, int32_t j0, int32_t j1) {
     for (int32_t i = i0; i < i1; ++i) {
@@ -169,22 +432,9 @@ static void skainet_fp32_block(const skainet_fp32_gemm_ctx* c, int32_t i0, int32
         for (int32_t p = 0; p < c->k; ++p) {
             const float a_ip = a_row[p];
             const float* SKAINET_RESTRICT b_row = c->b + (size_t) p * c->b_stride;
-#ifdef SKAINET_HAVE_NEON
-            const float32x4_t va = vdupq_n_f32(a_ip);
-            int32_t j = j0;
-            for (; j + 4 <= j1; j += 4) {
-                float32x4_t cv = vld1q_f32(c_row + j);
-                cv = vfmaq_f32(cv, va, vld1q_f32(b_row + j));
-                vst1q_f32(c_row + j, cv);
-            }
-            for (; j < j1; ++j) {
-                c_row[j] += a_ip * b_row[j];
-            }
-#else
             for (int32_t j = j0; j < j1; ++j) {
                 c_row[j] += a_ip * b_row[j];
             }
-#endif
         }
     }
 }
