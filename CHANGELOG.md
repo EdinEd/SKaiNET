@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.62.3] - 2026-10-25
+
+Headline: **opening a tokenizer GGUF and building its tokenizer is several times cheaper, and the dense FP32 `A · B`
+product uses AVX2/FMA on x86-64** (#1446, #1447, #1445, see *Changed*). `StreamingGGUFReader` read the metadata one
+value at a time (one `readAt` per primitive, one `FileChannel` read each on a file source); it now decodes from 64 KB
+blocks, with `fields` unchanged. `TextFrontEnds.fromGguf` copied the ~262k-entry token, token-type and score lists
+three to four times per build; it now takes each once, with token ids identical on 26,803 texts. Gemma-3 tokenizer
+GGUF on a 32-bit ARM Android device (debuggable app): file-source parse 23.3 → 1.2 s, read + build on the first load
+in a process 8.4–11.2 → 6.0–6.4 s; JVM file-source parse 1,002 → 21–45 ms. The native `skainet_fp32_matmul` gets a
+6 × 16 register-tiled AVX2/FMA lane selected at runtime (63 × 1024 × 1024: 21 → 281 GFLOP/s on a six-core laptop),
+and its heap face no longer zeroes the rest of a sub-block caller's output buffer.
+
 ### Changed
 
 - **Dense FP32 SGEMM uses AVX2/FMA on x86-64** (`skainet-backend-native-cpu`): `skainet_fp32_matmul`, the kernel behind every `A · B` product the JVM hands to the native lane (a weight stored `[in, out]`, attention scores and values, training), had register-tiled bodies for wasm SIMD128 only; the x86-64 library is built for baseline x86-64, so the kernel ran a scalar/SSE2 outer-product loop without FMA that loaded and stored a row of C for every row of A. Hosts with AVX2 and FMA now select, through the cached `cpuid` probe the `x · Wᵀ` kernel introduced, a lane compiled per function for that target: a 6 × 16 tile of C in twelve eight-lane FMA accumulators over a 256-deep k-block, each sixteen-column panel of B packed once so a power-of-two `n` no longer maps every row of the panel to one L1 set, 2 × 16 and 1 × 16 tiles for the rows left over and a lane-masked stripe for the columns left over. Every output takes one fused multiply-add per `p` in ascending `p` whichever tile holds it, so sliced, threaded and whole calls stay bit-identical to each other; against the previous x86 numbers an output moves within rounding, as the NEON and wasm lanes already do. Machines without AVX2, and every other architecture, run the previous code. Measured single call on a six-core laptop, develop → this change: 63 × 1024 × 1024 21 → 281 GFLOP/s, 1024³ 48 → 311, 512³ 59 → 358, 192 × 192 × 64 (one thread) 18 → 99.
