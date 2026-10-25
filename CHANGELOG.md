@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.62.4] - 2026-10-25
+
+Headline: **the arm64 release — the JVM on macOS sends its dense FP32 products to Accelerate, and the native dense
+FP32 kernels get register tiles on AArch64** (#1449, #1450, see *Changed*). `JvmBlas` never reached a BLAS (framework
+looked up by its bare name, heap arrays passed to a downcall, both failures swallowed); it now resolves `cblas_sgemm`
+from `skainet.cpu.blas.library`, the Accelerate framework by path, or the common Linux sonames, and `A · B` on heap or
+segment operands and `x · Wᵀ` on a resident dense weight go to it above a small-work floor, on by default on macOS
+only. `skainet_fp32_matmul` on AArch64 runs an 8 × 8 tile of lane-indexed FMAs over a packed panel in a 256-deep
+k-block and `skainet_fp32_matmul_wt` a four-by-three tile, bit-identical across slices and threads, verified on Apple
+silicon by the macOS CI leg; no arm64 numbers were measured for this release.
+
 ### Changed
 
 - **Dense FP32 kernels get register tiles on AArch64** (`skainet-backend-native-cpu`, Apple silicon, Android arm64, Linux arm64): the NEON bodies of `skainet_fp32_matmul` and `skainet_fp32_matmul_wt` were the x86 story of a week ago — an outer-product loop that loaded and stored a row of C for every row of A, and a single four-lane chain per `x · Wᵀ` output that left most of a core's FMA pipes idle. The plain SGEMM now runs an 8 × 8 tile in sixteen `float32x4` accumulators with lane-indexed FMAs over a packed 8-column panel of B in a 256-deep k-block (4 × 8 and 1 × 8 tiles for the rows left over, a zero-padded panel and C stripe for the columns left over), and `x · Wᵀ` a tile of four weight rows by three activation rows in twelve chains. Every output takes its fused steps in ascending `p` whichever tile holds it, so sliced, threaded and whole calls stay bit-identical to each other; against the previous NEON numbers an output moves within rounding. Two Kotlin/Native tests run the tails and the block independence through cinterop on every native target, so the macOS CI leg exercises the lane on Apple silicon. No numbers from this change's author: measured on an arm64 host it is not — see the pull request for how to run the bench.

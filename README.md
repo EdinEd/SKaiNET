@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.62.3"))
+    implementation(platform("sk.ainet:skainet-bom:0.62.4"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,7 +308,19 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.62.3
+## What's New in 0.62.4
+
+An arm64 release. On macOS the JVM's dense FP32 products — `A · B` on heap or segment-backed operands and `x · Wᵀ`
+on a resident dense weight — now go to Accelerate's SGEMM by default, which runs on the matrix units of Apple
+silicon and threads itself; `JvmBlas` had never reached a BLAS before (the framework lookup and the heap downcall
+both failed silently), and `-Dskainet.cpu.blas.enabled=false` restores the bundled kernels. Elsewhere the default
+stays off and `skainet.cpu.blas.library` names an OpenBLAS or reference BLAS to use. The native dense FP32 kernels
+get register tiles on AArch64 (Apple silicon, Android arm64, Linux arm64): an 8 × 8 tile of lane-indexed FMAs over a
+packed panel of B for `A · B` and a four-by-three tile for `x · Wᵀ`, bit-identical across slices, threads and whole
+calls, exercised on Apple silicon by the macOS CI leg. Both are unmeasured on arm64 in this release; the pull
+requests (#1449, #1450) say how to run the bench.
+
+### Carried from 0.62.3
 
 A load-time and kernel release. `StreamingGGUFReader` decodes the GGUF metadata from 64 KB blocks instead of one
 source read per value, and `TextFrontEnds.fromGguf` builds a SentencePiece tokenizer in one pass over the vocabulary
@@ -390,6 +402,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.62.4)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the Accelerate/BLAS routing of the JVM's
+  dense FP32 products, the AArch64 register tiles for the native dense FP32 kernels with their tests, and the release
 
 ### Contributors (0.62.3)
 
@@ -527,7 +544,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.62.3. MIT License},
+  note         = {Version 0.62.4. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```
