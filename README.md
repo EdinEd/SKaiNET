@@ -51,7 +51,7 @@ Add the core dependencies (Gradle Kotlin DSL):
 ```kotlin
 dependencies {
     // Recommended: import the umbrella BOM and drop versions on the engine modules.
-    implementation(platform("sk.ainet:skainet-bom:0.62.2"))
+    implementation(platform("sk.ainet:skainet-bom:0.62.3"))
 
     implementation("sk.ainet.core:skainet-lang-core")
     implementation("sk.ainet.core:skainet-backend-cpu")
@@ -308,7 +308,17 @@ val withoutLabel = dataPipeline<RawDataset>()
 
 ---
 
-## What's New in 0.62.2
+## What's New in 0.62.3
+
+A load-time and kernel release. `StreamingGGUFReader` decodes the GGUF metadata from 64 KB blocks instead of one
+source read per value, and `TextFrontEnds.fromGguf` builds a SentencePiece tokenizer in one pass over the vocabulary
+instead of three to four copies of it; `fields`, the public API and the token ids stay the same. On a Gemma-3
+tokenizer GGUF a file-source parse drops from 1.0 s to 21–45 ms on the JVM and from 23.3 s to 1.2 s on a 32-bit ARM
+Android device, where read + build on the first load in a process goes from 8.4–11.2 s to 6.0–6.4 s. The native
+dense FP32 `A · B` kernel gets an AVX2/FMA register-tiled lane on x86-64 (63 × 1024 × 1024: 21 → 281 GFLOP/s), and
+no longer overwrites the parts of a sub-block caller's output buffer outside the block.
+
+### Carried from 0.62.2
 
 A performance release for the JVM native lane. The dense FP32 `x · Wᵀ` kernel — what every resident dense
 weight resolves to once `skainet-backend-native-cpu` is on the classpath — now splits its work across the
@@ -380,6 +390,11 @@ We love contributions! Whether it's a new operator, documentation, or a bug fix:
 3. Open a discussion or issue on [GitHub](https://github.com/SKaiNET-developers/SKaiNET/issues); the issue chooser has templates for DARC features, lane tasks and SKEEP proposals.
 
 Browse the full codebase documentation on [DeepWiki](https://deepwiki.com/SKaiNET-developers/SKaiNET).
+
+### Contributors (0.62.3)
+
+- **Michal Harakal** ([@michalharakal](https://github.com/michalharakal)) — the buffered GGUF metadata reader, the
+  one-pass tokenizer build, the AVX2/FMA dense FP32 SGEMM lane with their tests and measurements, and the release
 
 ### Contributors (0.62.2)
 
@@ -512,7 +527,7 @@ from it). Ready-to-paste BibTeX:
   author       = {Harakal, Michal and {SKaiNET-developers contributors}},
   title        = {{SKaiNET}: A {Kotlin} Multiplatform {AI} Framework},
   year         = {2026},
-  note         = {Version 0.62.2. MIT License},
+  note         = {Version 0.62.3. MIT License},
   howpublished = {\url{https://github.com/SKaiNET-developers/SKaiNET}}
 }
 ```

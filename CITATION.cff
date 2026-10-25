@@ -12,7 +12,7 @@ authors:
     orcid: https://orcid.org/0009-0006-7981-4075
   - name: SKaiNET-developers contributors
     website: https://github.com/SKaiNET-developers
-version: "0.62.2"
+version: "0.62.3"
 date-released: "2026-10-21"
 license: MIT
 repository-code: https://github.com/SKaiNET-developers/SKaiNET
