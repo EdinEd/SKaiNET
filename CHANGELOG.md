@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Dense FP32 products on the JVM go to the platform BLAS where one is on, and on macOS it is on by default** (`skainet-backend-cpu`): `JvmBlas` never reached a BLAS before — it looked a framework up by its bare name, which `dlopen` cannot resolve, and passed heap arrays to a downcall, which JDK 21 rejects — so the `skainet.cpu.blas.enabled` switch was a no-op. It now resolves `cblas_sgemm` from `skainet.cpu.blas.library` / `SKAINET_CPU_BLAS_LIBRARY`, the Accelerate framework by path on macOS, or the common Linux sonames, and has an off-heap face. Three products use it when `blasEnabled` is true and the product is above a small-work floor: `A · B` on heap arrays (staged off-heap, as the native heap kernel does), `A · B` on two segment-backed operands (read in place), and the direct `x · Wᵀ` on a resident dense weight (`sgemm` with the weight transposed, no copy of it). On macOS the default is now on — Accelerate's SGEMM runs on the matrix units of Apple silicon and threads itself, several times the NEON kernel's throughput — and `-Dskainet.cpu.blas.enabled=false` restores the bundled kernels; elsewhere the default stays off. Results move within rounding against the bundled kernels, as they already do between lanes.
+
 ## [0.62.3] - 2026-10-25
 
 Headline: **opening a tokenizer GGUF and building its tokenizer is several times cheaper, and the dense FP32 `A · B`

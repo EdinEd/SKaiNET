@@ -76,8 +76,15 @@ ksp {
     arg("skainet.module", "skainet-backend-cpu")
 }
 
+// Forward the BLAS switches from the Gradle CLI to the forked test JVM, so a suite can be run against
+// the platform BLAS (`-Dskainet.cpu.blas.enabled=true`, optionally `-Dskainet.cpu.blas.library=<path>`).
+val blasEnabledProperty = providers.systemProperty("skainet.cpu.blas.enabled")
+val blasLibraryProperty = providers.systemProperty("skainet.cpu.blas.library")
+
 tasks.withType<Test>().configureEach {
     jvmArgs("--enable-preview", "--add-modules", "jdk.incubator.vector")
+    blasEnabledProperty.orNull?.let { systemProperty("skainet.cpu.blas.enabled", it) }
+    blasLibraryProperty.orNull?.let { systemProperty("skainet.cpu.blas.library", it) }
 }
 
 tasks.withType<JavaExec>().configureEach {
