@@ -40,8 +40,6 @@ class GgufTokenizerLoadBenchmarkTest {
 
         val readMemory = median(runs) { StreamingGGUFReader.open(ByteArrayRandomAccessSource(bytes)).use { it.fields } }
         val readFile = median(3) { JvmRandomAccessSource.open(file).use { src -> StreamingGGUFReader.open(src).use { it.fields } } }
-        val copyTokens = median(runs) { (fields["tokenizer.ggml.tokens"] as List<*>).filterIsInstance<String>() }
-        val copyScores = median(runs) { (fields["tokenizer.ggml.scores"] as List<*>).mapNotNull { (it as? Number)?.toFloat() } }
         val vocabulary = median(runs) { ArrayVocabulary(tokens) }
         val sentencePiece = median(runs) { SentencePieceTokenizer.fromGgufFields(fields) }
         val frontEnd = median(runs) { TextFrontEnds.fromGguf(fields) }
@@ -49,8 +47,7 @@ class GgufTokenizerLoadBenchmarkTest {
         println(
             "[bench] ${file.name} ${bytes.size} bytes, ${tokens.size} tokens, median of $runs (file: 3) in ms: " +
                 "read.memory=$readMemory read.file=$readFile | build.frontEnd=$frontEnd " +
-                "(sentencePiece.fromGgufFields=$sentencePiece, ArrayVocabulary=$vocabulary, " +
-                "tokens copy=$copyTokens, scores copy=$copyScores)"
+                "(sentencePiece.fromGgufFields=$sentencePiece, ArrayVocabulary=$vocabulary)"
         )
     }
 }

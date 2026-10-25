@@ -106,9 +106,11 @@ public object TextFrontEnds : FrontEndProvider {
         return when (model) {
             "gpt2", "bpe" -> QwenByteLevelBpeTokenizer.fromGgufFields(fields)
             "llama", "sentencepiece", "gemma4" -> {
-                val base = SentencePieceTokenizer.fromGgufFields(fields)
-                val specials = GgufTokenizerFields.specialTokenMap(fields)
-                if (specials.isEmpty()) base else SpecialTokenSplitter(base, specials, specialIds = specials.values.toSet())
+                val tokens = GgufTokenizerFields.tokens(fields)
+                val types = GgufTokenizerFields.tokenTypeIds(fields)
+                val specials = GgufTokenizerFields.specialTokenMap(tokens, types)
+                val base = SentencePieceTokenizer.fromGgufFields(fields, tokens, types, specials)
+                if (specials.isEmpty()) base else SpecialTokenSplitter(base, specials, specialIds = base.specialTokens.declared)
             }
             "bert", "wordpiece" -> {
                 val tokens = GgufTokenizerFields.tokens(fields)

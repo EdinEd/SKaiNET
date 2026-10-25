@@ -48,18 +48,43 @@ internal object GgufTokenizerFields {
     const val TOKEN_TYPE_USER_DEFINED = 4
     const val TOKEN_TYPE_BYTE = 6
 
-    fun tokens(fields: Map<String, Any?>): List<String> =
-        (fields[TOKENS] as? List<*>)?.filterIsInstance<String>()
-            ?: error("$TOKENS missing or malformed")
+    // A tokenizer GGUF holds ~262k tokens and token types; each helper below makes one pass over them, and the GGUF
+    // builders call each one once per build (passing the results on) instead of re-deriving them from the fields.
 
-    fun tokenTypes(fields: Map<String, Any?>): List<Int>? =
-        (fields[TOKEN_TYPE] as? List<*>)?.mapNotNull { it.toIntFlexible() }
+    /** The token strings; the reader's list itself when every element is a `String`, without a copy. */
+    fun tokens(fields: Map<String, Any?>): List<String> {
+        val raw = fields[TOKENS] as? List<*> ?: error("$TOKENS missing or malformed")
+        @Suppress("UNCHECKED_CAST")
+        return if (raw.all { it is String }) raw as List<String> else raw.filterIsInstance<String>()
+    }
 
-    /** CONTROL and USER_DEFINED tokens: the atomic chat-template markers, keyed by surface form. */
-    fun specialTokenMap(fields: Map<String, Any?>): Map<String, Int> {
-        val tokens = (fields[TOKENS] as? List<*>)?.filterIsInstance<String>().orEmpty()
-        val types = tokenTypes(fields).orEmpty()
-        if (tokens.isEmpty() || types.isEmpty()) return emptyMap()
+    /** The token types as ints; elements that are not numbers are dropped. */
+    fun tokenTypeIds(fields: Map<String, Any?>): IntArray? {
+        val raw = fields[TOKEN_TYPE] as? List<*> ?: return null
+        val out = IntArray(raw.size)
+        var n = 0
+        for (e in raw) {
+            val v = if (e is Int) e else e.toIntFlexible() ?: continue
+            out[n++] = v
+        }
+        return if (n == out.size) out else out.copyOf(n)
+    }
+
+    /** The scores as floats, elements that are not numbers dropped; `null` when the field is missing. */
+    fun scores(fields: Map<String, Any?>): FloatArray? {
+        val raw = fields[SCORES] as? List<*> ?: return null
+        val out = FloatArray(raw.size)
+        var n = 0
+        for (e in raw) {
+            val v = if (e is Float) e else (e as? Number)?.toFloat() ?: continue
+            out[n++] = v
+        }
+        return if (n == out.size) out else out.copyOf(n)
+    }
+
+    /** CONTROL and USER_DEFINED tokens of [tokens] by [types]: the atomic chat-template markers, keyed by surface form. */
+    fun specialTokenMap(tokens: List<String>, types: IntArray?): Map<String, Int> {
+        if (tokens.isEmpty() || types == null || types.isEmpty()) return emptyMap()
         val out = LinkedHashMap<String, Int>()
         val limit = minOf(tokens.size, types.size)
         for (i in 0 until limit) {
