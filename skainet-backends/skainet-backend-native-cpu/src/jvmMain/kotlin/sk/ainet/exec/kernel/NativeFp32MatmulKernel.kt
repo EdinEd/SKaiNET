@@ -22,10 +22,11 @@ import sk.ainet.backend.api.kernel.Fp32MatmulKernel
  * The C kernel has one body per lane: a register-tiled SGEMM on x86-64 hosts
  * with AVX2 and FMA (a 6 × 16 tile of C in twelve eight-lane accumulators over
  * a packed sixteen-column panel of B, selected at runtime by a cached `cpuid`
- * probe because the library is built for baseline x86-64), a 4 × 8 tile on the
- * wasm SIMD128 sidecar, and an i-p-j outer product whose inner `c[j] += a*b[j]`
- * loop auto-vectorizes (NEON `fmla`, SSE2 without FMA on x86-64 hosts that lack
- * AVX2). Every output accumulates its products in ascending `p` whichever tile,
+ * probe because the library is built for baseline x86-64), an 8 × 8 tile of
+ * lane-indexed `fmla` on AArch64 (Apple silicon, Android and Linux arm64), a
+ * 4 × 8 tile on the wasm SIMD128 sidecar, and an i-p-j outer product whose
+ * inner `c[j] += a*b[j]` loop auto-vectorizes elsewhere (SSE2 without FMA on
+ * x86-64 hosts that lack AVX2). Every output accumulates its products in ascending `p` whichever tile,
  * thread or call computes it, so sliced and whole calls agree bit for bit;
  * lanes differ from each other within rounding, as NEON and wasm always have
  * ([NativeFp32MatmulX86LaneTest]).

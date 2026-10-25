@@ -20,9 +20,10 @@ import sk.ainet.backend.api.kernel.Fp32MemSegMatmulWtKernel
  *
  * which the wasm sidecar has served since 0.61.0 and the JVM never bound: `DefaultCpuOpsJvm`
  * transposed every dense weight once into `[k, n]` for the GEMM kernels and cached the copy. The C
- * kernel computes every output as one contiguous dot product over the weight's own row (NEON, the
- * portable body, or on x86-64 hosts with AVX2+FMA a runtime-selected eight-lane register tile that
- * reads the weight once per call instead of once per activation row) and threads over output rows
+ * kernel computes every output as one contiguous dot product over the weight's own row (the
+ * portable body, on AArch64 a four-lane NEON tile of four weight rows by three activation rows, or
+ * on x86-64 hosts with AVX2+FMA a runtime-selected eight-lane register tile — both tiles read the
+ * weight once per call instead of once per activation row) and threads over output rows
  * through the shared row pool. The accumulation order of an output is fixed per build and does not
  * depend on the thread or row slice that computes it, so threaded, sliced and single calls agree
  * bit for bit; against transpose-then-GEMM the result agrees to rounding.
