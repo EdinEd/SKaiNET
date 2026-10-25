@@ -137,7 +137,7 @@ public class QwenByteLevelBpeTokenizer(
                 ?.filterIsInstance<String>()
                 ?: error("${GgufTokenizerFields.MERGES} missing — required for byte-level BPE")
             val merges = mergesRaw.map { BpeCore.parseMergeLine(it) }
-            val specials = GgufTokenizerFields.specialTokenMap(fields)
+            val specials = GgufTokenizerFields.specialTokenMap(tokens, GgufTokenizerFields.tokenTypeIds(fields))
             val policy = GgufTokenizerFields.specialTokens(fields, specials.values.toSet())
             return QwenByteLevelBpeTokenizer(
                 tokens = tokens,
