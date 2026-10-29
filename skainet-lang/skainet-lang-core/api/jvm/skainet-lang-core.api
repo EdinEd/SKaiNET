@@ -3958,6 +3958,15 @@ public final class sk/ainet/lang/nn/metrics/AccuracyKt {
 	public static synthetic fun binaryAccuracy$default (FILjava/lang/Object;)Lsk/ainet/lang/nn/metrics/Metric;
 }
 
+public final class sk/ainet/lang/nn/metrics/Averaging : java/lang/Enum {
+	public static final field BINARY Lsk/ainet/lang/nn/metrics/Averaging;
+	public static final field MACRO Lsk/ainet/lang/nn/metrics/Averaging;
+	public static final field MICRO Lsk/ainet/lang/nn/metrics/Averaging;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lsk/ainet/lang/nn/metrics/Averaging;
+	public static fun values ()[Lsk/ainet/lang/nn/metrics/Averaging;
+}
+
 public abstract interface class sk/ainet/lang/nn/metrics/Metric {
 	public abstract fun compute ()D
 	public abstract fun getName ()Ljava/lang/String;
