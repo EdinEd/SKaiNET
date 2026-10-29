@@ -41,7 +41,30 @@ jobs:
             
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-        
+
+      # Configuring the project graph reaches skainet-backend-jni-cpu, whose
+      # Android plugin needs the pinned NDK. If it is absent, AGP downloads it
+      # mid-configuration with no retry, which fails the job on transient
+      # network errors (e.g. "Premature EOF"). Install it up front with
+      # retries instead. The version must match gradle/libs.versions.toml
+      # `android-ndk`.
+      - name: Install pinned NDK
+        run: |
+          NDK_VERSION="$(grep -E '^android-ndk[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          # sdkmanager is not on PATH on the plain ubuntu runner; use the
+          # preinstalled SDK's copy directly.
+          SDKMANAGER="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
+          echo "Installing NDK ${NDK_VERSION}"
+          for attempt in 1 2 3; do
+            if yes | "$SDKMANAGER" "ndk;${NDK_VERSION}" >/dev/null; then
+              exit 0
+            fi
+            echo "sdkmanager attempt ${attempt} failed, retrying..."
+            sleep 10
+          done
+          echo "Failed to install NDK ${NDK_VERSION} after 3 attempts" >&2
+          exit 1
+
       - name: Generate operator documentation (KSP)
         run: ./gradlew :skainet-lang:skainet-lang-core:kspCommonMainKotlinMetadata
         
