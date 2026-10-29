@@ -51,9 +51,12 @@ jobs:
       - name: Install pinned NDK
         run: |
           NDK_VERSION="$(grep -E '^android-ndk[[:space:]]*=' gradle/libs.versions.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          # sdkmanager is not on PATH on the plain ubuntu runner; use the
+          # preinstalled SDK's copy directly.
+          SDKMANAGER="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
           echo "Installing NDK ${NDK_VERSION}"
           for attempt in 1 2 3; do
-            if yes | sdkmanager "ndk;${NDK_VERSION}" >/dev/null; then
+            if yes | "$SDKMANAGER" "ndk;${NDK_VERSION}" >/dev/null; then
               exit 0
             fi
             echo "sdkmanager attempt ${attempt} failed, retrying..."
